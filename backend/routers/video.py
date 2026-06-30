@@ -3,10 +3,11 @@ Video processing API routes.
 Handles upload, status tracking, metadata retrieval, search, and WebSocket progress.
 """
 
-import asyncio
 import json
 import logging
 import os
+import subprocess
+import sys
 import uuid
 from datetime import datetime
 from typing import Dict
@@ -81,8 +82,17 @@ async def upload_video(
     with open(status_path, "w", encoding="utf-8") as f:
         json.dump(initial_status, f, ensure_ascii=False, indent=2)
 
-    # Launch pipeline as background asyncio task (non-blocking)
-    asyncio.create_task(_run_pipeline(video_id, video_path))
+    # Launch pipeline as a completely separate subprocess
+    # This NEVER blocks the server regardless of pipeline duration or resource usage
+    pipeline_log_path = os.path.join(output_dir, "pipeline.log")
+    subprocess.Popen(
+        [sys.executable, "run_pipeline.py", video_id, video_path],
+        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        stdout=open(pipeline_log_path, "w"),
+        stderr=subprocess.STDOUT,
+        start_new_session=True,  # Fully detach from parent process
+    )
+    logger.info("Launched pipeline subprocess for %s (log: %s)", video_id, pipeline_log_path)
 
     return {
         "video_id": video_id,
@@ -90,14 +100,6 @@ async def upload_video(
         "status": "queued",
         "message": "Video uploaded successfully. Processing will begin shortly.",
     }
-
-
-async def _run_pipeline(video_id: str, video_path: str):
-    """Background task that runs the full pipeline."""
-    try:
-        await _orchestrator.process_video(video_id, video_path, ws_callback=None)
-    except Exception as e:
-        logger.error("Pipeline failed for %s: %s", video_id, e)
 
 
 # ── Status ──────────────────────────────────────────────────────────

@@ -16,17 +16,18 @@
 - [PipelineVisualizer.tsx](file://frontend/src/components/archive/PipelineVisualizer.tsx)
 - [APITransparencyPanel.tsx](file://frontend/src/components/archive/APITransparencyPanel.tsx)
 - [SearchDemo.tsx](file://frontend/src/components/archive/SearchDemo.tsx)
+- [api.ts](file://frontend/src/lib/api.ts)
 - [reference_faces.json](file://backend/data/reference_faces.json)
 - [iptc_taxonomy.json](file://backend/data/iptc_taxonomy.json)
 </cite>
 
 ## Update Summary
 **Changes Made**
-- Enhanced thumbnail path normalization logic in orchestrator with robust regex-based path conversion
-- Improved search segment building with consistent URL-accessible paths for all segment types
-- Added comprehensive URL accessibility handling for thumbnail paths across all search segments
-- Enhanced frontend thumbnail URL resolution with consistent path normalization
-- Improved search segment metadata consistency with normalized thumbnail references
+- Updated WebSocket callback system to reflect simplified architecture with optional callbacks
+- Removed WebSocket progress streaming documentation as it's no longer actively used
+- Updated orchestrator documentation to show optional ws_callback parameter
+- Revised frontend WebSocket implementation to use polling fallback
+- Enhanced status management documentation to reflect REST-only progress tracking
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -44,10 +45,12 @@
 13. [Appendices](#appendices)
 
 ## Introduction
-This document explains the PipelineOrchestrator class and the end-to-end video processing pipeline with enhanced concurrency capabilities. The pipeline now implements a sophisticated asynchronous architecture featuring cooperative multitasking, non-blocking execution, and efficient resource utilization. It details the six-stage sequential workflow, the orchestrator's role in stage execution, progress tracking, and error handling. The pipeline has been updated to use local file path processing instead of URL-based communication, reducing potential failure points and improving reliability. It also documents the WebSocket callback mechanism for real-time progress updates, the status management system, and how the orchestrator coordinates between pipeline components. Practical examples illustrate pipeline initialization, execution flow, and status monitoring. Finally, it covers performance characteristics, memory usage patterns, and scalability implications of the enhanced asynchronous processing approach.
+This document explains the PipelineOrchestrator class and the end-to-end video processing pipeline with enhanced concurrency capabilities. The pipeline now implements a sophisticated asynchronous architecture featuring cooperative multitasking, non-blocking execution, and efficient resource utilization. It details the six-stage sequential workflow, the orchestrator's role in stage execution, progress tracking, and error handling. The pipeline has been updated to use local file path processing instead of URL-based communication, reducing potential failure points and improving reliability. It also documents the simplified WebSocket callback mechanism for progress updates, the status management system, and how the orchestrator coordinates between pipeline components. Practical examples illustrate pipeline initialization, execution flow, and status monitoring. Finally, it covers performance characteristics, memory usage patterns, and scalability implications of the enhanced asynchronous processing approach.
+
+**Updated**: The WebSocket callback system has been simplified - while the infrastructure remains for other uses, pipeline progress streaming is now handled through REST polling rather than real-time WebSocket updates.
 
 ## Project Structure
-The pipeline is implemented as a FastAPI service with a dedicated orchestration module and stage-specific modules. The frontend integrates with the backend via REST and WebSocket APIs to visualize progress and results. The orchestrator now processes local file paths directly, eliminating URL-based communication complexity. All stage modules have been enhanced with async implementations for optimal concurrency.
+The pipeline is implemented as a FastAPI service with a dedicated orchestration module and stage-specific modules. The frontend integrates with the backend via REST APIs with polling fallback for progress tracking. The orchestrator now processes local file paths directly, eliminating URL-based communication complexity. All stage modules have been enhanced with async implementations for optimal concurrency.
 
 ```mermaid
 graph TB
@@ -61,40 +64,43 @@ end
 subgraph "Frontend"
 F["React Hooks<br/>useVideoProcessing.ts"]
 G["UI Components<br/>PipelineVisualizer.tsx<br/>APITransparencyPanel.tsx<br/>SearchDemo.tsx"]
+H["WebSocket API<br/>api.ts"]
 end
 A --> B
 B --> C
 C --> D
 B --> E
 F --> B
+F --> H
 G --> F
 ```
 
 **Diagram sources**
 - [main.py:1-44](file://backend/main.py#L1-L44)
-- [video.py:1-268](file://backend/routers/video.py#L1-L268)
+- [video.py:1-311](file://backend/routers/video.py#L1-L311)
 - [orchestrator.py:1-382](file://backend/pipeline/orchestrator.py#L1-L382)
 - [config.py:1-30](file://backend/config.py#L1-L30)
-- [useVideoProcessing.ts:1-537](file://frontend/src/lib/useVideoProcessing.ts#L1-L537)
+- [useVideoProcessing.ts:1-533](file://frontend/src/lib/useVideoProcessing.ts#L1-L533)
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
 - [APITransparencyPanel.tsx:1-170](file://frontend/src/components/archive/APITransparencyPanel.tsx#L1-L170)
 - [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
+- [api.ts:1-277](file://frontend/src/lib/api.ts#L1-L277)
 
 **Section sources**
 - [main.py:1-44](file://backend/main.py#L1-L44)
-- [video.py:1-268](file://backend/routers/video.py#L1-L268)
+- [video.py:1-311](file://backend/routers/video.py#L1-L311)
 - [config.py:1-30](file://backend/config.py#L1-L30)
 
 ## Core Components
-- PipelineOrchestrator: Central coordinator that executes stages sequentially with async support, tracks progress, persists status, and emits WebSocket updates. Now uses local file paths for all stage operations with cooperative multitasking and enhanced thumbnail path normalization.
+- PipelineOrchestrator: Central coordinator that executes stages sequentially with async support, tracks progress, persists status, and optionally emits WebSocket updates. Now uses local file paths for all stage operations with cooperative multitasking and enhanced thumbnail path normalization.
 - Stage modules: Independent processing units for ingestion, visual analysis, audio transcription, face recognition, metadata structuring, and search index building, all enhanced with async implementations.
-- Routers: REST endpoints for upload, status, metadata, transcript, search, and WebSocket progress streaming with async WebSocket handling.
-- Frontend hooks and components: Real-time visualization of pipeline stages and results with async WebSocket subscriptions and enhanced thumbnail URL resolution.
+- Routers: REST endpoints for upload, status, metadata, transcript, search, and WebSocket endpoints with async WebSocket handling for other purposes.
+- Frontend hooks and components: Real-time visualization of pipeline stages and results with async REST polling and enhanced thumbnail URL resolution.
 
 Key orchestration responsibilities:
 - Initialize and persist status.json with async operations
 - Compute stage progress percentages with cooperative yielding
-- Forward progress via async WebSocket callback
+- Optionally forward progress via async WebSocket callback (now unused)
 - Aggregate results across stages with async coordination
 - Persist combined results.json with async file operations
 - Handle exceptions per stage and record errors with async error handling
@@ -106,7 +112,9 @@ Key orchestration responsibilities:
 - [video.py:25-120](file://backend/routers/video.py#L25-L120)
 
 ## Architecture Overview
-The pipeline follows a strict sequential 6-stage workflow with enhanced asynchronous capabilities. The orchestrator coordinates each stage using cooperative multitasking, passing results forward and ensuring robust error handling. The frontend connects via WebSocket to receive live progress updates and later fetches structured metadata and transcripts. The orchestrator now processes local file paths directly, eliminating URL-based communication complexity. All stage operations are designed for non-blocking execution while maintaining the sequential processing guarantees.
+The pipeline follows a strict sequential 6-stage workflow with enhanced asynchronous capabilities. The orchestrator coordinates each stage using cooperative multitasking, passing results forward and ensuring robust error handling. The frontend connects via REST APIs with polling fallback for progress tracking and later fetches structured metadata and transcripts. The orchestrator now processes local file paths directly, eliminating URL-based communication complexity. All stage operations are designed for non-blocking execution while maintaining the sequential processing guarantees.
+
+**Updated**: The WebSocket callback system is now optional and defaults to None, with REST polling serving as the primary progress tracking mechanism.
 
 ```mermaid
 sequenceDiagram
@@ -121,7 +129,7 @@ participant ST5 as "Async Metadata Structuring<br/>metadata_structuring.py"
 participant ST6 as "Async Search Index<br/>search_index.py"
 FE->>API : "POST /api/video/upload"
 API-->>FE : "200 OK {video_id, status}"
-API->>ORCH : "process_video(video_id, video_path, ws_callback)"
+API->>ORCH : "process_video(video_id, video_path, ws_callback=None)"
 ORCH->>ST1 : "await ingest_video(video_path, output_dir)"
 ST1-->>ORCH : "results['ingestion']"
 ORCH->>ST2 : "await analyze_video_visually(video_path, api_key, model, base_url)"
@@ -135,7 +143,8 @@ ST5-->>ORCH : "results['metadata']"
 ORCH->>ST6 : "await search_index.add_video(video_id, segments)"
 ST6-->>ORCH : "index updated"
 ORCH-->>API : "final status.json + results.json"
-API-->>FE : "WebSocket progress updates"
+API-->>FE : "REST polling for status updates"
+FE->>API : "GET /api/video/{video_id}/status (polling)"
 FE->>API : "GET /api/video/{video_id}/metadata"
 FE->>API : "GET /api/video/{video_id}/transcript"
 API-->>FE : "Structured metadata and transcript"
@@ -190,7 +199,7 @@ The orchestrator implements cooperative multitasking through strategic yielding 
 
 ```mermaid
 flowchart TD
-Start(["process_video(video_id, video_path, ws_callback)"]) --> InitStatus["Initialize status.json<br/>pending stages, timestamps"]
+Start(["process_video(video_id, video_path, ws_callback=None)"]) --> InitStatus["Initialize status.json<br/>pending stages, timestamps"]
 InitStatus --> CreateOutputDir["Create output directory<br/>for video_id"]
 CreateOutputDir --> LoopStages{"For each stage"}
 LoopStages --> YieldControl["await asyncio.sleep(0)<br/>Cooperative yielding"]
@@ -256,7 +265,7 @@ The orchestrator defines the canonical stage order and manages execution, progre
 - Execution pattern:
   - Initializes status.json with pending stages and timestamps
   - Computes progress as integer percentage based on stage index
-  - Invokes _run_stage for each stage, forwarding a ws_callback
+  - Invokes _run_stage for each stage, forwarding an optional ws_callback
   - Aggregates results into a shared dictionary keyed by result_key
   - Builds searchable segments from earlier stages and adds to FAISS index
   - Finalizes status to completed or completed_with_errors, persists results.json
@@ -273,7 +282,7 @@ The orchestrator defines the canonical stage order and manages execution, progre
 
 - WebSocket callback contract:
   - Arguments: stage, message, progress, status
-  - Sent to all registered WebSocket clients for the video_id
+  - **Updated**: Now optional and defaults to None - not actively used for pipeline progress
 
 - Local file path processing:
   - All stage modules now accept local file paths instead of URLs
@@ -289,7 +298,7 @@ The orchestrator defines the canonical stage order and manages execution, progre
 
 ```mermaid
 flowchart TD
-Start(["process_video(video_id, video_path, ws_callback)"]) --> InitStatus["Initialize status.json<br/>pending stages, timestamps"]
+Start(["process_video(video_id, video_path, ws_callback=None)"]) --> InitStatus["Initialize status.json<br/>pending stages, timestamps"]
 InitStatus --> CreateOutputDir["Create output directory<br/>for video_id"]
 CreateOutputDir --> LoopStages{"For each stage"}
 LoopStages --> YieldControl["await asyncio.sleep(0)<br/>Cooperative yielding"]
@@ -420,11 +429,16 @@ CombineSegments --> ReturnSegments["Return Enhanced Segments"]
 **Section sources**
 - [orchestrator.py:307-367](file://backend/pipeline/orchestrator.py#L307-L367)
 
-### WebSocket Progress Streaming
-- Router registers WebSocket connections per video_id
-- Orchestrator's ws_callback forwards progress updates to all connected clients
-- Frontend hook subscribes to /ws/pipeline/{video_id} and updates stage statuses
+### Simplified WebSocket Progress Streaming
+**Updated**: The WebSocket callback system has been simplified and is now optional:
+
+- Router registers WebSocket connections per video_id for other purposes
+- Orchestrator's ws_callback parameter defaults to None and is not actively used
+- Frontend hook uses REST polling as the primary progress tracking mechanism
+- WebSocket endpoints remain for other uses but pipeline progress streaming is disabled
 - Implements async WebSocket handling with proper connection management
+
+**Removed**: The previous WebSocket progress streaming implementation has been removed in favor of REST polling.
 
 ```mermaid
 sequenceDiagram
@@ -432,24 +446,51 @@ participant FE as "Frontend<br/>useVideoProcessing.ts"
 participant WS as "WebSocket<br/>/ws/pipeline/{video_id}"
 participant API as "Router<br/>video.py"
 participant ORCH as "Orchestrator<br/>orchestrator.py"
-FE->>WS : "Connect"
+FE->>WS : "Connect (for other purposes)"
 API->>API : "Register client in _active_ws[video_id]"
-API->>ORCH : "process_video(..., ws_callback)"
-ORCH->>API : "await ws_callback(stage, message, progress, status)"
-API->>WS : "await ws.send_json(payload)"
-WS-->>FE : "Receive progress event"
-FE->>API : "Optionally poll /api/video/{video_id}/status"
+Note over API,ORCH : WebSocket callback is None and not used
+FE->>API : "GET /api/video/{video_id}/status (polling)"
+API-->>FE : "Current status via REST"
 ```
 
 **Diagram sources**
-- [video.py:220-268](file://backend/routers/video.py#L220-L268)
+- [video.py:264-311](file://backend/routers/video.py#L264-L311)
 - [video.py:95-120](file://backend/routers/video.py#L95-L120)
 - [orchestrator.py:228-282](file://backend/pipeline/orchestrator.py#L228-L282)
 
 **Section sources**
-- [video.py:220-268](file://backend/routers/video.py#L220-L268)
+- [video.py:264-311](file://backend/routers/video.py#L264-L311)
 - [video.py:95-120](file://backend/routers/video.py#L95-L120)
 - [useVideoProcessing.ts:215-276](file://frontend/src/lib/useVideoProcessing.ts#L215-L276)
+
+### REST Polling Progress Tracking
+**Updated**: The frontend now uses REST polling as the primary progress tracking mechanism:
+
+- Frontend establishes WebSocket connection for other purposes but ignores pipeline progress
+- Uses setInterval to poll /api/video/{video_id}/status every 3 seconds
+- Automatically falls back to polling if WebSocket connection fails
+- Updates UI state based on polled status information
+- Stops polling when all stages complete and fetches final results
+
+```mermaid
+sequenceDiagram
+participant FE as "Frontend<br/>useVideoProcessing.ts"
+participant API as "Router<br/>video.py"
+FE->>API : "GET /api/video/{video_id}/status (polling)"
+API-->>FE : "Current status via REST"
+FE->>FE : "Update UI state"
+FE->>FE : "Stop polling when complete"
+FE->>API : "GET /api/video/{video_id}/metadata"
+FE->>API : "GET /api/video/{video_id}/transcript"
+```
+
+**Diagram sources**
+- [video.py:105-121](file://backend/routers/video.py#L105-L121)
+- [useVideoProcessing.ts:400-443](file://frontend/src/lib/useVideoProcessing.ts#L400-L443)
+
+**Section sources**
+- [video.py:105-121](file://backend/routers/video.py#L105-L121)
+- [useVideoProcessing.ts:400-443](file://frontend/src/lib/useVideoProcessing.ts#L400-L443)
 
 ### Status Management
 - Initial status created on upload with queued state
@@ -489,6 +530,7 @@ ROUTER["Routers<br/>video.py"] --> ORCH
 ROUTER --> CFG["Config<br/>config.py"]
 FRONT["Frontend<br/>useVideoProcessing.ts"] --> ROUTER
 FRONT --> SEARCH["SearchDemo.tsx"]
+FRONT --> WS["WebSocket API<br/>api.ts"]
 ```
 
 **Diagram sources**
@@ -497,6 +539,7 @@ FRONT --> SEARCH["SearchDemo.tsx"]
 - [config.py:4-20](file://backend/config.py#L4-L20)
 - [useVideoProcessing.ts:1-10](file://frontend/src/lib/useVideoProcessing.ts#L1-L10)
 - [SearchDemo.tsx:1-10](file://frontend/src/components/archive/SearchDemo.tsx#L1-L10)
+- [api.ts:1-10](file://frontend/src/lib/api.ts#L1-L10)
 
 **Section sources**
 - [orchestrator.py:14-20](file://backend/pipeline/orchestrator.py#L14-L20)
@@ -521,10 +564,11 @@ FRONT --> SEARCH["SearchDemo.tsx"]
   - Visual analysis, ASR, embedding calls are rate-limited and may require retries
   - Async HTTP clients handle timeouts more efficiently
   - Exponential backoff with async sleep prevents busy-waiting
-- WebSocket scaling:
-  - Each stage update triggers async send_json to all registered clients
-  - Proper connection management prevents resource leaks
-  - Async WebSocket handling scales better under high concurrency
+- **Updated**: WebSocket scaling considerations:
+  - WebSocket endpoints remain for other uses but pipeline progress streaming is disabled
+  - REST polling provides sufficient progress tracking with lower resource usage
+  - Connection management prevents resource leaks for remaining WebSocket uses
+  - Async WebSocket handling scales better under high concurrency for other purposes
 - FAISS index:
   - Index loading/saving occurs on add_video and search with async operations
   - Memory usage grows with indexed segments; optimize batch sizes and refresh cadence
@@ -546,9 +590,11 @@ Common issues and remedies:
 - ASR task timeouts:
   - Long audio may exceed polling limits; adjust expectations or split input
   - Async HTTP clients handle timeouts more gracefully than blocking calls
-- WebSocket disconnects:
-  - Router removes disconnected clients automatically; frontend falls back to REST polling
-  - Async WebSocket handling prevents connection leaks
+- **Updated**: WebSocket progress streaming issues:
+  - Pipeline progress streaming is now disabled - use REST polling instead
+  - WebSocket endpoints remain functional for other purposes
+  - Frontend automatically falls back to REST polling if WebSocket fails
+  - Connection management prevents resource leaks for remaining WebSocket uses
 - FAISS availability:
   - If FAISS is not installed, search/indexing is disabled; install faiss-cpu for full functionality
   - Async fallback to numpy implementation ensures graceful degradation
@@ -578,7 +624,7 @@ Common issues and remedies:
 - [video.py:116-120](file://backend/routers/video.py#L116-L120)
 
 ## Conclusion
-The PipelineOrchestrator provides a robust, transparent, and resilient framework for sequential video processing with enhanced concurrency capabilities. Its explicit stage ordering, comprehensive error handling, and real-time progress streaming enable reliable operation and excellent observability. The switch to local file path processing eliminates URL-based communication complexity and reduces potential failure points. The enhanced async implementation with cooperative multitasking and non-blocking execution architecture significantly improves throughput while maintaining the predictable resource usage characteristics of sequential processing.
+The PipelineOrchestrator provides a robust, transparent, and resilient framework for sequential video processing with enhanced concurrency capabilities. Its explicit stage ordering, comprehensive error handling, and simplified progress tracking enable reliable operation and excellent observability. The switch to local file path processing eliminates URL-based communication complexity and reduces potential failure points. The enhanced async implementation with cooperative multitasking and non-blocking execution architecture significantly improves throughput while maintaining the predictable resource usage characteristics of sequential processing.
 
 **Recent Enhancements:**
 - **OCR Text Detection**: Enhanced face recognition with OCR-based person identification fallback
@@ -587,6 +633,9 @@ The PipelineOrchestrator provides a robust, transparent, and resilient framework
 - **Enhanced Search Segments**: Improved search index building with enriched segment metadata
 - **Robust Thumbnail Path Normalization**: Enhanced thumbnail path conversion ensuring URL accessibility across all segment types
 - **Consistent Frontend Integration**: Complementary frontend thumbnail URL resolution for seamless user experience
+- **Simplified WebSocket Architecture**: Removed pipeline progress streaming in favor of REST polling for better reliability
+
+**Updated**: The simplified WebSocket architecture maintains infrastructure for other uses while focusing on reliable REST-based progress tracking. This change improves system stability and reduces complexity while preserving essential WebSocket functionality for non-pipeline purposes.
 
 While sequential processing trades throughput for simplicity and predictability, it remains practical for most media archival scenarios and can be scaled by increasing server capacity or splitting large inputs. The async enhancements make the system more responsive and efficient under various load conditions. The new thumbnail path normalization ensures consistent thumbnail display across all search results, improving the overall user experience.
 
@@ -594,9 +643,9 @@ While sequential processing trades throughput for simplicity and predictability,
 
 ### Example: Pipeline Initialization and Execution Flow
 - Upload a video via POST /api/video/upload; backend saves file and queues processing
-- Background task invokes process_video with ws_callback
+- Background task invokes process_video with ws_callback=None
 - Orchestrator runs ingestion → visual_analysis → audio_analysis → face_recognition → metadata_structuring → search_index
-- Frontend receives WebSocket updates and switches to results view upon completion
+- Frontend polls /api/video/{video_id}/status every 3 seconds for progress updates
 - Users can fetch metadata and transcript via GET endpoints
 
 **Section sources**
@@ -605,8 +654,8 @@ While sequential processing trades throughput for simplicity and predictability,
 - [useVideoProcessing.ts:162-211](file://frontend/src/lib/useVideoProcessing.ts#L162-L211)
 
 ### Example: Status Monitoring
-- Connect to /ws/pipeline/{video_id} to receive live progress
-- Alternatively poll /api/video/{video_id}/status for current stage states
+- **Updated**: Use REST polling instead of WebSocket for progress tracking
+- Poll /api/video/{video_id}/status every 3 seconds for current stage states
 - After completion, fetch /api/video/{video_id}/metadata and /api/video/{video_id}/transcript
 
 **Section sources**
@@ -631,7 +680,7 @@ While sequential processing trades throughput for simplicity and predictability,
 - **Thread Pool Integration**: CPU-intensive operations run via run_in_executor while maintaining async flow
 - **Cooperative Yielding**: Strategic asyncio.sleep(0) calls ensure other coroutines can execute
 - **Async File Operations**: aiofiles integration enables non-blocking file I/O operations
-- **WebSocket Scaling**: Async WebSocket handling scales better under high concurrency scenarios
+- **Updated**: WebSocket scaling considerations: Async WebSocket handling scales better under high concurrency for other purposes
 
 **Section sources**
 - [audio_analysis.py:228-263](file://backend/pipeline/audio_analysis.py#L228-L263)

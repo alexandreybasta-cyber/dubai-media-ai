@@ -21,11 +21,12 @@
 
 ## Update Summary
 **Changes Made**
-- Updated Core Components section to highlight cooperative multitasking improvements
-- Enhanced Performance Considerations section with detailed cooperative yielding explanations
-- Added troubleshooting guidance for concurrent video processing scenarios
-- Updated architecture diagrams to reflect improved concurrency handling
-- Enhanced server responsiveness documentation with specific implementation details
+- Updated Core Components section to reflect simplified background task approach
+- Removed WebSocket callback mechanism documentation
+- Updated Architecture Overview to show background task execution flow
+- Revised Real-time Progress Tracking section to reflect polling-based approach
+- Enhanced Troubleshooting Guide for polling-based status monitoring
+- Updated Performance Considerations to reflect non-WebSocket implementation
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -40,9 +41,9 @@
 10. [Appendices](#appendices)
 
 ## Introduction
-This document explains the 6-stage AI-powered media processing pipeline designed for automated metadata extraction and indexing of video archives. It covers the orchestration layer, each processing stage, AI model integrations, real-time progress tracking via WebSocket, and operational guidance for performance and reliability.
+This document explains the 6-stage AI-powered media processing pipeline designed for automated metadata extraction and indexing of video archives. It covers the orchestration layer, each processing stage, AI model integrations, and operational guidance for performance and reliability.
 
-The pipeline transforms raw video into structured metadata, transcripts, face identifications, and a semantic search index, enabling efficient discovery and archival workflows. **Enhanced with cooperative multitasking support**, the pipeline now allows concurrent video processing while maintaining system responsiveness for all endpoints.
+The pipeline transforms raw video into structured metadata, transcripts, face identifications, and a semantic search index, enabling efficient discovery and archival workflows. **The pipeline now uses a simplified background task approach** instead of WebSocket callbacks, maintaining system responsiveness while reducing complexity.
 
 ## Project Structure
 The system is organized into:
@@ -62,6 +63,7 @@ ST5["Metadata Structuring"]
 ST6["Search Index"]
 ROUTER["Video Router"]
 MAIN["FastAPI App"]
+ENDTASK["_run_pipeline (background task)"]
 end
 subgraph "Data Assets"
 REF["reference_faces.json"]
@@ -71,9 +73,11 @@ subgraph "Frontend"
 HOOK["useVideoProcessing hook"]
 VIS["PipelineVisualizer"]
 UP["VideoUpload"]
+POLL["REST Polling"]
 end
 MAIN --> ROUTER
-ROUTER --> ORCH
+ROUTER --> ENDTASK
+ENDTASK --> ORCH
 ORCH --> ST1
 ORCH --> ST2
 ORCH --> ST3
@@ -85,56 +89,57 @@ ST5 --> IPTC
 HOOK --> ROUTER
 VIS --> HOOK
 UP --> HOOK
+POLL --> ROUTER
 ```
 
 **Diagram sources**
 - [backend/main.py:1-44](file://backend/main.py#L1-L44)
-- [backend/routers/video.py:1-268](file://backend/routers/video.py#L1-L268)
-- [backend/pipeline/orchestrator.py:1-330](file://backend/pipeline/orchestrator.py#L1-L330)
+- [backend/routers/video.py:1-311](file://backend/routers/video.py#L1-L311)
+- [backend/pipeline/orchestrator.py:1-382](file://backend/pipeline/orchestrator.py#L1-L382)
 - [backend/pipeline/ingestion.py:1-146](file://backend/pipeline/ingestion.py#L1-L146)
-- [backend/pipeline/visual_analysis.py:1-342](file://backend/pipeline/visual_analysis.py#L1-L342)
+- [backend/pipeline/visual_analysis.py:1-344](file://backend/pipeline/visual_analysis.py#L1-L344)
 - [backend/pipeline/audio_analysis.py:1-277](file://backend/pipeline/audio_analysis.py#L1-L277)
-- [backend/pipeline/face_recognition.py:1-215](file://backend/pipeline/face_recognition.py#L1-L215)
+- [backend/pipeline/face_recognition.py:1-319](file://backend/pipeline/face_recognition.py#L1-L319)
 - [backend/pipeline/metadata_structuring.py:1-252](file://backend/pipeline/metadata_structuring.py#L1-L252)
-- [backend/pipeline/search_index.py:1-300](file://backend/pipeline/search_index.py#L1-L300)
+- [backend/pipeline/search_index.py:1-306](file://backend/pipeline/search_index.py#L1-L306)
 - [backend/data/reference_faces.json:1-101](file://backend/data/reference_faces.json#L1-L101)
 - [backend/data/iptc_taxonomy.json:1-28](file://backend/data/iptc_taxonomy.json#L1-L28)
-- [frontend/src/lib/useVideoProcessing.ts:1-465](file://frontend/src/lib/useVideoProcessing.ts#L1-L465)
+- [frontend/src/lib/useVideoProcessing.ts:1-533](file://frontend/src/lib/useVideoProcessing.ts#L1-L533)
 - [frontend/src/components/archive/PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
 - [frontend/src/components/archive/VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
 
 **Section sources**
 - [backend/main.py:1-44](file://backend/main.py#L1-L44)
-- [backend/routers/video.py:1-268](file://backend/routers/video.py#L1-L268)
+- [backend/routers/video.py:1-311](file://backend/routers/video.py#L1-L311)
 
 ## Core Components
-- PipelineOrchestrator: Manages sequential stages, progress tracking, status persistence, and WebSocket notifications with cooperative multitasking support.
+- PipelineOrchestrator: Manages sequential stages, progress tracking, status persistence, and background task execution.
 - Stage modules: Ingestion, Visual Analysis, Audio Analysis, Face Recognition, Metadata Structuring, Search Index.
 - Router: Upload, status, metadata, transcript, search, and WebSocket endpoints.
 - Config: Centralized settings for API keys, models, and base URLs.
 - Frontend hook and components: Real-time progress, upload UX, and visualization.
 
 Key orchestration responsibilities:
-- Sequential stage execution with error containment
+- Sequential stage execution with cooperative yielding for server responsiveness
 - Persistent status and intermediate results
-- Real-time progress via WebSocket callback
+- Background task execution without WebSocket callbacks
 - Building searchable segments for embedding
-- **Enhanced server responsiveness through cooperative yielding mechanism**
 
-**Updated** Enhanced server responsiveness through cooperative yielding mechanism using `await asyncio.sleep(0)` to prevent blocking the event loop during long-running operations. This enables concurrent video processing while maintaining system responsiveness for all endpoints.
+**Updated** The pipeline now uses a simplified background task approach where the orchestrator runs sequentially without WebSocket callbacks. The `_run_pipeline` function creates a background task that processes videos asynchronously, eliminating the complexity of WebSocket connections while maintaining system responsiveness.
 
 **Section sources**
-- [backend/pipeline/orchestrator.py:34-330](file://backend/pipeline/orchestrator.py#L34-L330)
-- [backend/routers/video.py:37-268](file://backend/routers/video.py#L37-L268)
-- [backend/config.py:4-21](file://backend/config.py#L4-L21)
+- [backend/pipeline/orchestrator.py:44-382](file://backend/pipeline/orchestrator.py#L44-L382)
+- [backend/routers/video.py:95-101](file://backend/routers/video.py#L95-L101)
+- [backend/config.py:4-30](file://backend/config.py#L4-L30)
 
 ## Architecture Overview
-The pipeline is a server-side orchestration backed by external AI APIs and local file storage. The frontend connects via REST and WebSocket to observe progress and retrieve results. **With cooperative multitasking support**, the system can handle multiple concurrent video processing operations without sacrificing responsiveness.
+The pipeline is a server-side orchestration backed by external AI APIs and local file storage. The frontend connects via REST endpoints to observe progress and retrieve results. **The simplified background task approach** eliminates WebSocket complexity while maintaining real-time status updates through REST polling.
 
 ```mermaid
 sequenceDiagram
 participant FE as "Frontend"
 participant API as "FastAPI Router"
+participant TASK as "_run_pipeline (background)"
 participant ORCH as "PipelineOrchestrator"
 participant ST1 as "Ingestion"
 participant ST2 as "Visual Analysis"
@@ -143,7 +148,8 @@ participant ST4 as "Face Recognition"
 participant ST5 as "Metadata Structuring"
 participant ST6 as "Search Index"
 FE->>API : POST /api/video/upload
-API->>ORCH : process_video(video_id, video_path)
+API->>TASK : create_task(_run_pipeline(video_id, video_path))
+TASK->>ORCH : process_video(video_id, video_path)
 ORCH->>ST1 : ingest_video(video_path, output_dir)
 ST1-->>ORCH : ingestion.json
 ORCH->>ST2 : analyze_video_visually(video_url, api_key, model)
@@ -156,18 +162,23 @@ ORCH->>ST5 : structure_metadata(analysis_results, api_key, model)
 ST5-->>ORCH : metadata.json
 ORCH->>ST6 : SearchIndex.add_video(video_id, segments)
 ST6-->>ORCH : index persisted
-ORCH-->>FE : WebSocket "done" + status.json + results.json
+ORCH-->>TASK : Complete processing
+FE->>API : GET /api/video/{video_id}/status (polling)
+API-->>FE : status.json
+FE->>API : GET /api/video/{video_id}/metadata
+API-->>FE : metadata.json + transcript.json
 ```
 
 **Diagram sources**
-- [backend/routers/video.py:95-121](file://backend/routers/video.py#L95-L121)
-- [backend/pipeline/orchestrator.py:44-206](file://backend/pipeline/orchestrator.py#L44-L206)
+- [backend/routers/video.py:40-92](file://backend/routers/video.py#L40-L92)
+- [backend/routers/video.py:95-101](file://backend/routers/video.py#L95-L101)
+- [backend/pipeline/orchestrator.py:44-209](file://backend/pipeline/orchestrator.py#L44-L209)
 - [backend/pipeline/ingestion.py:16-51](file://backend/pipeline/ingestion.py#L16-L51)
-- [backend/pipeline/visual_analysis.py:43-130](file://backend/pipeline/visual_analysis.py#L43-L130)
-- [backend/pipeline/audio_analysis.py:22-59](file://backend/pipeline/audio_analysis.py#L22-L59)
-- [backend/pipeline/face_recognition.py:54-107](file://backend/pipeline/face_recognition.py#L54-L107)
+- [backend/pipeline/visual_analysis.py:57-188](file://backend/pipeline/visual_analysis.py#L57-L188)
+- [backend/pipeline/audio_analysis.py:33-113](file://backend/pipeline/audio_analysis.py#L33-L113)
+- [backend/pipeline/face_recognition.py:124-188](file://backend/pipeline/face_recognition.py#L124-L188)
 - [backend/pipeline/metadata_structuring.py:81-163](file://backend/pipeline/metadata_structuring.py#L81-L163)
-- [backend/pipeline/search_index.py:88-154](file://backend/pipeline/search_index.py#L88-L154)
+- [backend/pipeline/search_index.py:143-212](file://backend/pipeline/search_index.py#L143-L212)
 
 ## Detailed Component Analysis
 
@@ -176,14 +187,14 @@ Responsibilities:
 - Sequentially executes six stages with cooperative yielding for server responsiveness
 - Tracks progress and status per stage
 - Persists status.json and intermediate results
-- Emits real-time progress via WebSocket callback
+- **Eliminates WebSocket callback mechanism** in favor of background task execution
 - Builds searchable segments for embedding
 
-**Updated** Enhanced with cooperative yielding mechanism to improve server responsiveness during long-running video processing operations. The orchestrator yields control to the event loop using `await asyncio.sleep(0)` at the beginning of each stage execution, preventing blocking of other requests.
+**Updated** The orchestrator now operates without WebSocket callbacks. The `process_video` method accepts an optional `ws_callback` parameter but ignores it, focusing solely on sequential stage execution and status persistence. This simplification maintains system responsiveness while reducing implementation complexity.
 
 Inputs:
 - video_id, video_path
-- Optional ws_callback(stage, message, progress, status)
+- Optional ws_callback parameter (ignored in current implementation)
 
 Outputs:
 - status.json, results.json
@@ -207,14 +218,14 @@ Stage4 --> Stage5["Run metadata structuring"]
 Stage5 --> Segments["Build searchable segments"]
 Segments --> Stage6["Run search index"]
 Stage6 --> Finalize["Finalize status (completed/completed_with_errors)"]
-Finalize --> Done(["Return and notify WebSocket"])
+Finalize --> Done(["Return (no WebSocket callback)"])
 ```
 
 **Diagram sources**
-- [backend/pipeline/orchestrator.py:44-206](file://backend/pipeline/orchestrator.py#L44-L206)
+- [backend/pipeline/orchestrator.py:44-209](file://backend/pipeline/orchestrator.py#L44-L209)
 
 **Section sources**
-- [backend/pipeline/orchestrator.py:34-330](file://backend/pipeline/orchestrator.py#L34-L330)
+- [backend/pipeline/orchestrator.py:34-382](file://backend/pipeline/orchestrator.py#L34-L382)
 
 ### Stage 1: Ingestion
 Purpose:
@@ -252,7 +263,7 @@ Error handling:
 - Returns empty structured result on repeated failure
 
 **Section sources**
-- [backend/pipeline/visual_analysis.py:43-342](file://backend/pipeline/visual_analysis.py#L43-L342)
+- [backend/pipeline/visual_analysis.py:57-344](file://backend/pipeline/visual_analysis.py#L57-L344)
 
 ### Stage 3: Audio Analysis (ASR) - Paraformer-v2
 Purpose:
@@ -265,16 +276,15 @@ Outputs:
 - transcript.json with segments, full_text, speaker_count, language
 
 Workflow:
-- Submit task, poll status until SUCCEEDED or FAILED/CANCELED
-- Fetch transcript JSON from returned URL and parse into segments
+- Split audio into chunks, transcribe each chunk via qwen-omni-turbo
+- Combine segments into final transcript
 
 Error handling:
-- Submission retries with backoff
-- Polling with bounded attempts and interval
+- Chunk-based processing with individual retry logic
 - Returns empty structured result on failure
 
 **Section sources**
-- [backend/pipeline/audio_analysis.py:22-277](file://backend/pipeline/audio_analysis.py#L22-L277)
+- [backend/pipeline/audio_analysis.py:33-277](file://backend/pipeline/audio_analysis.py#L33-L277)
 
 ### Stage 4: Face Recognition
 Purpose:
@@ -294,7 +304,7 @@ Error handling:
 - Conservative matching with retries and fallback to unidentified
 
 **Section sources**
-- [backend/pipeline/face_recognition.py:54-215](file://backend/pipeline/face_recognition.py#L54-L215)
+- [backend/pipeline/face_recognition.py:124-319](file://backend/pipeline/face_recognition.py#L124-L319)
 - [backend/data/reference_faces.json:1-101](file://backend/data/reference_faces.json#L1-L101)
 
 ### Stage 5: Metadata Structuring (EBUCore/IPTC)
@@ -336,45 +346,50 @@ Error handling:
 - Saves index to disk; gracefully handles missing FAISS installation
 
 **Section sources**
-- [backend/pipeline/search_index.py:22-300](file://backend/pipeline/search_index.py#L22-L300)
+- [backend/pipeline/search_index.py:59-306](file://backend/pipeline/search_index.py#L59-L306)
 
 ### Real-time Progress Tracking and Status Reporting
-- Router exposes WebSocket endpoint for live progress
-- Orchestrator invokes ws_callback(stage, message, progress, status) per stage
-- Frontend hook subscribes to WebSocket, updates stage statuses and elapsed times
-- REST fallback polling supported when WebSocket fails
+**Updated** The pipeline now uses a polling-based approach instead of WebSocket callbacks. The frontend connects via REST endpoints to observe progress and retrieve results.
+
+- Router exposes REST endpoints for status polling
+- Background task `_run_pipeline` executes the full pipeline asynchronously
+- Frontend hook polls `/api/video/{video_id}/status` every 3 seconds
+- REST fallback polling replaces WebSocket progress updates
+- Results are fetched via separate endpoints when processing completes
 
 ```mermaid
 sequenceDiagram
 participant FE as "Frontend"
-participant WS as "WebSocket /ws/pipeline/{video_id}"
-participant API as "Router"
+participant API as "FastAPI Router"
+participant TASK as "_run_pipeline (background)"
 participant ORCH as "PipelineOrchestrator"
-FE->>WS : Connect
-API->>ORCH : process_video(video_id, video_path, ws_callback)
-ORCH->>WS : send_json({stage, message, progress, status})
-FE-->>FE : Update PipelineVisualizer
-ORCH-->>WS : send_json({stage : "done", message, progress : 100, status})
-FE->>API : GET /api/video/{video_id}/metadata
+FE->>API : POST /api/video/upload
+API->>TASK : create_task(_run_pipeline(video_id, video_path))
+TASK->>ORCH : process_video(video_id, video_path)
+ORCH->>ORCH : Update status.json per stage
+FE->>API : GET /api/video/{video_id}/status (polling)
+API-->>FE : status.json
+FE->>API : GET /api/video/{video_id}/metadata (when done)
 API-->>FE : metadata.json + transcript.json
 ```
 
 **Diagram sources**
-- [backend/routers/video.py:220-268](file://backend/routers/video.py#L220-L268)
-- [backend/routers/video.py:95-121](file://backend/routers/video.py#L95-L121)
-- [backend/pipeline/orchestrator.py:208-282](file://backend/pipeline/orchestrator.py#L208-L282)
-- [frontend/src/lib/useVideoProcessing.ts:215-276](file://frontend/src/lib/useVideoProcessing.ts#L215-L276)
+- [backend/routers/video.py:40-92](file://backend/routers/video.py#L40-L92)
+- [backend/routers/video.py:95-101](file://backend/routers/video.py#L95-L101)
+- [backend/routers/video.py:105-121](file://backend/routers/video.py#L105-L121)
+- [backend/pipeline/orchestrator.py:44-209](file://backend/pipeline/orchestrator.py#L44-L209)
+- [frontend/src/lib/useVideoProcessing.ts:399-443](file://frontend/src/lib/useVideoProcessing.ts#L399-L443)
 
 **Section sources**
-- [backend/routers/video.py:218-268](file://backend/routers/video.py#L218-L268)
-- [frontend/src/lib/useVideoProcessing.ts:215-276](file://frontend/src/lib/useVideoProcessing.ts#L215-L276)
+- [backend/routers/video.py:95-121](file://backend/routers/video.py#L95-L121)
+- [frontend/src/lib/useVideoProcessing.ts:399-443](file://frontend/src/lib/useVideoProcessing.ts#L399-L443)
 - [frontend/src/components/archive/PipelineVisualizer.tsx:88-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L88-L181)
 
 ## Dependency Analysis
 - Orchestration depends on stage modules and SearchIndex
 - Stages depend on external AI APIs and local data assets
 - Router depends on Orchestrator and SearchIndex
-- Frontend depends on Router and WebSocket
+- Frontend depends on Router and REST polling
 
 ```mermaid
 graph LR
@@ -388,6 +403,7 @@ ST4 --> REF["reference_faces.json"]
 ST5 --> IPTC["iptc_taxonomy.json"]
 ROUTER["Video Router"] --> ORCH
 FEHOOK["useVideoProcessing"] --> ROUTER
+TASK["_run_pipeline"] --> ORCH
 ```
 
 **Diagram sources**
@@ -405,10 +421,10 @@ FEHOOK["useVideoProcessing"] --> ROUTER
 - Stage durations:
   - Ingestion: O(1) with respect to video length; dominated by I/O
   - Visual Analysis: Heavily dependent on video length and fps sampling; expect linear increase with duration
-  - Audio Analysis: Primarily network-bound; duration affects polling overhead
+  - Audio Analysis: Primarily network-bound; duration affects chunk processing overhead
   - Face Recognition: Proportional to number of faces; conservative matching reduces false positives
   - Metadata Structuring: Prompt size controlled by compaction; mostly API latency
-  - Search Index: Linear in segment count; embedding batch size capped at 25
+  - Search Index: Linear in segment count; embedding batch size capped at 6
 - Memory usage:
   - Transcripts and metadata stored per stage; FAISS index grows with segment count
   - Embeddings normalized to unit vectors; index persists to disk
@@ -421,11 +437,11 @@ FEHOOK["useVideoProcessing"] --> ROUTER
   - Mount uploads via static files for reliable video/audio access
 - **Server Responsiveness**:
   - **Cooperative yielding**: The orchestrator uses `await asyncio.sleep(0)` to yield control back to the event loop, preventing long-running stages from blocking other requests
-  - **Event loop fairness**: This ensures the server can handle incoming requests, WebSocket connections, and background tasks even during extended processing operations
-  - **Concurrent processing**: Multiple videos can be processed simultaneously without impacting system responsiveness
+  - **Event loop fairness**: This ensures the server can handle incoming requests, background tasks, and file operations even during extended processing operations
+  - **Background task execution**: Simplified approach eliminates WebSocket complexity while maintaining responsiveness
   - **Non-blocking operations**: All stage functions are async and use cooperative yielding points
 
-**Updated** Enhanced server responsiveness through cooperative yielding mechanism that prevents blocking the event loop during long-running video processing operations. The `await asyncio.sleep(0)` call at the beginning of each stage ensures that other requests can be processed while long-running operations are in progress.
+**Updated** The simplified background task approach enhances server responsiveness by eliminating WebSocket callback complexity. The cooperative yielding mechanism ensures that long-running operations don't block the event loop, enabling multiple videos to be processed simultaneously without impacting system performance.
 
 [No sources needed since this section provides general guidance]
 
@@ -452,9 +468,12 @@ Common issues and recovery strategies:
 - Search index unavailable:
   - Symptom: FAISS not installed or index load failures
   - Action: Install faiss-cpu; ensure permissions for index_dir; rebuild index
-- WebSocket disconnections:
-  - Symptom: UI stops updating progress
-  - Action: Use REST status polling as fallback; reconnect WebSocket; check server logs
+- **Background task failures**:
+  - Symptom: Videos appear stuck in queued status
+  - Action: Check server logs for `_run_pipeline` errors; verify upload directory permissions
+- **Polling-based status monitoring**:
+  - Symptom: UI shows "Processing" indefinitely
+  - Action: Verify REST status endpoint accessibility; check network connectivity; ensure proper CORS configuration
 - **Server responsiveness issues**:
   - Symptom: Slow response to new upload requests during long processing
   - Action: The cooperative yielding mechanism automatically addresses this; monitor event loop utilization
@@ -462,35 +481,35 @@ Common issues and recovery strategies:
   - Symptom: Multiple videos causing resource contention
   - Action: Monitor system resources; consider rate limiting; ensure adequate CPU and memory allocation
 
-**Updated** Added troubleshooting guidance for concurrent video processing scenarios, noting that the cooperative yielding mechanism automatically addresses slow response problems during long processing operations. Also added guidance for handling concurrent processing conflicts.
+**Updated** Added troubleshooting guidance for the simplified background task approach, including background task failures and polling-based status monitoring. The WebSocket callback mechanism has been removed, so troubleshooting now focuses on REST polling and background task execution.
 
 **Section sources**
-- [backend/pipeline/visual_analysis.py:90-130](file://backend/pipeline/visual_analysis.py#L90-L130)
-- [backend/pipeline/audio_analysis.py:77-142](file://backend/pipeline/audio_analysis.py#L77-L142)
-- [backend/pipeline/face_recognition.py:138-195](file://backend/pipeline/face_recognition.py#L138-L195)
+- [backend/pipeline/visual_analysis.py:135-188](file://backend/pipeline/visual_analysis.py#L135-L188)
+- [backend/pipeline/audio_analysis.py:228-265](file://backend/pipeline/audio_analysis.py#L228-L265)
+- [backend/pipeline/face_recognition.py:241-299](file://backend/pipeline/face_recognition.py#L241-L299)
 - [backend/pipeline/metadata_structuring.py:125-163](file://backend/pipeline/metadata_structuring.py#L125-L163)
-- [backend/pipeline/search_index.py:61-70](file://backend/pipeline/search_index.py#L61-L70)
-- [backend/routers/video.py:254-268](file://backend/routers/video.py#L254-L268)
+- [backend/pipeline/search_index.py:259-305](file://backend/pipeline/search_index.py#L259-L305)
+- [backend/routers/video.py:95-101](file://backend/routers/video.py#L95-L101)
 
 ## Conclusion
-The pipeline provides a robust, modular, and observable framework for AI-driven media processing. Its sequential orchestration, persistent state, and real-time feedback enable reliable archival workflows. **Enhanced with cooperative multitasking support**, the pipeline now allows concurrent video processing while maintaining system responsiveness for all endpoints. The cooperative yielding mechanism ensures that long-running operations don't block the event loop, enabling multiple videos to be processed simultaneously without impacting system performance. By tuning stage parameters, ensuring adequate infrastructure, and leveraging retries and fallbacks, operators can achieve scalable and resilient media processing in production environments.
+The pipeline provides a robust, modular, and observable framework for AI-driven media processing. Its sequential orchestration, persistent state, and REST-based status polling enable reliable archival workflows. **The simplified background task approach** eliminates WebSocket complexity while maintaining system responsiveness for all endpoints. The cooperative yielding mechanism ensures that long-running operations don't block the event loop, enabling multiple videos to be processed simultaneously without impacting system performance. By tuning stage parameters, ensuring adequate infrastructure, and leveraging retries and fallbacks, operators can achieve scalable and resilient media processing in production environments.
 
-**Updated** The pipeline now includes enhanced server responsiveness through cooperative yielding, making it more suitable for production environments where multiple concurrent video processing operations may occur. The cooperative multitasking support ensures that the system remains responsive even when processing multiple videos simultaneously.
+**Updated** The pipeline now includes enhanced server responsiveness through cooperative yielding and simplified background task execution. The removal of WebSocket callback mechanism makes the system more maintainable while preserving all essential functionality for real-time status monitoring through REST polling.
 
 [No sources needed since this section summarizes without analyzing specific files]
 
 ## Appendices
 
 ### API Endpoints Overview
-- POST /api/video/upload: Upload video and enqueue processing
-- GET /api/video/{video_id}/status: Retrieve current pipeline status
+- POST /api/video/upload: Upload video and enqueue processing via background task
+- GET /api/video/{video_id}/status: Retrieve current pipeline status (REST polling)
 - GET /api/video/{video_id}/metadata: Retrieve structured metadata
 - GET /api/video/{video_id}/transcript: Retrieve speech transcript
 - POST /api/search: Semantic search across indexed videos
-- WebSocket /ws/pipeline/{video_id}: Real-time progress updates
+- **Removed**: WebSocket /ws/pipeline/{video_id}: Real-time progress updates (no longer available)
 
 **Section sources**
-- [backend/routers/video.py:39-216](file://backend/routers/video.py#L39-L216)
+- [backend/routers/video.py:40-216](file://backend/routers/video.py#L40-L216)
 
 ### Example Workflows and Expected Times
 - Short clip (< 2 minutes):
@@ -508,6 +527,6 @@ The pipeline provides a robust, modular, and observable framework for AI-driven 
   - Consider chunking or reducing fps sampling
   - Total time can exceed 30min depending on stage throughput
 
-**Updated** Server responsiveness improvements ensure consistent performance even with extended processing times for large video files. The cooperative multitasking support allows multiple videos to be processed concurrently without impacting system responsiveness.
+**Updated** Server responsiveness improvements ensure consistent performance even with extended processing times for large video files. The simplified background task approach allows multiple videos to be processed concurrently without impacting system responsiveness.
 
 [No sources needed since this section provides general guidance]

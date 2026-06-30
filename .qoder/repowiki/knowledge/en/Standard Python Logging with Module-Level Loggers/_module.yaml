@@ -3,13 +3,15 @@ module_path: logging_system
 title: Standard Python Logging with Module-Level Loggers
 scope: []
 source_files:
+    - backend/main.py
+    - backend/config.py
     - backend/pipeline/orchestrator.py
     - backend/pipeline/ingestion.py
     - backend/pipeline/visual_analysis.py
-    - backend/pipeline/search_index.py
+    - backend/pipeline/audio_analysis.py
+    - backend/pipeline/face_recognition.py
     - backend/routers/video.py
     - backend/services/rfp_creator.py
-    - backend/config.py
-    - backend/main.py
+    - backend/services/rfp_evaluator.py
 depends_on: []
 related_to: []

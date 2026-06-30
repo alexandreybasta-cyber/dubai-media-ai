@@ -1,34 +1,27 @@
 ## Overview
 
-The Dubai Media AI Platform uses a pragmatic, layered error handling strategy across its backend (FastAPI) and frontend (Next.js). There is no centralized error module or custom exception hierarchy. Instead, the codebase relies on:
-
-1. **FastAPI's `HTTPException`** for API-level error signaling in routers.
-2. **Python standard exceptions** (`ValueError`, `RuntimeError`) raised from service layers and caught at router boundaries.
-3. **Try/except blocks with logging** throughout pipeline stages to ensure fault isolation — individual stage failures do not abort the entire video processing pipeline.
-4. **Frontend `apiFetch` wrapper** that converts non-OK HTTP responses into JavaScript `Error` objects using the `detail` field from FastAPI error responses.
+This codebase employs a **layered error handling strategy** combining FastAPI's `HTTPException` for API-level errors, try-catch resilience in the video processing pipeline (with graceful degradation), retry-with-backoff for external AI service calls, and centralized error propagation on the frontend via a typed fetch wrapper.
 
 ---
 
-## Backend: Router Layer (`backend/routers/`)
+## Backend Error Handling
 
-### Pattern: Raise `HTTPException` with semantic status codes
+### 1. FastAPI HTTPException Pattern
 
-All API endpoints use FastAPI's `HTTPException` to signal errors to clients. Status codes are chosen semantically:
+All API routers (`backend/routers/video.py`, `backend/routers/rfp.py`) use FastAPI's built-in `HTTPException` to signal client-facing errors with appropriate HTTP status codes:
 
-| Status Code | Usage |
-|-------------|-------|
-| `400` | Invalid input, missing data, JSON parse errors, validation failures |
-| `404` | Resource not found (video, RFP, evaluation, transcript) |
-| `500` | Internal server errors (file I/O failures, export generation failures) |
-| `502` | Upstream service failure (DashScope API errors propagated from services) |
+- **404 Not Found**: Resource not found (e.g., missing video ID, RFP ID, transcript)
+- **400 Bad Request**: Invalid input (e.g., JSON parse failures, mismatched vendor counts, empty extracted text)
+- **500 Internal Server Error**: Unexpected server-side failures (file I/O, export generation)
+- **502 Bad Gateway**: External AI service failures (DashScope API)
 
-**Example from `routers/video.py`:**
+Example from `routers/video.py`:
 ```python
 if not os.path.exists(status_path):
     raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
 ```
 
-**Example from `routers/rfp.py`:**
+Example from `routers/rfp.py`:
 ```python
 try:
     rfp_data = await rfp_creator.generate_rfp(input_data)
@@ -38,137 +31,103 @@ except RuntimeError as e:
     raise HTTPException(status_code=502, detail=str(e))
 ```
 
-### Convention: Catch broad `Exception` for I/O operations
+### 2. Service-Level Exception Translation
 
-File read/write operations are wrapped in try/except blocks that log the error and raise a generic `HTTPException(500)`:
+Services (`rfp_creator.py`, `rfp_evaluator.py`) raise Python exceptions that are caught and translated at the router layer:
 
+- **`ValueError`**: Configuration or validation errors (e.g., missing `DASHSCOPE_API_KEY`)
+- **`RuntimeError`**: External service failures after retries exhausted
+
+The `_call_llm` method in both services implements **exponential backoff retry logic** (up to 3 attempts) with specific handling for:
+- HTTP timeout (`httpx.TimeoutException`)
+- Rate limiting (HTTP 429 in `rfp_evaluator.py`)
+- Generic network/parse errors
+
+After all retries fail, a `RuntimeError` is raised with the last error message.
+
+### 3. Pipeline Resilience (Graceful Degradation)
+
+The `PipelineOrchestrator` (`pipeline/orchestrator.py`) implements **per-stage error isolation**. Each of the 6 pipeline stages runs inside `_run_stage()`, which wraps execution in a try-catch block:
+
+- On failure, the stage is marked `"failed"` and the error message is stored in `status["errors"][stage_name]`
+- The pipeline **continues to subsequent stages** rather than aborting entirely
+- Failed stages save `{"error": error_msg}` to their result JSON file
+- Final status is `"completed_with_errors"` if any stage failed
+
+This design ensures partial results are still available even when individual AI analysis stages fail.
+
+### 4. Logging Strategy
+
+All modules use Python's standard `logging` module with module-level loggers:
 ```python
-try:
-    async with aiofiles.open(video_path, "wb") as out:
-        while chunk := await file.read(1024 * 1024):
-            await out.write(chunk)
-except Exception as e:
-    logger.error("Failed to save uploaded file: %s", e)
-    raise HTTPException(status_code=500, detail="Failed to save uploaded file")
+logger = logging.getLogger(__name__)
 ```
 
-This pattern appears consistently in `video.py` (upload, status read, metadata load, transcript read) and `rfp.py` (export endpoints).
+- `logger.error()` for failures (with full traceback in orchestrator)
+- `logger.warning()` for recoverable issues (e.g., missing metadata files)
+- `logger.info()` for stage completions
+- `logger.debug()` for transient WebSocket errors
 
 ---
 
-## Backend: Service Layer (`backend/services/`)
+## Frontend Error Handling
 
-### Pattern: Raise `ValueError` for configuration errors, `RuntimeError` for upstream failures
+### 1. Centralized API Error Wrapper
 
-Services (`RFPCreator`, `RFPEvaluator`) do NOT catch errors internally for API calls. Instead:
-
-- **`ValueError`** is raised when required configuration is missing (e.g., `DASHSCOPE_API_KEY` not set).
-- **`RuntimeError`** is raised after exhausting retries against the DashScope API.
-
-These exceptions propagate to the router layer, where they are caught and converted to appropriate `HTTPException` responses.
-
-**Example from `services/rfp_creator.py`:**
-```python
-async def _call_llm(self, messages: list[dict], temperature: float = 0.7) -> str:
-    if not self.api_key:
-        raise ValueError("DASHSCOPE_API_KEY is not configured...")
-    # ... retry loop ...
-    raise RuntimeError(f"DashScope API failed after {self.max_retries} attempts: {last_error}")
-```
-
-### Retry with exponential backoff
-
-Both `RFPCreator` and `RFPEvaluator` implement a 3-attempt retry loop with `await asyncio.sleep(2 ** attempt)` between attempts. The `RFPEvaluator` additionally handles HTTP 429 (rate limiting) with special wait logic.
-
-### Fallback evaluation
-
-When JSON parsing of LLM output fails in `RFPEvaluator.evaluate_single_vendor()`, a `_fallback_evaluation()` method produces a safe default result rather than crashing:
-
-```python
-except json.JSONDecodeError:
-    logger.error(f"Failed to parse evaluation JSON for {vendor_name}")
-    result = self._fallback_evaluation(criteria)
-```
-
----
-
-## Backend: Pipeline Layer (`backend/pipeline/`)
-
-### Architecture: Fault-isolating orchestrator
-
-The `PipelineOrchestrator` (`pipeline/orchestrator.py`) is the most sophisticated error handling component. It executes six sequential stages (ingestion, visual analysis, audio analysis, face recognition, metadata structuring, search index) and ensures that **a failure in one stage does not abort the entire pipeline**.
-
-**Key mechanism in `_run_stage()`:**
-```python
-try:
-    result = await coro_fn()
-    results[result_key] = result
-    status["stages"][stage_name] = "completed"
-except Exception as e:
-    error_msg = f"{type(e).__name__}: {str(e)}"
-    logger.error("Stage %s failed: %s\n%s", stage_name, error_msg, traceback.format_exc())
-    status["stages"][stage_name] = "failed"
-    status["errors"][stage_name] = error_msg
-    results[result_key] = {"error": error_msg}
-```
-
-After all stages complete, the orchestrator sets the overall status to either `"completed"` or `"completed_with_errors"` based on whether any stage failed.
-
-### Stage-specific error patterns
-
-| Module | Error Strategy |
-|--------|---------------|
-| `ingestion.py` | `_probe_video()` catches `ffmpeg.Error` and returns safe defaults; `_extract_audio()` and `_generate_thumbnail()` re-raise exceptions to fail the stage |
-| `audio_analysis.py` | Returns `_empty_result(error_msg)` dicts instead of raising; 3-attempt retry on ASR submission; graceful timeout after 120 polls |
-| `face_recognition.py` | Returns unidentified face dicts with `identified: False` on API failure; 3-attempt retry per face |
-| `visual_analysis.py` | (Not read, but follows similar retry/fallback pattern based on grep results) |
-
-### Logging convention
-
-All pipeline modules use Python's `logging` module with `logger.error()` for failures and `logger.warning()` for non-critical issues. The orchestrator includes full tracebacks via `traceback.format_exc()`.
-
----
-
-## Frontend: API Client (`frontend/src/lib/api.ts`)
-
-### Pattern: Centralized `apiFetch` wrapper
-
-All API calls go through `apiFetch<T>()` or `uploadFile<T>()`, which check `response.ok` and throw a JavaScript `Error` with the `detail` field from the FastAPI response:
+`frontend/src/lib/api.ts` provides two core functions (`apiFetch`, `uploadFile`) that check `response.ok` and throw a unified `Error` with the backend's `detail` field:
 
 ```typescript
 if (!response.ok) {
   const error = await response.json().catch(() => ({}));
-  throw new Error(error.detail || `API Error: ${response.status} ${response.statusText}`);
+  throw new Error(
+    error.detail || `API Error: ${response.status} ${response.statusText}`
+  );
 }
 ```
 
-This means React components using these functions must wrap calls in try/catch or use error boundaries.
+This pattern is replicated inline for the `evaluate` endpoint due to its FormData-based request.
 
-### WebSocket error handling
+### 2. React Hook Error State
 
-The `connectWebSocket()` helper logs errors to `console.error` and invokes optional `onError`/`onClose` callbacks. No automatic reconnection is implemented.
+`useVideoProcessing.ts` maintains an `error: string | null` field in state. Errors from upload, search, or result-fetching operations are captured via try-catch and stored:
+
+```typescript
+} catch (err) {
+  updateState({
+    uploadState: "error",
+    uploadProgress: 0,
+    error: err instanceof Error ? err.message : "Upload failed",
+  });
+}
+```
+
+### 3. WebSocket Fallback to Polling
+
+If the WebSocket connection fails or closes, the hook automatically falls back to HTTP polling (`startPollingFallback`) every 3 seconds. Polling errors are silently ignored to avoid UI noise, relying on the next poll attempt.
+
+### 4. Graceful Result Fetching
+
+When fetching metadata/transcript after pipeline completion, errors are logged to console but do not crash the UI:
+```typescript
+} catch (err) {
+  console.error("Failed to fetch results:", err);
+}
+```
 
 ---
 
-## Rules Developers Should Follow
+## Key Conventions for Developers
 
-1. **Router layer**: Always raise `HTTPException` with an appropriate status code. Never let raw Python exceptions escape to the client.
-2. **Service layer**: Raise `ValueError` for invalid inputs/configuration, `RuntimeError` for unrecoverable upstream failures. Let routers convert these to HTTP responses.
-3. **Pipeline stages**: Never let exceptions escape `_run_stage()`. Capture errors, log them, store them in the status object, and continue to the next stage.
-4. **External API calls**: Implement 3-attempt retry with exponential backoff (`2 ** attempt`). Handle rate limiting (HTTP 429) separately if applicable.
-5. **File I/O**: Wrap in try/except, log the error, and raise `HTTPException(500)` with a generic message (do not expose internal paths or stack traces).
-6. **Frontend**: Use `apiFetch` for all API calls. Handle errors at the component level with try/catch or error boundaries. Do not call `fetch` directly for API endpoints.
-7. **Logging**: Use `logger.error()` for failures, `logger.warning()` for degraded-but-functional states, `logger.info()` for normal progress. Include context (video_id, stage name) in log messages.
+1. **Always use `HTTPException` in routers** — never let raw Python exceptions propagate to the client. Translate service exceptions into appropriate HTTP status codes.
 
----
+2. **Use specific exception types in services** — `ValueError` for validation/config issues, `RuntimeError` for external service failures. This enables precise translation at the router layer.
 
-## Key Files
+3. **Implement retry with backoff for external calls** — the `_call_llm` pattern (3 attempts, exponential backoff, rate-limit awareness) should be reused for any new external API integrations.
 
-- `backend/routers/video.py` — Video upload, status, metadata, search endpoints with HTTPException usage
-- `backend/routers/rfp.py` — RFP creation/evaluation endpoints with ValueError/RuntimeError → HTTPException mapping
-- `backend/pipeline/orchestrator.py` — Fault-isolating pipeline orchestrator with per-stage error capture
-- `backend/services/rfp_creator.py` — LLM service with retry/backoff and ValueError/RuntimeError raises
-- `backend/services/rfp_evaluator.py` — Evaluation service with retry/backoff, rate-limit handling, and fallback evaluation
-- `backend/pipeline/ingestion.py` — FFmpeg-based ingestion with ffmpeg.Error catching
-- `backend/pipeline/audio_analysis.py` — ASR polling with empty-result fallback pattern
-- `frontend/src/lib/api.ts` — Centralized API client with error-to-Error conversion
+4. **Pipeline stages must not crash the entire pipeline** — use the `_run_stage` pattern to isolate failures. Store errors in the status object so clients can display partial results.
+
+5. **Frontend errors should be user-friendly** — extract the `detail` field from API errors. Use type guards (`err instanceof Error`) to handle unknown error types safely.
+
+6. **Log at the right level** — `error` for failures requiring investigation, `warning` for expected edge cases, `info` for normal flow milestones.
+
+7. **No global error middleware** — this codebase does not use FastAPI exception handlers or custom middleware. All error handling is explicit at the route/service level.
