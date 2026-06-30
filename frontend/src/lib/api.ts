@@ -179,7 +179,7 @@ export const api = {
     connectPipeline: (
       videoId: string,
       onMessage: (data: WSMessage) => void
-    ) => connectWebSocket(`/ws/pipeline/${videoId}`, onMessage),
+    ) => connectWebSocket(`/api/ws/pipeline/${videoId}`, onMessage),
   },
 
   // RFP endpoints

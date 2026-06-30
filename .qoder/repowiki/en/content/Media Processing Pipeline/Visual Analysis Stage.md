@@ -12,6 +12,13 @@
 - [VideoTimeline.tsx](file://frontend/src/components/archive/VideoTimeline.tsx)
 </cite>
 
+## Update Summary
+**Changes Made**
+- Enhanced analyze_video_visually() function with intelligent fallback mechanisms for API parameters
+- Improved API endpoint construction to use configured base URL instead of hardcoded values
+- Updated configuration management with dual API key support and automatic fallback
+- Revised troubleshooting guidance for parameter fallback scenarios
+
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
@@ -25,10 +32,10 @@
 10. [Appendices](#appendices)
 
 ## Introduction
-This document explains the visual analysis stage powered by Alibaba Cloud DashScope’s Qwen-VL model. It covers video scene detection, object recognition, visual content analysis, AI model integration, API parameters, response handling, and how results integrate with downstream pipeline stages. It also provides examples of scene segmentation, visual description generation, and timestamp mapping, along with performance characteristics, resource requirements, and troubleshooting strategies for model-related failures.
+This document explains the visual analysis stage powered by Alibaba Cloud DashScope's Qwen-VL model. It covers video scene detection, object recognition, visual content analysis, AI model integration, API parameters, response handling, and how results integrate with downstream pipeline stages. It also provides examples of scene segmentation, visual description generation, and timestamp mapping, along with performance characteristics, resource requirements, and troubleshooting strategies for model-related failures.
 
 ## Project Structure
-The visual analysis stage is part of a six-stage pipeline orchestrated by the backend. The stage integrates with DashScope’s Qwen-VL model to analyze video content and produce structured metadata including scenes, objects, landmarks, faces, OCR text, sensitive content flags, era estimation, and summaries.
+The visual analysis stage is part of a six-stage pipeline orchestrated by the backend. The stage integrates with DashScope's Qwen-VL model to analyze video content and produce structured metadata including scenes, objects, landmarks, faces, OCR text, sensitive content flags, era estimation, and summaries.
 
 ```mermaid
 graph TB
@@ -66,15 +73,16 @@ MS --> DS
 - [README.md:193-233](file://README.md#L193-L233)
 
 ## Core Components
-- Visual Analysis Module: Sends a video URL and a structured prompt to DashScope’s Qwen-VL model and parses the resulting JSON.
-- Configuration: Provides API keys, base URLs, and model identifiers.
+- Visual Analysis Module: Sends a video URL and a structured prompt to DashScope's Qwen-VL model and parses the resulting JSON.
+- Configuration: Provides API keys, base URLs, and model identifiers with intelligent fallback mechanisms.
 - Orchestrator: Coordinates pipeline stages and passes the public video URL to the visual analysis stage.
 - Frontend Integration: Visualizes scenes and timestamps on a timeline.
 
 Key responsibilities:
-- Video accessibility: The video must be reachable via a public URL served by the backend’s static mount.
+- Video accessibility: The video must be reachable via a public URL served by the backend's static mount.
 - Prompt engineering: The prompt instructs the model to return a strict JSON schema covering scenes, objects, landmarks, faces, OCR, sensitive content, era estimate, and summaries.
 - Robust parsing: Handles direct JSON, fenced code blocks, and bracket-delimited JSON fragments.
+- Intelligent fallback: Automatically uses configuration defaults when parameters are not explicitly provided.
 - Retry and backoff: Implements exponential backoff for transient network errors.
 
 **Section sources**
@@ -88,7 +96,7 @@ The visual analysis stage is invoked by the orchestrator after ingestion. It con
 - A video_url content item with fps sampling set to 1 frame per second.
 - A text prompt requesting a specific JSON structure.
 
-The model responds with a JSON payload embedded in the model’s text response. The stage extracts and parses the JSON, returning a normalized dictionary to the orchestrator.
+The stage uses intelligent fallback mechanisms to automatically apply configuration defaults when parameters are not explicitly provided. The model responds with a JSON payload embedded in the model's text response. The stage extracts and parses the JSON, returning a normalized dictionary to the orchestrator.
 
 ```mermaid
 sequenceDiagram
@@ -100,7 +108,8 @@ participant DS as "DashScope API"
 Client->>Router : "POST /api/video/upload"
 Router->>Orchestrator : "_run_pipeline(video_id, video_path)"
 Orchestrator->>VA : "analyze_video_visually(video_url, api_key, model, base_url)"
-VA->>DS : "POST chat/completions (video_url + prompt)"
+Note over VA : "Intelligent fallback : <br/>- api_key or settings.DASHSCOPE_VIDEO_API_KEY<br/>- model or settings.MODEL_VIDEO<br/>- base_url or settings.DASHSCOPE_BASE_URL"
+VA->>DS : "POST {base_url}/chat/completions (video_url + prompt)"
 DS-->>VA : "JSON in model response"
 VA-->>Orchestrator : "Parsed results dict"
 Orchestrator-->>Router : "Stage result"
@@ -116,10 +125,11 @@ Router-->>Client : "Queued response"
 
 ### Visual Analysis Module
 Responsibilities:
-- Validate API key presence.
+- Validate API key presence with intelligent fallback to configuration defaults.
 - Construct the DashScope request payload with a video_url content item and a structured text prompt.
+- Use configured base URL for API endpoint construction instead of hardcoded values.
 - Send the request with a generous timeout and retry with exponential backoff.
-- Parse the model’s response, handling various JSON encodings.
+- Parse the model's response, handling various JSON encodings.
 - Return a standardized dictionary with empty placeholders on failure.
 
 Response schema highlights:
@@ -139,14 +149,22 @@ Timestamp mapping:
 ```mermaid
 flowchart TD
 Start(["Entry: analyze_video_visually"]) --> CheckKey["Check API key present"]
-CheckKey --> |Missing| Empty["Return empty result"]
-CheckKey --> |Present| BuildPayload["Build payload with video_url + prompt<br/>Set fps=1"]
+CheckKey --> |Missing| FallbackKey["Use settings.DASHSCOPE_VIDEO_API_KEY"]
+CheckKey --> |Present| CheckModel["Check model parameter"]
+CheckModel --> |Missing| FallbackModel["Use settings.MODEL_VIDEO"]
+CheckModel --> |Present| CheckBaseURL["Check base_url parameter"]
+CheckBaseURL --> |Missing| FallbackBaseURL["Use settings.DASHSCOPE_BASE_URL"]
+CheckBaseURL --> |Present| BuildEndpoint["Build endpoint: {base_url}/chat/completions"]
+FallbackKey --> CheckModel
+FallbackModel --> CheckBaseURL
+FallbackBaseURL --> BuildEndpoint
+BuildEndpoint --> BuildPayload["Build payload with video_url + prompt<br/>Set fps=1"]
 BuildPayload --> CallAPI["POST chat/completions"]
 CallAPI --> RespOK{"HTTP 200?"}
 RespOK --> |No| LogErr["Log error and retry (exp backoff)"]
 LogErr --> Attempts{"Attempts left?"}
 Attempts --> |Yes| CallAPI
-Attempts --> |No| Empty
+Attempts --> |No| Empty["Return empty result"]
 RespOK --> |Yes| Parse["Parse JSON from response"]
 Parse --> Parsed{"Parsed OK?"}
 Parsed --> |Yes| Return["Return parsed dict"]
@@ -166,12 +184,18 @@ Parsed2 --> |No| Empty
 - [visual_analysis.py:133-159](file://backend/pipeline/visual_analysis.py#L133-L159)
 
 ### Configuration and Settings
-- DASHSCOPE_API_KEY: Required for all DashScope calls.
-- DASHSCOPE_BASE_URL: Defaults to compatible-mode v1 endpoint.
-- MODEL_VIDEO: Defaults to qwen-vl-max.
+- DASHSCOPE_API_KEY: Primary API key for all DashScope calls.
+- DASHSCOPE_VIDEO_API_KEY: Dedicated API key for video analysis (auto-fallback from DASHSCOPE_API_KEY).
+- DASHSCOPE_BASE_URL: Base URL for DashScope API endpoints (defaults to compatible-mode v1).
+- DASHSCOPE_API_URL: Alternative API URL for different service endpoints.
+- MODEL_VIDEO: Default model identifier (qwen-vl-max).
+- MODEL_ASR: Default speech-to-text model.
+- MODEL_TEXT: Default text processing model.
+- MODEL_EMBEDDING: Default embedding model.
+- UPLOAD_DIR: Directory for storing uploaded files.
 - BASE_URL: Used to construct public URLs for uploaded files.
 
-These settings are consumed by the orchestrator and passed to the visual analysis stage.
+These settings are consumed by the orchestrator and passed to the visual analysis stage with intelligent fallback mechanisms.
 
 **Section sources**
 - [config.py:4-21](file://backend/config.py#L4-L21)
@@ -188,6 +212,7 @@ participant VA as "Visual Analysis"
 participant FS as "Filesystem"
 Orchestrator->>FS : "Compute public video URL"
 Orchestrator->>VA : "analyze_video_visually(video_url, api_key, model, base_url)"
+Note over VA : "Parameters : <br/>- video_url : provided<br/>- api_key : settings.DASHSCOPE_API_KEY<br/>- model : settings.MODEL_VIDEO<br/>- base_url : settings.DASHSCOPE_BASE_URL"
 VA-->>Orchestrator : "visual_analysis.json"
 Orchestrator->>FS : "Save visual_analysis.json"
 ```
@@ -251,6 +276,7 @@ ROUTER["video.py"] --> ORCH
 - Video accessibility: The video must be publicly reachable via a URL. The backend serves uploaded files via a static mount; production deployments should use a CDN or object storage URL.
 - FPS sampling: The stage requests 1 fps to reduce cost and latency while still capturing scene transitions.
 - Timeout and retries: The stage uses a long timeout and exponential backoff to handle transient network issues.
+- Parameter fallback: Intelligent fallback reduces configuration overhead while maintaining flexibility.
 - Large videos: Very long videos may exceed token/time limits for visual analysis; consider pre-segmenting or trimming.
 - Cost and rate limits: DashScope may throttle or limit usage; monitor quotas and adjust batch sizes accordingly.
 
@@ -262,10 +288,10 @@ ROUTER["video.py"] --> ORCH
 Common issues and resolutions:
 - Missing API key:
   - Symptom: Empty visual analysis result with an error marker.
-  - Resolution: Set DASHSCOPE_API_KEY in environment.
+  - Resolution: Set DASHSCOPE_API_KEY in environment. The system will automatically use DASHSCOPE_VIDEO_API_KEY if DASHSCOPE_VIDEO_API_KEY is not set.
 - Network errors:
   - Symptom: HTTP status errors or request timeouts.
-  - Resolution: Verify connectivity, retry later, and check base URL correctness.
+  - Resolution: Verify connectivity, retry later, and check base URL correctness. The system automatically falls back to configured base URL if not provided.
 - Malformed JSON from model:
   - Symptom: Parser warnings and fallback parsing attempts.
   - Resolution: Ensure the prompt remains unchanged; confirm model compliance.
@@ -275,11 +301,15 @@ Common issues and resolutions:
 - Excessive processing time:
   - Symptom: Long wait times for visual analysis.
   - Resolution: Reduce video length, trim to key segments, or increase server resources.
+- Parameter fallback issues:
+  - Symptom: Unexpected model or endpoint usage.
+  - Resolution: Verify configuration settings. The system automatically applies fallbacks when parameters are not explicitly provided.
 
 Operational tips:
-- Monitor logs for “Visual analysis API error” and “Visual analysis request error” entries.
+- Monitor logs for "Visual analysis API error" and "Visual analysis request error" entries.
 - Confirm the public URL construction in the orchestrator.
 - Validate that the prompt structure matches the expected JSON schema.
+- Check configuration precedence: explicit parameters override settings, which override defaults.
 
 **Section sources**
 - [visual_analysis.py:61-63,104-124](file://backend/pipeline/visual_analysis.py#L61-L63,L104-L124)
@@ -287,12 +317,12 @@ Operational tips:
 - [README.md:182-189](file://README.md#L182-L189)
 
 ## Conclusion
-The visual analysis stage leverages Qwen-VL to extract rich, structured visual metadata from videos. It integrates tightly with the orchestrator and DashScope APIs, returning a standardized schema that enables downstream stages such as face recognition, metadata structuring, and semantic search. Proper configuration, reliable video hosting, and robust error handling are essential for predictable performance and reliability.
+The visual analysis stage leverages Qwen-VL to extract rich, structured visual metadata from videos. It integrates tightly with the orchestrator and DashScope APIs, returning a standardized schema that enables downstream stages such as face recognition, metadata structuring, and semantic search. The enhanced intelligent fallback mechanisms and improved configuration management provide robust operation with minimal configuration overhead while maintaining flexibility for specialized deployments.
 
 ## Appendices
 
 ### API Parameters and Payload
-- Endpoint: chat/completions
+- Endpoint: {base_url}/chat/completions (constructed from configuration)
 - Headers:
   - Authorization: Bearer <DASHSCOPE_API_KEY>
   - Content-Type: application/json

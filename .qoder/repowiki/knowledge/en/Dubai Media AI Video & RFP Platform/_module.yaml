@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: ""
-title: Dubai Media AI Platform Orchestrator
+title: Dubai Media AI Video & RFP Platform
 scope:
     - .gitignore
     - DEMO_SCRIPT.md

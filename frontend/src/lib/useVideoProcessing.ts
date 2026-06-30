@@ -7,7 +7,7 @@ import { api, connectWebSocket, WSMessage } from "./api";
 
 export type UploadState = "idle" | "uploading" | "uploaded" | "error";
 
-export type StageStatus = "pending" | "processing" | "complete" | "failed";
+export type StageStatus = "pending" | "running" | "completed" | "failed";
 
 export interface PipelineStage {
   id: string;
@@ -106,10 +106,10 @@ export interface VideoProcessingState {
 const INITIAL_STAGES: PipelineStage[] = [
   { id: "ingestion", name: "Ingestion", status: "pending" },
   { id: "visual_analysis", name: "Visual Analysis", status: "pending" },
-  { id: "audio_speech", name: "Audio/Speech", status: "pending" },
+  { id: "audio_analysis", name: "Audio/Speech", status: "pending" },
   { id: "face_recognition", name: "Face Recognition", status: "pending" },
   { id: "metadata_structuring", name: "Metadata Structuring", status: "pending" },
-  { id: "search_indexing", name: "Search Indexing", status: "pending" },
+  { id: "search_index", name: "Search Indexing", status: "pending" },
 ];
 
 const FACE_COLORS = [
@@ -139,13 +139,17 @@ export function useVideoProcessing() {
   });
 
   const wsRef = useRef<WebSocket | null>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  // Clean up WebSocket on unmount
+  // Clean up WebSocket and polling on unmount
   useEffect(() => {
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
+      }
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
       }
     };
   }, []);
@@ -219,7 +223,7 @@ export function useVideoProcessing() {
       }
 
       const ws = connectWebSocket(
-        `/ws/pipeline/${videoId}`,
+        `/api/ws/pipeline/${videoId}`,
         (data: WSMessage) => {
           setState((prev) => {
             const newStages = prev.stages.map((stage) => {
@@ -229,10 +233,10 @@ export function useVideoProcessing() {
                   status: data.status as StageStatus,
                   message: data.message,
                 };
-                if (data.status === "processing" && !stage.startTime) {
+                if (data.status === "running" && !stage.startTime) {
                   updates.startTime = now;
                 }
-                if (data.status === "complete" || data.status === "failed") {
+                if (data.status === "completed" || data.status === "failed") {
                   updates.endTime = now;
                   if (stage.startTime) {
                     updates.elapsed = now - stage.startTime;
@@ -245,7 +249,7 @@ export function useVideoProcessing() {
 
             // Check if all stages are complete
             const allComplete = newStages.every(
-              (s) => s.status === "complete" || s.status === "failed"
+              (s) => s.status === "completed" || s.status === "failed"
             );
 
             return {
@@ -256,17 +260,17 @@ export function useVideoProcessing() {
           });
 
           // If pipeline is complete, fetch metadata and transcript
-          if (data.status === "complete" && data.stage === "search_indexing") {
+          if (data.status === "completed" && data.stage === "search_index") {
             fetchResults(videoId);
           }
         },
         () => {
-          // On error, try fetching status via REST
-          pollStatus(videoId);
+          // On error, start polling fallback
+          startPollingFallback(videoId);
         },
         () => {
-          // On close, check if we need to fetch results
-          pollStatus(videoId);
+          // On close, start polling fallback
+          startPollingFallback(videoId);
         }
       );
 
@@ -308,41 +312,50 @@ export function useVideoProcessing() {
     }
   }, []);
 
-  // ─── Poll Status (fallback) ─────────────────────────────────────────
+  // ─── Polling Fallback ─────────────────────────────────────────────
 
-  const pollStatus = useCallback(
-    async (videoId: string) => {
-      try {
-        const statusRes = (await api.video.getStatus(videoId)) as {
-          stages: Record<string, string>;
-        };
-        if (statusRes.stages) {
-          setState((prev) => {
-            const newStages = prev.stages.map((stage) => ({
-              ...stage,
-              status: (statusRes.stages[stage.id] || stage.status) as StageStatus,
-            }));
-            const allComplete = newStages.every(
-              (s) => s.status === "complete" || s.status === "failed"
+  const startPollingFallback = useCallback(
+    (videoId: string) => {
+      // Don't start another interval if one is already running
+      if (pollIntervalRef.current) return;
+
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const statusRes = (await api.video.getStatus(videoId)) as {
+            stages: Record<string, string>;
+          };
+          if (statusRes.stages) {
+            setState((prev) => {
+              const newStages = prev.stages.map((stage) => ({
+                ...stage,
+                status: (statusRes.stages[stage.id] || stage.status) as StageStatus,
+              }));
+              const allComplete = newStages.every(
+                (s) => s.status === "completed" || s.status === "failed"
+              );
+              return {
+                ...prev,
+                stages: newStages,
+                view: allComplete ? "results" : prev.view,
+              };
+            });
+
+            const allDone = Object.values(statusRes.stages).every(
+              (s) => s === "completed" || s === "failed"
             );
-            return {
-              ...prev,
-              stages: newStages,
-              view: allComplete ? "results" : prev.view,
-            };
-          });
-
-          // Check if all done
-          const allDone = Object.values(statusRes.stages).every(
-            (s) => s === "complete" || s === "failed"
-          );
-          if (allDone) {
-            fetchResults(videoId);
+            if (allDone) {
+              // Stop polling once done
+              if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current);
+                pollIntervalRef.current = null;
+              }
+              fetchResults(videoId);
+            }
           }
+        } catch {
+          // Silently fail, will retry on next interval
         }
-      } catch {
-        // Silently fail
-      }
+      }, 3000);
     },
     [fetchResults]
   );
@@ -385,6 +398,10 @@ export function useVideoProcessing() {
   const reset = useCallback(() => {
     if (wsRef.current) {
       wsRef.current.close();
+    }
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
     }
     if (state.videoUrl) {
       URL.revokeObjectURL(state.videoUrl);

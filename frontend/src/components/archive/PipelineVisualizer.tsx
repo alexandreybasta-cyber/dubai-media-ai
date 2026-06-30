@@ -25,7 +25,7 @@ const STAGE_ICONS: Record<string, ReactNode> = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
     </svg>
   ),
-  audio_speech: (
+  audio_analysis: (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
     </svg>
@@ -40,7 +40,7 @@ const STAGE_ICONS: Record<string, ReactNode> = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
     </svg>
   ),
-  search_indexing: (
+  search_index: (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
     </svg>
@@ -50,27 +50,27 @@ const STAGE_ICONS: Record<string, ReactNode> = {
 function StatusBadge({ status }: { status: StageStatus }) {
   const styles: Record<StageStatus, string> = {
     pending: "bg-gray-100 text-gray-500",
-    processing: "bg-primary-100 text-primary-700",
-    complete: "bg-green-100 text-green-700",
+    running: "bg-primary-100 text-primary-700",
+    completed: "bg-green-100 text-green-700",
     failed: "bg-red-100 text-red-700",
   };
 
   const labels: Record<StageStatus, string> = {
     pending: "Pending",
-    processing: "Processing",
-    complete: "Complete",
+    running: "Processing",
+    completed: "Complete",
     failed: "Failed",
   };
 
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${styles[status]}`}>
-      {status === "processing" && (
+      {status === "running" && (
         <svg className="w-3 h-3 mr-1 animate-spin" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
       )}
-      {status === "complete" && (
+      {status === "completed" && (
         <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
         </svg>
@@ -86,7 +86,7 @@ function StatusBadge({ status }: { status: StageStatus }) {
 }
 
 export default function PipelineVisualizer({ stages }: PipelineVisualizerProps) {
-  const completedCount = stages.filter((s) => s.status === "complete").length;
+  const completedCount = stages.filter((s) => s.status === "completed").length;
   const totalCount = stages.length;
   const progressPercent = (completedCount / totalCount) * 100;
 
@@ -116,7 +116,7 @@ export default function PipelineVisualizer({ stages }: PipelineVisualizerProps) 
             {/* Connector line */}
             {index < stages.length - 1 && (
               <div className="hidden lg:block absolute top-6 left-[calc(50%+24px)] right-[-50%] h-0.5 bg-gray-200">
-                {stage.status === "complete" && (
+                {stage.status === "completed" && (
                   <div className="absolute inset-0 bg-green-400" />
                 )}
               </div>
@@ -124,9 +124,9 @@ export default function PipelineVisualizer({ stages }: PipelineVisualizerProps) 
 
             <div
               className={`flex flex-col items-center p-3 rounded-lg transition-all ${
-                stage.status === "processing"
+                stage.status === "running"
                   ? "bg-primary-50 ring-2 ring-primary-200"
-                  : stage.status === "complete"
+                  : stage.status === "completed"
                   ? "bg-green-50"
                   : stage.status === "failed"
                   ? "bg-red-50"
@@ -136,9 +136,9 @@ export default function PipelineVisualizer({ stages }: PipelineVisualizerProps) 
               {/* Icon */}
               <div
                 className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 ${
-                  stage.status === "processing"
+                  stage.status === "running"
                     ? "bg-primary-100 text-primary-600"
-                    : stage.status === "complete"
+                    : stage.status === "completed"
                     ? "bg-green-100 text-green-600"
                     : stage.status === "failed"
                     ? "bg-red-100 text-red-600"
@@ -166,7 +166,7 @@ export default function PipelineVisualizer({ stages }: PipelineVisualizerProps) 
               )}
 
               {/* Message */}
-              {stage.message && stage.status === "processing" && (
+              {stage.message && stage.status === "running" && (
                 <p className="text-[10px] text-primary-600 mt-1 text-center truncate max-w-full">
                   {stage.message}
                 </p>

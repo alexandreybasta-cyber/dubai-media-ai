@@ -3,11 +3,11 @@ schema_version: 1
 locale: en-US
 branch: main
 nodes_managed: true
-exported_at: "2026-06-30T07:48:18Z"
+exported_at: "2026-06-30T08:28:14Z"
 modules:
     "":
-        dir_name: Dubai Media AI Platform Orchestrator
-        title: Dubai Media AI Platform Orchestrator
+        dir_name: Dubai Media AI Video & RFP Platform
+        title: Dubai Media AI Video & RFP Platform
         scope:
             - .gitignore
             - DEMO_SCRIPT.md
@@ -24,8 +24,8 @@ modules:
         depends_on: []
         related_to: []
     backend:
-        dir_name: AI-Powered Media Processing & RFP Management
-        title: AI-Powered Media Processing & RFP Management
+        dir_name: Video Metadata Extraction & RFP Generation Engine
+        title: Video Metadata Extraction & RFP Generation Engine
         scope:
             - backend/
         source_files: []

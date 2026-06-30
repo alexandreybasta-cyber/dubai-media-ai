@@ -14,6 +14,13 @@
 - [VideoTimeline.tsx](file://frontend/src/components/archive/VideoTimeline.tsx)
 </cite>
 
+## Update Summary
+**Changes Made**
+- Updated ASR service configuration section to reflect dynamic URL construction using settings system
+- Added documentation for new helper functions `_asr_submit_url()` and `_task_status_url()`
+- Updated API integration section to show how DASHSCOPE_API_URL setting controls endpoint construction
+- Enhanced troubleshooting guide with new configuration-related issues
+
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
@@ -27,7 +34,7 @@
 10. [Appendices](#appendices)
 
 ## Introduction
-This document explains the audio analysis and speech-to-text transcription stage powered by Alibaba Cloud DashScope’s Paraformer ASR model. It covers how audio is extracted from video, preprocessing steps, asynchronous transcription workflow, API integration, parameter configuration, response parsing, and how the resulting transcript connects to semantic search. It also includes practical guidance on performance, latency, quality factors, and troubleshooting.
+This document explains the audio analysis and speech-to-text transcription stage powered by Alibaba Cloud DashScope's Paraformer ASR model. It covers how audio is extracted from video, preprocessing steps, asynchronous transcription workflow, API integration, parameter configuration, response parsing, and how the resulting transcript connects to semantic search. It also includes practical guidance on performance, latency, quality factors, and troubleshooting.
 
 ## Project Structure
 The audio analysis stage is part of a six-stage pipeline orchestrated by the backend. The relevant modules are:
@@ -136,7 +143,7 @@ API-->>Client : transcript.json
 
 Key behaviors:
 - Uses ffmpeg-python to run ffmpeg commands asynchronously.
-- Writes audio.wav and thumbnail.jpg under the video’s output directory.
+- Writes audio.wav and thumbnail.jpg under the video's output directory.
 - On failure, raises exceptions logged by the ingestion module.
 
 **Section sources**
@@ -166,6 +173,8 @@ Important note:
   - Segment-level: start/end times, speaker ID, text, language
   - Word-level: optional word timestamps
   - Aggregated full text and speaker count
+
+**Updated** The ASR service configuration now uses dynamic URL construction based on the settings system. The helper functions `_asr_submit_url()` and `_task_status_url()` construct appropriate API endpoints using the configured `DASHSCOPE_API_URL` setting, eliminating hardcoded URLs.
 
 ```mermaid
 flowchart TD
@@ -202,6 +211,7 @@ Empty --> Done
 ### API Integration and Parameter Configuration
 - Model selection: configurable via settings (default paraformer-v2).
 - Authentication: Bearer token from DASHSCOPE_API_KEY.
+- Dynamic URL construction: The ASR service endpoints are constructed dynamically using the `DASHSCOPE_API_URL` setting from the configuration system.
 - Endpoints:
   - POST /api/video/upload: starts pipeline
   - GET /api/video/{id}/transcript: retrieves transcript.json
@@ -210,8 +220,11 @@ Empty --> Done
 
 Environment variables:
 - DASHSCOPE_API_KEY: required for all DashScope calls
+- DASHSCOPE_API_URL: base URL for DashScope API endpoints (used for dynamic URL construction)
 - MODEL_ASR: selects the ASR model
 - BASE_URL: used to construct audio URLs for external access
+
+**Updated** The ASR service configuration now uses the settings system for dynamic URL construction. The `DASHSCOPE_API_URL` setting controls the base URL for all DashScope API endpoints, including ASR transcription and task status operations.
 
 **Section sources**
 - [config.py:4-20](file://backend/config.py#L4-L20)
@@ -262,7 +275,7 @@ FAISS --> Results["Top-k Matches<br/>video_id, timestamp, description"]
 
 ## Dependency Analysis
 - Runtime dependencies include httpx for HTTP, ffmpeg-python for audio extraction, and aiofiles for async file IO.
-- The ASR stage depends on DashScope’s transcription and task status endpoints.
+- The ASR stage depends on DashScope's transcription and task status endpoints.
 - The search stage depends on DashScope embeddings and FAISS for vector search.
 
 ```mermaid
@@ -300,8 +313,6 @@ G --> J["faiss-cpu"]
 - Resource usage:
   - FAISS index grows with the number of indexed segments; manage index persistence and memory footprint.
 
-[No sources needed since this section provides general guidance]
-
 ## Troubleshooting Guide
 Common issues and resolutions:
 - No API key configured:
@@ -322,6 +333,9 @@ Common issues and resolutions:
 - Search index unavailable:
   - Symptom: FAISS not installed or index loading fails.
   - Action: install faiss-cpu; ensure index files exist and are readable.
+- **Updated** Dynamic URL configuration issues:
+  - Symptom: ASR requests fail with invalid endpoint errors.
+  - Action: verify DASHSCOPE_API_URL setting is properly configured in environment; ensure the URL includes the correct region and endpoint structure for your DashScope deployment.
 
 **Section sources**
 - [audio_analysis.py:40-42](file://backend/pipeline/audio_analysis.py#L40-L42)
@@ -333,9 +347,7 @@ Common issues and resolutions:
 - [search_index.py:61-70](file://backend/pipeline/search_index.py#L61-L70)
 
 ## Conclusion
-The audio analysis stage transforms video audio into structured, timestamp-aligned transcripts using DashScope’s Paraformer ASR. It integrates tightly with ingestion, orchestration, and semantic search to enable rich, searchable video archives. By tuning audio quality, leveraging language hints, and ensuring reliable network access, teams can achieve accurate, low-latency transcription suitable for downstream applications.
-
-[No sources needed since this section summarizes without analyzing specific files]
+The audio analysis stage transforms video audio into structured, timestamp-aligned transcripts using DashScope's Paraformer ASR. It integrates tightly with ingestion, orchestration, and semantic search to enable rich, searchable video archives. By tuning audio quality, leveraging language hints, and ensuring reliable network access, teams can achieve accurate, low-latency transcription suitable for downstream applications.
 
 ## Appendices
 
@@ -355,3 +367,16 @@ The audio analysis stage transforms video audio into structured, timestamp-align
 **Section sources**
 - [TranscriptPanel.tsx:36-154](file://frontend/src/components/archive/TranscriptPanel.tsx#L36-L154)
 - [VideoTimeline.tsx:26-244](file://frontend/src/components/archive/VideoTimeline.tsx#L26-L244)
+
+### Dynamic URL Configuration Details
+**Updated** The ASR service now uses dynamic URL construction for enhanced flexibility and maintainability:
+
+- **Base URL Setting**: The `DASHSCOPE_API_URL` setting in the configuration system controls the base URL for all DashScope API endpoints.
+- **Helper Functions**: Two new helper functions construct specific endpoints:
+  - `_asr_submit_url()`: Returns `${DASHSCOPE_API_URL}/services/audio/asr/transcription`
+  - `_task_status_url(task_id)`: Returns `${DASHSCOPE_API_URL}/tasks/${task_id}`
+- **Configuration Flexibility**: This approach allows easy switching between different DashScope regions, environments, or custom deployments without code changes.
+
+**Section sources**
+- [audio_analysis.py:18-24](file://backend/pipeline/audio_analysis.py#L18-L24)
+- [config.py:8-9](file://backend/config.py#L8-L9)
