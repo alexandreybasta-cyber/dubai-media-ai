@@ -43,24 +43,55 @@ export async function apiFetch<T>(
 export async function uploadFile<T>(
   endpoint: string,
   file: File,
-  fieldName: string = "file"
+  fieldName: string = "file",
+  onProgress?: (progress: number) => void
 ): Promise<T> {
   const formData = new FormData();
   formData.append(fieldName, file);
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    method: "POST",
-    body: formData,
+  // Use XMLHttpRequest for real upload progress tracking
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE_URL}${endpoint}`);
+
+    // Track real upload progress
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        const percent = Math.round((event.loaded / event.total) * 100);
+        onProgress(percent);
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText));
+        } catch {
+          reject(new Error("Failed to parse upload response"));
+        }
+      } else {
+        try {
+          const error = JSON.parse(xhr.responseText);
+          reject(new Error(error.detail || `Upload Error: ${xhr.status} ${xhr.statusText}`));
+        } catch {
+          reject(new Error(`Upload Error: ${xhr.status} ${xhr.statusText}`));
+        }
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new Error("Network error during upload"));
+    };
+
+    xhr.ontimeout = () => {
+      reject(new Error("Upload timed out"));
+    };
+
+    // No timeout for large file uploads
+    xhr.timeout = 0;
+
+    xhr.send(formData);
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(
-      error.detail || `Upload Error: ${response.status} ${response.statusText}`
-    );
-  }
-
-  return response.json();
 }
 
 // ─── WebSocket Connection Helper ────────────────────────────────────────
@@ -164,7 +195,8 @@ export interface RFPCreateResponse {
 export const api = {
   // Video endpoints
   video: {
-    upload: (file: File) => uploadFile("/api/video/upload", file),
+    upload: (file: File, onProgress?: (progress: number) => void) =>
+      uploadFile("/api/video/upload", file, "file", onProgress),
     getStatus: (videoId: string) =>
       apiFetch(`/api/video/${videoId}/status`),
     getMetadata: (videoId: string) =>

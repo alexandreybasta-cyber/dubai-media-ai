@@ -177,20 +177,16 @@ export function useVideoProcessing() {
       const videoUrl = URL.createObjectURL(file);
 
       try {
-        // Simulate progress (real progress would need XMLHttpRequest)
-        const progressInterval = setInterval(() => {
+        // Use real upload progress via XHR onprogress callback
+        const result = (await api.video.upload(file, (progress) => {
           setState((prev) => ({
             ...prev,
-            uploadProgress: Math.min(prev.uploadProgress + 10, 90),
+            uploadProgress: progress,
           }));
-        }, 300);
-
-        const result = (await api.video.upload(file)) as {
+        })) as {
           video_id: string;
           status: string;
         };
-
-        clearInterval(progressInterval);
 
         updateState({
           uploadState: "uploaded",
