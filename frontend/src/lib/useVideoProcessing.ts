@@ -288,11 +288,38 @@ export function useVideoProcessing() {
         api.video.getTranscript(videoId) as Promise<Record<string, unknown>>,
       ]);
 
-      const metadata = metadataRes as unknown as VideoMetadata;
+      // Map the backend response structure to the frontend VideoMetadata interface
+      // Backend returns: { video_id, ingestion, visual_analysis, metadata, faces }
+      // Frontend expects: { video_id, duration, scenes, faces, objects, landmarks, ... }
+      const raw = metadataRes as Record<string, unknown>;
+      const ingestion = (raw.ingestion || {}) as Record<string, unknown>;
+      const visualAnalysis = (raw.visual_analysis || {}) as Record<string, unknown>;
+      const metaBlock = (raw.metadata || {}) as Record<string, unknown>;
+      const topLevelFaces = (raw.faces || []) as DetectedFace[];
+      const visualFaces = (visualAnalysis.faces || []) as DetectedFace[];
+
+      const metadata: VideoMetadata = {
+        video_id: videoId,
+        duration: (ingestion.duration as number) || 0,
+        title: (metaBlock.title as string) || undefined,
+        topic: (metaBlock.topic as string) || undefined,
+        sentiment: ((metaBlock.sentiment_tags as string[]) || []).join(", ") || undefined,
+        era: ((visualAnalysis.era_estimate as Record<string, unknown>)?.decade as string) || undefined,
+        scenes: (visualAnalysis.scenes || []) as SceneBoundary[],
+        faces: topLevelFaces.length > 0 ? topLevelFaces : visualFaces,
+        objects: (visualAnalysis.objects || []) as DetectedObject[],
+        landmarks: (visualAnalysis.landmarks || []) as { name: string; timestamp: number }[],
+        sensitive_content: (visualAnalysis.sensitive_content || []) as string[],
+        ebucore_xml: (metaBlock.ebucore_xml as string) || undefined,
+        iptc_json: (metaBlock.iptc_video_metadata as Record<string, unknown>) || undefined,
+        raw: raw,
+      };
+
       // Assign colors to faces
       if (metadata.faces) {
         metadata.faces = metadata.faces.map((face, i) => ({
           ...face,
+          appearances: face.appearances || [],
           color: face.color || FACE_COLORS[i % FACE_COLORS.length],
         }));
       }

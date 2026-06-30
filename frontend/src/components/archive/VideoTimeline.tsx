@@ -198,7 +198,7 @@ export default function VideoTimeline({
                   {face.name}
                 </span>
                 <div className="flex-1 relative h-3 bg-gray-50 rounded">
-                  {face.appearances.map((app, j) => {
+                  {(face.appearances || []).map((app, j) => {
                     const left =
                       duration > 0 ? (app.start / duration) * 100 : 0;
                     const width =
