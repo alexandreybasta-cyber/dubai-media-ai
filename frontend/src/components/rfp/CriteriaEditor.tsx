@@ -65,7 +65,7 @@ export function CriteriaEditor({ criteria, onChange }: CriteriaEditorProps) {
                   updateCriterion(criterion.id, "name", e.target.value)
                 }
                 placeholder="Criterion name"
-                className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-900 placeholder:text-gray-500 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
               />
             </div>
             <div className="w-24 flex items-center gap-1">
@@ -77,7 +77,7 @@ export function CriteriaEditor({ criteria, onChange }: CriteriaEditorProps) {
                 onChange={(e) =>
                   updateCriterion(criterion.id, "weight", parseInt(e.target.value) || 0)
                 }
-                className="w-16 px-2 py-1.5 border border-gray-300 rounded-md text-sm text-center focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                className="w-16 px-2 py-1.5 border border-gray-300 rounded-md text-sm text-gray-900 text-center focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
               />
               <span className="text-xs text-gray-500">%</span>
             </div>
@@ -96,7 +96,7 @@ export function CriteriaEditor({ criteria, onChange }: CriteriaEditorProps) {
               updateCriterion(criterion.id, "description", e.target.value)
             }
             placeholder="Brief description of this criterion"
-            className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+            className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-900 placeholder:text-gray-500 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
           />
           <div className="px-1">
             <input

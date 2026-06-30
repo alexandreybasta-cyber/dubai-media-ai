@@ -269,7 +269,7 @@ export function EvaluationSetup({
                 value={vendor.name}
                 onChange={(e) => handleVendorNameChange(idx, e.target.value)}
                 placeholder="Vendor name"
-                className="flex-shrink-0 w-40 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="flex-shrink-0 w-40 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-500 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
               <input
                 type="file"
@@ -353,7 +353,7 @@ export function EvaluationSetup({
                 value={c.name}
                 onChange={(e) => updateCriterion(idx, "name", e.target.value)}
                 placeholder="Criterion name"
-                className="col-span-3 px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="col-span-3 px-2 py-1.5 text-sm text-gray-900 placeholder:text-gray-500 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
               <div className="col-span-3 flex items-center gap-2">
                 <input
@@ -377,7 +377,7 @@ export function EvaluationSetup({
                   updateCriterion(idx, "description", e.target.value)
                 }
                 placeholder="Description"
-                className="col-span-4 px-2 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="col-span-4 px-2 py-1.5 text-sm text-gray-900 placeholder:text-gray-500 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
               <label className="col-span-1 flex items-center justify-center text-xs gap-1">
                 <input

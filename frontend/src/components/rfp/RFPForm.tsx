@@ -134,7 +134,7 @@ export function RFPForm({ onSubmit, isLoading }: RFPFormProps) {
           onChange={(e) => setProjectTitle(e.target.value)}
           placeholder="e.g., AI-Powered Media Asset Management System"
           required
-          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
         />
       </div>
 
@@ -149,7 +149,7 @@ export function RFPForm({ onSubmit, isLoading }: RFPFormProps) {
           rows={3}
           required
           placeholder="Briefly describe the project goals, context, and expected outcomes..."
-          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none"
+          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-none"
         />
       </div>
 
@@ -163,7 +163,7 @@ export function RFPForm({ onSubmit, isLoading }: RFPFormProps) {
           onChange={(e) => setScopeOfWork(e.target.value)}
           rows={5}
           placeholder="Describe the scope of work in detail. You can use markdown/bullet points..."
-          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-y font-mono"
+          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 placeholder:text-gray-500 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none resize-y font-mono"
         />
       </div>
 
@@ -179,7 +179,7 @@ export function RFPForm({ onSubmit, isLoading }: RFPFormProps) {
               value={req}
               onChange={(e) => updateRequirement(index, e.target.value)}
               placeholder={`Requirement ${index + 1}`}
-              className="flex-1 px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+              className="flex-1 px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-900 placeholder:text-gray-500 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
             />
             {technicalRequirements.length > 1 && (
               <button
@@ -241,7 +241,7 @@ export function RFPForm({ onSubmit, isLoading }: RFPFormProps) {
                 value={budgetMin}
                 onChange={(e) => setBudgetMin(e.target.value)}
                 placeholder="0"
-                className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-900 placeholder:text-gray-500 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
               />
             </div>
             <div>
@@ -251,7 +251,7 @@ export function RFPForm({ onSubmit, isLoading }: RFPFormProps) {
                 value={budgetMax}
                 onChange={(e) => setBudgetMax(e.target.value)}
                 placeholder="0"
-                className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-900 placeholder:text-gray-500 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
               />
             </div>
             <div>
@@ -259,7 +259,7 @@ export function RFPForm({ onSubmit, isLoading }: RFPFormProps) {
               <select
                 value={budgetCurrency}
                 onChange={(e) => setBudgetCurrency(e.target.value)}
-                className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                className="w-full px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
               >
                 <option value="AED">AED</option>
                 <option value="USD">USD</option>
@@ -295,7 +295,7 @@ export function RFPForm({ onSubmit, isLoading }: RFPFormProps) {
             onChange={(e) => setCustomCompliance(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addCustomCompliance())}
             placeholder="Add custom requirement..."
-            className="flex-1 px-3 py-1.5 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+            className="flex-1 px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-900 placeholder:text-gray-500 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
           />
           <button
             type="button"
@@ -330,7 +330,7 @@ export function RFPForm({ onSubmit, isLoading }: RFPFormProps) {
         <select
           value={industry}
           onChange={(e) => setIndustry(e.target.value)}
-          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
+          className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
         >
           {INDUSTRY_OPTIONS.map((opt) => (
             <option key={opt} value={opt}>{opt}</option>
