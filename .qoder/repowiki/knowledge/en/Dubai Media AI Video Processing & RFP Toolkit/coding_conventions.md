@@ -1,3 +1,0 @@
-- Background tasks are used for long-running operations like video processing and RFP evaluation to prevent blocking the API response.
-- Pipeline stages and background jobs persist their state and results as JSON files in unique UUID-named directories within the uploads folder.
-- Pydantic models are used extensively for defining request/response schemas and validating configuration settings.

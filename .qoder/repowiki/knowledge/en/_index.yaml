@@ -3,33 +3,33 @@ schema_version: 1
 locale: en-US
 branch: main
 nodes_managed: true
-exported_at: "2026-06-30T11:15:16Z"
+exported_at: "2026-06-30T11:50:30Z"
 modules:
     "":
-        dir_name: Dubai Media AI Video Processing & RFP Toolkit
-        title: Dubai Media AI Video Processing & RFP Toolkit
+        dir_name: AI-Powered Media Archive & RFP Toolkit
+        title: AI-Powered Media Archive & RFP Toolkit
         scope: []
         source_files: []
         children: []
         depends_on: []
         related_to: []
     build_system:
-        dir_name: Docker Compose & Nginx Orchestration_2
-        title: Docker Compose & Nginx Orchestration
+        dir_name: Docker Compose Orchestration & Dual-Stack Dependency Management
+        title: Docker Compose Orchestration & Dual-Stack Dependency Management
         scope: []
         source_files:
             - docker-compose.yml
             - nginx.conf
             - backend/requirements.txt
             - frontend/package.json
-            - .env.example
-            - README.md
+            - frontend/package-lock.json
+            - push-via-api.sh
         children: []
         depends_on: []
         related_to: []
     configuration_system:
-        dir_name: Layered Configuration with Pydantic Settings and Docker Compose
-        title: Layered Configuration with Pydantic Settings and Docker Compose
+        dir_name: Configuration System
+        title: Configuration System
         scope: []
         source_files:
             - backend/config.py
@@ -37,12 +37,12 @@ modules:
             - docker-compose.yml
             - nginx.conf
             - frontend/src/lib/api.ts
-            - backend/main.py
+            - frontend/next.config.ts
         children: []
         depends_on: []
         related_to: []
     dependency_management:
-        dir_name: Dual-Stack Dependency Management with Pinned Versions_2
+        dir_name: Dual-Stack Dependency Management with Pinned Versions_3
         title: Dual-Stack Dependency Management with Pinned Versions
         scope: []
         source_files:
@@ -50,13 +50,11 @@ modules:
             - frontend/package.json
             - frontend/package-lock.json
             - docker-compose.yml
-            - backend/config.py
-            - frontend/tsconfig.json
         children: []
         depends_on: []
         related_to: []
     error_handling:
-        dir_name: Error Handling — FastAPI HTTPException, Pipeline Resilience, and Frontend API Er_2
+        dir_name: Error Handling — FastAPI HTTPException, Pipeline Resilience, and Frontend API Er_3
         title: Error Handling — FastAPI HTTPException, Pipeline Resilience, and Frontend API Error Propagation
         scope: []
         source_files:
@@ -66,14 +64,13 @@ modules:
             - backend/services/rfp_creator.py
             - backend/services/rfp_evaluator.py
             - backend/pipeline/ingestion.py
-            - backend/pipeline/audio_analysis.py
-            - backend/pipeline/face_recognition.py
             - frontend/src/lib/api.ts
+            - frontend/src/lib/useVideoProcessing.ts
         children: []
         depends_on: []
         related_to: []
     frontend_style:
-        dir_name: Tailwind CSS v4 with Custom Design Tokens and Component-Based Styling_2
+        dir_name: Tailwind CSS v4 with Custom Design Tokens and Component-Based Styling_3
         title: Tailwind CSS v4 with Custom Design Tokens and Component-Based Styling
         scope: []
         source_files:
@@ -88,7 +85,7 @@ modules:
         depends_on: []
         related_to: []
     logging_system:
-        dir_name: Standard Python Logging with Module-Level Loggers_2
+        dir_name: Standard Python Logging with Module-Level Loggers_3
         title: Standard Python Logging with Module-Level Loggers
         scope: []
         source_files:

@@ -1,5 +1,7 @@
 "use client";
 
+import { Suspense, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useVideoProcessing } from "@/lib/useVideoProcessing";
 import VideoUpload from "@/components/archive/VideoUpload";
 import PipelineVisualizer from "@/components/archive/PipelineVisualizer";
@@ -27,16 +29,26 @@ function parseTimestamp(value: unknown): number {
   return 0;
 }
 
-export default function ArchivePage() {
+function ArchivePageInner() {
+  const searchParams = useSearchParams();
   const {
     state,
     videoRef,
     uploadVideo,
+    loadExistingVideo,
     search,
     setCurrentTime,
     seekTo,
     reset,
   } = useVideoProcessing();
+
+  // Load video by ID from URL query parameter: ?video=<video_id>
+  useEffect(() => {
+    const videoId = searchParams.get("video");
+    if (videoId && state.view === "upload" && !state.videoId) {
+      loadExistingVideo(videoId);
+    }
+  }, [searchParams, state.view, state.videoId, loadExistingVideo]);
 
   return (
     <div className="max-w-[1400px] mx-auto">
@@ -142,5 +154,13 @@ export default function ArchivePage() {
         />
       </div>
     </div>
+  );
+}
+
+export default function ArchivePage() {
+  return (
+    <Suspense>
+      <ArchivePageInner />
+    </Suspense>
   );
 }

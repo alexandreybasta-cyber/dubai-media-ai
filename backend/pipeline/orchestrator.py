@@ -315,7 +315,15 @@ class PipelineOrchestrator:
         title = headline if headline else "Untitled"
 
         ingestion = results.get("ingestion", {})
-        thumbnail = ingestion.get("thumbnail_path", "")
+        raw_thumb = ingestion.get("thumbnail_path", "")
+        # Convert filesystem path to URL-accessible path (e.g. "./uploads/id/thumbnail.jpg" → "/uploads/id/thumbnail.jpg")
+        if raw_thumb:
+            import re
+            thumbnail = re.sub(r'^\.\/?' , '/', raw_thumb)
+            if not thumbnail.startswith('/'):
+                thumbnail = '/' + thumbnail
+        else:
+            thumbnail = ""
 
         # Build person name lookup from faces
         faces_list = results.get("faces", [])

@@ -1,3 +1,0 @@
-- **Environment**: Requires a `.env` file with `DASHSCOPE_API_KEY` and `DASHSCOPE_VIDEO_API_KEY`.
-- **Deployment**: Use `docker-compose up --build` to start the backend (port 8000), frontend (port 3000), and Nginx (port 8080).
-- **Local Dev**: Backend runs via `uvicorn main:app --reload`; Frontend via `npm run dev`.

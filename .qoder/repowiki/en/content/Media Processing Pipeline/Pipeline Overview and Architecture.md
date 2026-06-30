@@ -21,12 +21,12 @@
 
 ## Update Summary
 **Changes Made**
-- Updated to reflect enhanced concurrency model with cooperative multitasking implementation
-- Added documentation for non-blocking execution architecture using asyncio
-- Enhanced WebSocket callback mechanism with async support
-- Updated stage execution diagrams to show async coroutine patterns
-- Revised performance considerations for async I/O operations
-- Added cooperative multitasking implementation details
+- Enhanced pipeline orchestration with new OCR text detection extraction capabilities
+- Improved video duration handling with robust ffprobe integration
+- Enhanced search segment building with richer metadata including IPTC video metadata, titles, and thumbnails
+- Updated face recognition module to utilize OCR text detection for person identification
+- Improved metadata structuring with comprehensive IPTC taxonomy integration
+- Enhanced search index building with enriched segment metadata
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -73,7 +73,7 @@ G --> F
 **Diagram sources**
 - [main.py:1-44](file://backend/main.py#L1-L44)
 - [video.py:1-268](file://backend/routers/video.py#L1-L268)
-- [orchestrator.py:1-330](file://backend/pipeline/orchestrator.py#L1-L330)
+- [orchestrator.py:1-374](file://backend/pipeline/orchestrator.py#L1-L374)
 - [config.py:1-30](file://backend/config.py#L1-L30)
 - [useVideoProcessing.ts:1-438](file://frontend/src/lib/useVideoProcessing.ts#L1-L438)
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
@@ -100,7 +100,7 @@ Key orchestration responsibilities:
 - Manage local file path operations for all external API calls with non-blocking execution
 
 **Section sources**
-- [orchestrator.py:34-330](file://backend/pipeline/orchestrator.py#L34-L330)
+- [orchestrator.py:34-374](file://backend/pipeline/orchestrator.py#L34-L374)
 - [video.py:25-120](file://backend/routers/video.py#L25-L120)
 
 ## Architecture Overview
@@ -126,7 +126,7 @@ ORCH->>ST2 : "await analyze_video_visually(video_path, api_key, model, base_url)
 ST2-->>ORCH : "results['visual_analysis']"
 ORCH->>ST3 : "await transcribe_audio(audio_path, api_key, model)"
 ST3-->>ORCH : "results['transcript']"
-ORCH->>ST4 : "await identify_faces(faces_detected, api_key, model, base_url)"
+ORCH->>ST4 : "await identify_faces(faces_detected, text_ocr, video_duration, api_key, model, base_url)"
 ST4-->>ORCH : "results['faces']"
 ORCH->>ST5 : "await structure_metadata(analysis_results, api_key, model, base_url)"
 ST5-->>ORCH : "results['metadata']"
@@ -233,10 +233,10 @@ The pipeline implements a comprehensive non-blocking execution architecture that
 
 **Section sources**
 - [audio_analysis.py:6-277](file://backend/pipeline/audio_analysis.py#L6-L277)
-- [face_recognition.py:6-215](file://backend/pipeline/face_recognition.py#L6-L215)
-- [visual_analysis.py:7-200](file://backend/pipeline/visual_analysis.py#L7-L200)
+- [face_recognition.py:6-319](file://backend/pipeline/face_recognition.py#L6-L319)
+- [visual_analysis.py:7-344](file://backend/pipeline/visual_analysis.py#L7-L344)
 - [ingestion.py:6-146](file://backend/pipeline/ingestion.py#L6-L146)
-- [metadata_structuring.py:7-200](file://backend/pipeline/metadata_structuring.py#L7-L200)
+- [metadata_structuring.py:7-252](file://backend/pipeline/metadata_structuring.py#L7-L252)
 
 ## Detailed Component Analysis
 
@@ -340,6 +340,7 @@ Finalize --> Done(["Return"])
 - Matches detected faces against a reference database using Qwen text model
 - Loads reference_faces.json from local data directory and compares descriptions to identify known figures
 - Enriches face entries with name, role, confidence, and reasoning
+- **Enhanced**: Now utilizes OCR text detection (text_ocr) for person identification fallback
 - Implements async HTTP client with retry logic and exponential backoff
 - Uses run_in_executor for file operations while maintaining async flow
 
@@ -352,6 +353,7 @@ Finalize --> Done(["Return"])
 - Generates broadcast metadata (EBUCore XML, IPTC) from aggregated analysis results
 - Uses iptc_taxonomy.json from local data directory for topic classification
 - Returns bilingual metadata, sentiment tags, geographic tags, and mentioned persons
+- **Enhanced**: Now includes comprehensive IPTC video metadata with rich topic codes and classifications
 - Implements async HTTP client with proper error handling and retry logic
 - Uses run_in_executor for file operations while maintaining async flow
 
@@ -363,6 +365,7 @@ Finalize --> Done(["Return"])
 ### Stage 6: Search Index
 - Builds FAISS vector index using DashScope embeddings
 - Converts scenes + transcript + identified persons into searchable segments
+- **Enhanced**: Now builds richer search segments with IPTC metadata, titles, and thumbnails
 - Supports semantic search across indexed videos
 - Implements async embedding generation with batch processing
 - Uses numpy fallback when FAISS is unavailable
@@ -371,6 +374,31 @@ Finalize --> Done(["Return"])
 - [search_index.py:22-41](file://backend/pipeline/search_index.py#L22-L41)
 - [search_index.py:88-154](file://backend/pipeline/search_index.py#L88-L154)
 - [search_index.py:156-245](file://backend/pipeline/search_index.py#L156-L245)
+
+### Enhanced Search Segment Building
+The search segment building process has been significantly enhanced to include richer metadata:
+
+- **IPTC Video Metadata**: Extracts headline and videoContent information for segment titles
+- **Thumbnail Integration**: Adds thumbnail paths to all segment types for better UI experience
+- **Person Identification**: Creates specialized person segments with role and timestamp information
+- **Duration Handling**: Utilizes video duration for accurate timestamp calculations
+- **Rich Metadata**: Includes scene types, person names, and thumbnail references in segment metadata
+
+```mermaid
+flowchart TD
+Start(["Build Searchable Segments"]) --> ExtractMeta["Extract Metadata<br/>- IPTC headline<br/>- Thumbnail path<br/>- Person names"]
+ExtractMeta --> ProcessScenes["Process Visual Scenes<br/>- Scene descriptions<br/>- Scene types<br/>- Timestamps"]
+ProcessScenes --> ProcessTranscript["Process Transcript<br/>- Text segments<br/>- Word timings<br/>- Speaker info"]
+ProcessTranscript --> ProcessFaces["Process Identified Faces<br/>- Person names<br/>- Roles<br/>- Appearances"]
+ProcessFaces --> CombineSegments["Combine All Segments<br/>- Rich metadata<br/>- Thumbnails<br/>- Titles"]
+CombineSegments --> ReturnSegments["Return Enhanced Segments"]
+```
+
+**Diagram sources**
+- [orchestrator.py:307-359](file://backend/pipeline/orchestrator.py#L307-L359)
+
+**Section sources**
+- [orchestrator.py:307-359](file://backend/pipeline/orchestrator.py#L307-L359)
 
 ### WebSocket Progress Streaming
 - Router registers WebSocket connections per video_id
@@ -463,6 +491,10 @@ FRONT["Frontend<br/>useVideoProcessing.ts"] --> ROUTER
   - Index loading/saving occurs on add_video and search with async operations
   - Memory usage grows with indexed segments; optimize batch sizes and refresh cadence
   - Async embedding generation improves throughput for large datasets
+- Enhanced OCR Processing:
+  - OCR text detection extraction provides additional person identification capabilities
+  - Video duration handling ensures accurate timestamp processing for OCR results
+  - Rich metadata integration improves search accuracy and user experience
 
 ## Troubleshooting Guide
 Common issues and remedies:
@@ -489,6 +521,10 @@ Common issues and remedies:
   - Check event loop configuration and thread pool size
   - Monitor async resource usage and prevent memory leaks
   - Implement proper async context management
+- OCR Text Detection Issues:
+  - Visual analysis may fail to detect OCR text in certain video conditions
+  - Face recognition can fallback to OCR-based identification when reference database is unavailable
+  - Video duration probing failures can impact OCR timestamp accuracy
 
 **Section sources**
 - [visual_analysis.py:61-63](file://backend/pipeline/visual_analysis.py#L61-L63)
@@ -499,7 +535,15 @@ Common issues and remedies:
 - [video.py:116-120](file://backend/routers/video.py#L116-L120)
 
 ## Conclusion
-The PipelineOrchestrator provides a robust, transparent, and resilient framework for sequential video processing with enhanced concurrency capabilities. Its explicit stage ordering, comprehensive error handling, and real-time progress streaming enable reliable operation and excellent observability. The switch to local file path processing eliminates URL-based communication complexity and reduces potential failure points. The enhanced async implementation with cooperative multitasking and non-blocking execution architecture significantly improves throughput while maintaining the predictable resource usage characteristics of sequential processing. While sequential processing trades throughput for simplicity and predictability, it remains practical for most media archival scenarios and can be scaled by increasing server capacity or splitting large inputs. The async enhancements make the system more responsive and efficient under various load conditions.
+The PipelineOrchestrator provides a robust, transparent, and resilient framework for sequential video processing with enhanced concurrency capabilities. Its explicit stage ordering, comprehensive error handling, and real-time progress streaming enable reliable operation and excellent observability. The switch to local file path processing eliminates URL-based communication complexity and reduces potential failure points. The enhanced async implementation with cooperative multitasking and non-blocking execution architecture significantly improves throughput while maintaining the predictable resource usage characteristics of sequential processing. 
+
+**Recent Enhancements:**
+- **OCR Text Detection**: Enhanced face recognition with OCR-based person identification fallback
+- **Improved Video Duration Handling**: Robust ffprobe integration for accurate duration processing
+- **Richer Metadata**: Comprehensive IPTC video metadata integration with titles and thumbnails
+- **Enhanced Search Segments**: Improved search index building with enriched segment metadata
+
+While sequential processing trades throughput for simplicity and predictability, it remains practical for most media archival scenarios and can be scaled by increasing server capacity or splitting large inputs. The async enhancements make the system more responsive and efficient under various load conditions.
 
 ## Appendices
 
@@ -548,3 +592,15 @@ The PipelineOrchestrator provides a robust, transparent, and resilient framework
 - [visual_analysis.py:133-184](file://backend/pipeline/visual_analysis.py#L133-L184)
 - [ingestion.py:57-121](file://backend/pipeline/ingestion.py#L57-L121)
 - [metadata_structuring.py:125-161](file://backend/pipeline/metadata_structuring.py#L125-L161)
+
+### Enhanced OCR and Metadata Processing
+- **OCR Text Detection**: Visual analysis now extracts on-screen text for person identification
+- **IPTC Metadata Integration**: Rich video metadata with topic codes and classifications
+- **Thumbnail Enhancement**: All search segments now include thumbnail references
+- **Person Identification Fallback**: OCR-based identification when reference database is unavailable
+
+**Section sources**
+- [visual_analysis.py:41-43](file://backend/pipeline/visual_analysis.py#L41-L43)
+- [face_recognition.py:191-210](file://backend/pipeline/face_recognition.py#L191-L210)
+- [metadata_structuring.py:47-64](file://backend/pipeline/metadata_structuring.py#L47-L64)
+- [orchestrator.py:313-318](file://backend/pipeline/orchestrator.py#L313-L318)

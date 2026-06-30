@@ -67,7 +67,7 @@ export interface VideoMetadata {
   faces: DetectedFace[];
   objects: DetectedObject[];
   landmarks: { name: string; timestamp: number }[];
-  sensitive_content: string[];
+  sensitive_content: (string | Record<string, unknown>)[];
   ebucore_xml?: string;
   iptc_json?: Record<string, unknown>;
   raw?: Record<string, unknown>;
@@ -341,7 +341,7 @@ export function useVideoProcessing() {
         faces: mappedFaces,
         objects: (visualAnalysis.objects || []) as DetectedObject[],
         landmarks: (visualAnalysis.landmarks || []) as { name: string; timestamp: number }[],
-        sensitive_content: (visualAnalysis.sensitive_content || []) as string[],
+        sensitive_content: (visualAnalysis.sensitive_content || []) as (string | Record<string, unknown>)[],
         ebucore_xml: (metaBlock.ebucore_xml as string) || undefined,
         iptc_json: (metaBlock.iptc_video_metadata as Record<string, unknown>) || undefined,
         raw: raw,
@@ -356,9 +356,36 @@ export function useVideoProcessing() {
         }));
       }
 
-      const transcript = (
-        (transcriptRes as { segments?: TranscriptSegment[] }).segments || []
-      ) as TranscriptSegment[];
+      // Map backend transcript fields (start_time/end_time/speaker_id) to frontend fields (start/end/speaker)
+      const rawSegments = ((transcriptRes as { segments?: Array<Record<string, unknown>> }).segments || []);
+      let speakerCounter = 0;
+      const speakerMap: Record<string, string> = {};
+      const transcript: TranscriptSegment[] = rawSegments.map((seg) => {
+        // Map speaker_id to friendly label
+        const rawSpeaker = (seg.speaker_id as string) || (seg.speaker as string) || "unknown";
+        let speaker: string;
+        if (rawSpeaker === "unknown" || rawSpeaker === "UNKNOWN" || !rawSpeaker) {
+          if (!speakerMap["unknown"]) {
+            speakerCounter++;
+            speakerMap["unknown"] = `Speaker ${speakerCounter}`;
+          }
+          speaker = speakerMap["unknown"];
+        } else {
+          if (!speakerMap[rawSpeaker]) {
+            speakerCounter++;
+            speakerMap[rawSpeaker] = `Speaker ${speakerCounter}`;
+          }
+          speaker = speakerMap[rawSpeaker];
+        }
+
+        return {
+          speaker,
+          start: (seg.start_time as number) ?? (seg.start as number) ?? 0,
+          end: (seg.end_time as number) ?? (seg.end as number) ?? 0,
+          text: (seg.text as string) || "",
+          language: ((seg.language as string) !== "unknown" ? (seg.language as string) : undefined),
+        };
+      });
 
       setState((prev) => ({
         ...prev,
@@ -484,10 +511,23 @@ export function useVideoProcessing() {
     });
   }, [state.videoUrl]);
 
+  // ─── Load Existing Video ───────────────────────────────────────────
+
+  const loadExistingVideo = useCallback(async (videoId: string) => {
+    updateState({
+      videoId,
+      view: "results",
+      uploadState: "uploaded",
+      stages: INITIAL_STAGES.map(s => ({ ...s, status: "completed" as StageStatus })),
+    });
+    await fetchResults(videoId);
+  }, [updateState, fetchResults]);
+
   return {
     state,
     videoRef,
     uploadVideo,
+    loadExistingVideo,
     search,
     setCurrentTime,
     seekTo,

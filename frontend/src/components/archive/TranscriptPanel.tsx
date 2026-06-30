@@ -27,10 +27,24 @@ function getSpeakerStyle(speaker: string) {
   );
 }
 
-function formatTimestamp(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
+function formatTimestamp(value: unknown): string {
+  // Handle string timestamps (e.g., "00:15", "1:30")
+  if (typeof value === "string") {
+    if (/^\d{1,2}(:\d{2}){1,2}$/.test(value)) return value;
+    const parsed = parseFloat(value);
+    if (!isNaN(parsed)) {
+      const m = Math.floor(parsed / 60);
+      const s = Math.floor(parsed % 60);
+      return `${m}:${s.toString().padStart(2, "0")}`;
+    }
+    return "0:00";
+  }
+  if (typeof value === "number" && !isNaN(value)) {
+    const m = Math.floor(value / 60);
+    const s = Math.floor(value % 60);
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  }
+  return "0:00";
 }
 
 export default function TranscriptPanel({

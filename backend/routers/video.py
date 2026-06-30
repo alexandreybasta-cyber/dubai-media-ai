@@ -216,6 +216,50 @@ async def semantic_search(request: SearchRequest):
         raise HTTPException(status_code=500, detail=f"Search failed: {e}")
 
 
+# ── Reindex ────────────────────────────────────────────────────────────
+
+@router.post("/reindex")
+async def reindex_all():
+    """Rebuild the search index from all existing processed video results."""
+    import pickle
+    try:
+        # Clear existing index
+        search_index = _orchestrator.search_index
+        if search_index._use_faiss:
+            import faiss
+            search_index.index = faiss.IndexFlatIP(1024)
+        else:
+            from pipeline.search_index import _NumpyFlatIP
+            search_index.index = _NumpyFlatIP(1024)
+        search_index.metadata = []
+
+        # Find all processed videos with results.json
+        indexed_count = 0
+        for video_id in os.listdir(settings.UPLOAD_DIR):
+            results_path = os.path.join(settings.UPLOAD_DIR, video_id, "results.json")
+            if not os.path.isfile(results_path):
+                continue
+            try:
+                with open(results_path, "r", encoding="utf-8") as f:
+                    results = json.load(f)
+                segments = _orchestrator._build_searchable_segments(results)
+                if segments:
+                    await search_index.add_video(video_id, segments)
+                    indexed_count += 1
+                    logger.info("Reindexed video %s (%d segments)", video_id, len(segments))
+            except Exception as e:
+                logger.warning("Failed to reindex video %s: %s", video_id, e)
+
+        return {
+            "status": "ok",
+            "videos_indexed": indexed_count,
+            "total_vectors": search_index.index.ntotal,
+        }
+    except Exception as e:
+        logger.error("Reindex failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Reindex failed: {e}")
+
+
 # ── WebSocket ───────────────────────────────────────────────────────
 
 @router.websocket("/ws/pipeline/{video_id}")

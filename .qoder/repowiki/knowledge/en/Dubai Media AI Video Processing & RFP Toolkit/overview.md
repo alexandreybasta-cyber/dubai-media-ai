@@ -1,1 +1,0 @@
-A full-stack platform for AI-driven video metadata extraction using Alibaba Cloud DashScope and an automated RFP creation and vendor evaluation system.

@@ -24,9 +24,10 @@
 
 ## Update Summary
 **Changes Made**
-- Updated VideoTimeline component documentation to reflect defensive programming improvements
-- Added documentation for null-checks in face appearances array mapping
-- Enhanced error handling and robustness section for archive components
+- Updated VideoTimeline component documentation to reflect enhanced face appearance handling with null-safe array mapping and click handlers for face appearance ranges
+- Enhanced tooltip information with better face name and time range display
+- Updated MetadataPanel component documentation to reflect Arabic name display alongside English names with proper RTL handling
+- Improved defensive programming practices section with specific examples from the enhanced components
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -225,13 +226,18 @@ UV-->>VU : metadata, transcript when ready
 - Styling: Dark video container, progress overlay, blue scene markers, yellow object dots, primary-position indicator.
 - Accessibility: Keyboard-accessible scrubber; tooltips provide context.
 - State integration: Subscribes to video timeupdate and loadedmetadata; syncs with current time prop.
-- **Defensive Programming Improvements**: Implements null-safe face appearances mapping with fallback to empty array to prevent crashes when metadata is incomplete.
+- **Enhanced Face Appearance Handling**: Implements null-safe face appearances mapping with fallback to empty array to prevent crashes when metadata is incomplete. Each face appearance now includes individual click handlers that seek to the start time of the appearance range, providing granular control over face detection navigation.
 
-**Updated** Defensive programming improvements have been implemented to enhance the reliability of face appearance rendering. The component now includes null-safe array mapping to handle cases where face appearances data might be missing or undefined.
+**Updated** Enhanced defensive programming improvements have been implemented to enhance the reliability and interactivity of face appearance rendering. The component now includes:
+
+- **Null-safe face appearances mapping**: Uses `(face.appearances || []).map()` to safely handle cases where face appearances data might be missing or undefined
+- **Individual appearance click handlers**: Each face appearance bar now has its own click handler that seeks to the specific start time of the appearance range
+- **Improved tooltip information**: Tooltips now display face names along with formatted time ranges (e.g., "John Doe: 2:15 - 3:45")
 
 **Section sources**
 - [VideoTimeline.tsx:11-58](file://frontend/src/components/archive/VideoTimeline.tsx#L11-L58)
 - [VideoTimeline.tsx:200-201](file://frontend/src/components/archive/VideoTimeline.tsx#L200-L201)
+- [VideoTimeline.tsx:216-219](file://frontend/src/components/archive/VideoTimeline.tsx#L216-L219)
 - [useVideoProcessing.ts:370-381](file://frontend/src/lib/useVideoProcessing.ts#L370-L381)
 
 #### TranscriptPanel
@@ -260,8 +266,15 @@ UV-->>VU : metadata, transcript when ready
 - Styling: Tabbed interface with active-state underline; dark theme JSON viewer; badge chips for tags.
 - Accessibility: Keyboard navigation among tabs; focusable copy/download buttons.
 
+**Updated** Enhanced multilingual support has been implemented to display Arabic names alongside English names for detected persons. The component now includes:
+
+- **Bilingual person display**: When Arabic names are available, they are shown alongside English names in parentheses with proper RTL directionality
+- **Improved fallback handling**: Graceful handling of missing Arabic names with conditional rendering
+- **RTL text support**: Proper right-to-left text direction for Arabic content within the badge display
+
 **Section sources**
 - [MetadataPanel.tsx:6-376](file://frontend/src/components/archive/MetadataPanel.tsx#L6-L376)
+- [useVideoProcessing.ts:36-41](file://frontend/src/lib/useVideoProcessing.ts#L36-L41)
 
 #### SearchDemo
 - Purpose: Demonstrates semantic search over the archive with query input, results list, and result click handler.
@@ -480,6 +493,14 @@ The VideoTimeline component demonstrates key defensive programming practices:
 - **Face appearances safety**: Uses `(face.appearances || []).map()` to safely handle null/undefined appearances arrays
 - **Duration validation**: Checks `duration > 0` before calculating percentages to prevent division by zero
 - **Metadata fallbacks**: Provides default empty arrays for scenes, faces, and objects when metadata is unavailable
+- **Individual appearance click handlers**: Each face appearance now has its own click handler that seeks to the specific start time of the appearance range
+
+#### MetadataPanel Component
+The MetadataPanel component includes enhanced multilingual support with defensive programming:
+
+- **Conditional Arabic name rendering**: Uses `face.name_ar &&` to conditionally render Arabic names only when available
+- **RTL direction handling**: Applies `dir="rtl"` attribute for proper right-to-left text display
+- **Fallback to English names**: Gracefully falls back to English names when Arabic names are not available
 
 #### General Error Handling Patterns
 - **Early returns**: Functions return early when required data is missing
@@ -495,7 +516,9 @@ The VideoTimeline component demonstrates key defensive programming practices:
 **Section sources**
 - [VideoTimeline.tsx:84-86](file://frontend/src/components/archive/VideoTimeline.tsx#L84-L86)
 - [VideoTimeline.tsx:200-201](file://frontend/src/components/archive/VideoTimeline.tsx#L200-L201)
+- [VideoTimeline.tsx:216-219](file://frontend/src/components/archive/VideoTimeline.tsx#L216-L219)
 - [VideoTimeline.tsx:229-239](file://frontend/src/components/archive/VideoTimeline.tsx#L229-L239)
+- [MetadataPanel.tsx:193-198](file://frontend/src/components/archive/MetadataPanel.tsx#L193-L198)
 
 ## Dependency Analysis
 - Component coupling:
@@ -574,12 +597,18 @@ API --> CM["ComparisonMatrix.tsx"]
   - Check if face appearances data is available in metadata.
   - Verify that duration is properly calculated before rendering appearance bars.
   - Ensure metadata is fully loaded before attempting to render timeline components.
+  - **Updated**: Individual face appearance click handlers should now work correctly even when some faces lack appearance data.
+- **MetadataPanel display issues**:
+  - **Updated**: Arabic names should now display properly alongside English names with proper RTL directionality.
+  - Check if face.name_ar property exists in the metadata structure.
+  - Verify that the conditional rendering logic handles missing Arabic names gracefully.
 
 **Section sources**
 - [VideoUpload.tsx:199-217](file://frontend/src/components/archive/VideoUpload.tsx#L199-L217)
 - [useVideoProcessing.ts:215-276](file://frontend/src/lib/useVideoProcessing.ts#L215-L276)
 - [EvaluationSetup.tsx:156-189](file://frontend/src/components/evaluator/EvaluationSetup.tsx#L156-L189)
 - [VideoTimeline.tsx:200-201](file://frontend/src/components/archive/VideoTimeline.tsx#L200-L201)
+- [MetadataPanel.tsx:193-198](file://frontend/src/components/archive/MetadataPanel.tsx#L193-L198)
 
 ## Conclusion
-The component library provides a cohesive, accessible, and extensible foundation for the Dubai Media application. Base components (Button, Card) standardize UI patterns; feature-specific components encapsulate complex workflows while integrating with shared state and APIs. The recent defensive programming improvements ensure reliable operation even with incomplete data, while the accessibility enhancements guarantee consistent text visibility across all form components. By adhering to the documented props, composition patterns, defensive programming practices, and accessibility guidelines, teams can build consistent experiences across Archive, RFP, and Evaluator features.
+The component library provides a cohesive, accessible, and extensible foundation for the Dubai Media application. Base components (Button, Card) standardize UI patterns; feature-specific components encapsulate complex workflows while integrating with shared state and APIs. The recent defensive programming improvements ensure reliable operation even with incomplete data, while the accessibility enhancements guarantee consistent text visibility across all form components. The enhanced VideoTimeline component now provides granular face detection navigation with improved tooltip information, and the MetadataPanel component offers comprehensive multilingual support with proper RTL handling. By adhering to the documented props, composition patterns, defensive programming practices, and accessibility guidelines, teams can build consistent experiences across Archive, RFP, and Evaluator features.

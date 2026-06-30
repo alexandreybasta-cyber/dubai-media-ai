@@ -4,6 +4,22 @@ import { useState, useCallback } from "react";
 import { Button } from "@/components/Button";
 import { SearchResult } from "@/lib/useVideoProcessing";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+/**
+ * Convert a raw thumbnail path (filesystem or relative) to a browser-accessible URL.
+ * Handles formats: "./uploads/...", "uploads/...", "/uploads/..."
+ */
+function resolveThumbnailUrl(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  // Already a full URL
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+  // Strip leading "./" or ensure leading "/"
+  let path = raw.replace(/^\.?\//, "/");
+  if (!path.startsWith("/")) path = "/" + path;
+  return `${API_BASE_URL}${path}`;
+}
+
 interface SearchDemoProps {
   searchResults: SearchResult[];
   isSearching: boolean;
@@ -136,9 +152,9 @@ export default function SearchDemo({
             >
               {/* Thumbnail placeholder */}
               <div className="flex-shrink-0 w-24 h-16 bg-gray-200 rounded overflow-hidden flex items-center justify-center">
-                {result.thumbnail ? (
+                {resolveThumbnailUrl(result.thumbnail) ? (
                   <img
-                    src={result.thumbnail}
+                    src={resolveThumbnailUrl(result.thumbnail)}
                     alt=""
                     className="w-full h-full object-cover"
                   />

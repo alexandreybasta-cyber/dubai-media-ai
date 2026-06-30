@@ -229,7 +229,10 @@ function SummaryTab({ metadata }: { metadata: VideoMetadata }) {
                 key={i}
                 className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700"
               >
-                ⚠️ {flag}
+                ⚠️{" "}
+                {typeof flag === "string"
+                  ? flag
+                  : `${(flag as Record<string, unknown>).type || "unknown"} (${(flag as Record<string, unknown>).severity || ""}) @ ${(flag as Record<string, unknown>).timestamp || ""}`}
               </span>
             ))}
           </div>

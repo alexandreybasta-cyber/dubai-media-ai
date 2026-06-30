@@ -1,3 +1,0 @@
-- **AI Services**: Alibaba Cloud DashScope (Qwen-VL-Max for visual analysis, Paraformer-v2 for ASR, Qwen-Max for text generation, Text-Embedding-v3 for search).
-- **Search**: FAISS (CPU) for vector similarity search on video segments.
-- **Document Generation**: python-docx, reportlab, and openpyxl for exporting RFPs and evaluations to DOCX, PDF, and XLSX formats.

@@ -13,28 +13,37 @@
 - [main.py](file://backend/main.py)
 </cite>
 
+## Update Summary
+**Changes Made**
+- Added documentation for new `_deduplicate_faces()` function that groups faces by identity and merges appearance intervals
+- Documented new `_apply_ocr_fallback()` function that provides OCR-based name fallback system
+- Updated `_timestamp_to_seconds()` utility function documentation with enhanced timestamp format support
+- Enhanced face recognition workflow to include deduplication and OCR fallback processing
+- Updated API usage examples to reflect new parameters and functionality
+
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
 4. [Architecture Overview](#architecture-overview)
 5. [Detailed Component Analysis](#detailed-component-analysis)
-6. [Dependency Analysis](#dependency-analysis)
-7. [Performance Considerations](#performance-considerations)
-8. [Troubleshooting Guide](#troubleshooting-guide)
-9. [Conclusion](#conclusion)
+6. [Advanced Features](#advanced-features)
+7. [Dependency Analysis](#dependency-analysis)
+8. [Performance Considerations](#performance-considerations)
+9. [Troubleshooting Guide](#troubleshooting-guide)
+10. [Conclusion](#conclusion)
 
 ## Introduction
-This document explains the face recognition and identification stage powered by Alibaba Cloud DashScope’s Qwen model. It covers the end-to-end workflow from face detection in the visual analysis stage to person identification using a curated reference database, enrichment of face metadata, and integration with the search index. It also documents API usage patterns, confidence scoring, and practical guidance for accuracy and troubleshooting.
+This document explains the face recognition and identification stage powered by Alibaba Cloud DashScope's Qwen model. It covers the end-to-end workflow from face detection in the visual analysis stage to person identification using a curated reference database, enrichment of face metadata, and integration with the search index. The stage now includes advanced capabilities including deduplication functionality, OCR fallback system, and enhanced timestamp handling for improved accuracy and reliability.
 
 ## Project Structure
-The face recognition stage is part of a six-stage pipeline orchestrated by a central controller. The stage consumes detected faces from the visual analysis stage and enriches them with identity information using Qwen text capabilities.
+The face recognition stage is part of a six-stage pipeline orchestrated by a central controller. The stage consumes detected faces from the visual analysis stage and enriches them with identity information using Qwen text capabilities, with additional deduplication and OCR fallback processing.
 
 ```mermaid
 graph TB
 subgraph "Pipeline Stages"
 VA["Visual Analysis<br/>Qwen-VL"]
-FR["Face Recognition<br/>Qwen-Text"]
+FR["Face Recognition<br/>Qwen-Text<br/>+ Deduplication<br/>+ OCR Fallback"]
 MS["Metadata Structuring<br/>Qwen-Text"]
 SI["Search Index<br/>DashScope Embeddings + FAISS"]
 end
@@ -54,9 +63,11 @@ MS --> SI
 - [visual_analysis.py:26-40](file://backend/pipeline/visual_analysis.py#L26-L40)
 
 ## Core Components
-- Face Recognition Module: Matches detected faces against a reference database using Qwen text prompts and returns enriched face records with identification metadata and confidence.
+- Face Recognition Module: Matches detected faces against a reference database using Qwen text prompts and returns enriched face records with identification metadata, confidence, and deduplicated appearance information.
 - Reference Database: A curated JSON dataset of UAE public figures with identifiers, names, roles, and descriptions.
-- Orchestrator: Coordinates pipeline stages and passes detected faces to the face recognition stage.
+- OCR Fallback System: Provides alternative identification using on-screen text from visual analysis when reference database matching fails.
+- Deduplication Engine: Groups multiple face detections of the same person across different timestamps into unified appearance records.
+- Orchestrator: Coordinates pipeline stages and passes detected faces, OCR data, and video duration to the face recognition stage.
 - Search Index: Builds a vector index from scenes, transcripts, and identified persons for semantic search.
 
 **Section sources**
@@ -66,7 +77,7 @@ MS --> SI
 - [search_index.py:88-154](file://backend/pipeline/search_index.py#L88-L154)
 
 ## Architecture Overview
-The face recognition stage integrates tightly with the visual analysis stage and the orchestrator. Detected faces are passed as-is from the visual analysis results and enriched with identification outcomes.
+The face recognition stage integrates tightly with the visual analysis stage and the orchestrator. Detected faces are passed along with OCR data and video duration, then processed through deduplication and OCR fallback systems before being enriched with identification outcomes.
 
 ```mermaid
 sequenceDiagram
@@ -76,16 +87,19 @@ participant Orchestrator as "PipelineOrchestrator"
 participant VA as "Visual Analysis"
 participant FR as "Face Recognition"
 participant Ref as "Reference Faces"
+participant OCR as "OCR Data"
 participant DashScope as "DashScope API"
 Client->>Router : POST /api/video/upload
 Router->>Orchestrator : process_video(video_id, video_path)
 Orchestrator->>VA : analyze_video_visually(video_url)
-VA-->>Orchestrator : {faces : [...]}
-Orchestrator->>FR : identify_faces(faces, api_key, model)
+VA-->>Orchestrator : {faces : [...], text_ocr : [...]}
+Orchestrator->>FR : identify_faces(faces, text_ocr, video_duration, api_key, model)
 FR->>Ref : load reference_faces.json
 FR->>DashScope : chat/completions (Qwen)
 DashScope-->>FR : match result JSON
-FR-->>Orchestrator : enriched faces
+FR->>OCR : apply_ocr_fallback()
+FR->>FR : _deduplicate_faces()
+FR-->>Orchestrator : deduplicated enriched faces
 Orchestrator-->>Router : results.json
 Router-->>Client : queued response
 ```
@@ -99,8 +113,8 @@ Router-->>Client : queued response
 ## Detailed Component Analysis
 
 ### Face Detection Workflow
-- Visual analysis produces a list of faces with attributes such as description, age estimate, gender, timestamp, and bounding box.
-- These records are passed to the face recognition stage as-is.
+- Visual analysis produces a list of faces with attributes such as description, age estimate, gender, timestamp, bounding box, and on-screen text information.
+- These records are passed to the face recognition stage along with OCR data and video duration from the visual analysis results.
 
 **Section sources**
 - [visual_analysis.py:26-40](file://backend/pipeline/visual_analysis.py#L26-L40)
@@ -134,9 +148,11 @@ ParseResp --> HasMatch{"match == true?"}
 HasMatch --> |Yes| LookupRef["Lookup reference by ID"]
 LookupRef --> Enrich["Enrich face with name, role, confidence, reasoning"]
 HasMatch --> |No| MarkUnidentified["Mark as not identified"]
-Enrich --> NextFace["Next face"]
-MarkUnidentified --> NextFace
-NextFace --> Done(["Return enriched faces"])
+Enrich --> ApplyFallback["Apply OCR Fallback"]
+MarkUnidentified --> ApplyFallback
+ApplyFallback --> Deduplicate["Deduplicate Faces"]
+NextFace --> Deduplicate
+Deduplicate --> Done(["Return deduplicated faces"])
 ```
 
 **Diagram sources**
@@ -149,7 +165,7 @@ NextFace --> Done(["Return enriched faces"])
 - [face_recognition.py:198-214](file://backend/pipeline/face_recognition.py#L198-L214)
 
 ### Integration with Visual Analysis Results
-- The orchestrator extracts the faces list from the visual analysis stage and passes it to the face recognition stage.
+- The orchestrator extracts the faces list and OCR data from the visual analysis stage and passes them to the face recognition stage along with video duration.
 - The enriched faces are stored as a separate result artifact and later used by metadata structuring and search index creation.
 
 **Section sources**
@@ -168,7 +184,7 @@ NextFace --> Done(["Return enriched faces"])
   - Scene descriptions from visual analysis
   - Transcript segments
   - Identified persons (when available)
-- Identified persons contribute textual segments that include the person’s name and role, enabling semantic search across named figures.
+- Identified persons contribute textual segments that include the person's name and role, enabling semantic search across named figures.
 
 ```mermaid
 flowchart TD
@@ -193,29 +209,88 @@ Embed --> FAISS["Add vectors to FAISS index"]
 
 ### API Usage Examples
 - Face recognition API call signature:
-  - Input: faces_detected (list), api_key (string), model (string), base_url (string)
-  - Output: list of enriched face dictionaries
-- Example invocation is orchestrated by the pipeline; the orchestrator calls the face recognition function with the detected faces from visual analysis and passes the configured API key and model.
+  - Input: faces_detected (list), api_key (string), text_ocr (list), video_duration (float), model (string), base_url (string)
+  - Output: list of deduplicated enriched face dictionaries
+- Example invocation is orchestrated by the pipeline; the orchestrator calls the face recognition function with the detected faces, OCR data, and video duration from visual analysis and passes the configured API key and model.
 
 **Section sources**
 - [face_recognition.py:54-107](file://backend/pipeline/face_recognition.py#L54-L107)
 - [orchestrator.py:131-148](file://backend/pipeline/orchestrator.py#L131-L148)
 - [config.py:4-12](file://backend/config.py#L4-L12)
 
+## Advanced Features
+
+### Deduplication Functionality
+The `_deduplicate_faces()` function groups multiple face detections of the same person across different timestamps into unified appearance records with merged time intervals.
+
+**Key Features:**
+- Groups faces by identity using name_en for identified persons or description for unidentified persons
+- Calculates frame interval based on video duration (12 keyframes extracted)
+- Merges overlapping or adjacent time ranges into continuous appearance intervals
+- Removes per-frame fields that don't apply to merged entries
+- Preserves identification metadata and confidence scores
+
+**Output Format:**
+Each deduplicated face entry includes:
+- `appearances`: List of time range objects with start and end timestamps
+- `name_en`, `name_ar`, `role`, `confidence`, `identified`
+- Other relevant metadata from the first occurrence
+
+**Section sources**
+- [face_recognition.py:65-122](file://backend/pipeline/face_recognition.py#L65-L122)
+
+### OCR Fallback System
+The `_apply_ocr_fallback()` function provides alternative identification using on-screen text when reference database matching fails.
+
+**Functionality:**
+- Scans detected faces for on-screen name and title information
+- Applies OCR-based identification with high confidence (0.9)
+- Adds source metadata indicating OCR fallback origin
+- Preserves original face data while enhancing with OCR information
+
+**Integration Points:**
+- Applied after reference database matching
+- Works even when reference database is unavailable
+- Uses both original face data and OCR results
+
+**Section sources**
+- [face_recognition.py:191-210](file://backend/pipeline/face_recognition.py#L191-L210)
+
+### Enhanced Timestamp Handling
+The `_timestamp_to_seconds()` utility function provides robust timestamp conversion supporting multiple formats.
+
+**Supported Formats:**
+- MM:SS (e.g., "05:30")
+- HH:MM:SS (e.g., "01:15:30")
+- M:SS (e.g., "5:30")
+- Numeric values (already in seconds)
+
+**Enhanced Features:**
+- Handles edge cases and malformed inputs gracefully
+- Returns 0.0 for invalid or unsupported formats
+- Used for calculating frame intervals and merging appearance ranges
+- Integrated with orchestrator's timestamp handling for consistency
+
+**Section sources**
+- [face_recognition.py:54-63](file://backend/pipeline/face_recognition.py#L54-L63)
+- [orchestrator.py:288-306](file://backend/pipeline/orchestrator.py#L288-L306)
+
 ## Dependency Analysis
 - The face recognition stage depends on:
   - DashScope API for text-based matching
   - Local reference database for known identities
-  - Orchestrator for passing detected faces and managing pipeline progress
+  - OCR data from visual analysis for fallback identification
+  - Orchestrator for passing detected faces, OCR data, video duration, and managing pipeline progress
 - The search index stage depends on:
   - DashScope embeddings API
   - FAISS for vector storage and similarity search
-  - The enriched faces produced by the face recognition stage
+  - The deduplicated faces produced by the face recognition stage
 
 ```mermaid
 graph LR
 FR["face_recognition.py"] --> DS["DashScope API"]
 FR --> RF["reference_faces.json"]
+FR --> OCR["OCR Data"]
 FR --> ORCH["orchestrator.py"]
 SI["search_index.py"] --> DS2["DashScope API"]
 SI --> FAISS["FAISS Index"]
@@ -244,10 +319,12 @@ ORCH --> SI
   - Building the reference list string scales with the number of reference entries; keep the reference database reasonably sized.
 - Confidence scoring:
   - Confidence values are returned by the model; treat them as relative indicators rather than absolute probabilities.
+  - OCR fallback provides higher confidence (0.9) for on-screen text identification.
 - Resource usage:
   - FAISS index persistence avoids rebuilding on startup; ensure sufficient disk space for index and metadata files.
-
-[No sources needed since this section provides general guidance]
+- Deduplication overhead:
+  - Additional processing time for grouping and merging face detections
+  - Memory usage increases with number of unique identities identified
 
 ## Troubleshooting Guide
 Common issues and remedies:
@@ -266,6 +343,12 @@ Common issues and remedies:
 - Search index unavailable:
   - Symptom: Warning that FAISS index is unavailable.
   - Action: Install faiss-cpu or ensure it is available; otherwise, search capability will be disabled.
+- OCR fallback not working:
+  - Symptom: Missing on-screen names despite visible text in video.
+  - Action: Verify visual analysis OCR extraction is enabled and check that on-screen text is properly detected.
+- Deduplication issues:
+  - Symptom: Multiple entries for same person or missing merged appearances.
+  - Action: Check video duration parameter and verify timestamp formats are consistent.
 
 **Section sources**
 - [face_recognition.py:76-81](file://backend/pipeline/face_recognition.py#L76-L81)
@@ -276,4 +359,4 @@ Common issues and remedies:
 - [search_index.py:226-242](file://backend/pipeline/search_index.py#L226-L242)
 
 ## Conclusion
-The face recognition stage leverages DashScope’s Qwen model to match detected faces against a curated reference database, enriching them with identity metadata and confidence scores. The orchestrator coordinates this stage seamlessly with visual analysis, metadata structuring, and search index creation. Proper configuration of API keys, a valid reference database, and robust error handling ensures reliable identification and search capabilities.
+The face recognition stage leverages DashScope's Qwen model to match detected faces against a curated reference database, enriching them with identity metadata and confidence scores. The stage now includes advanced capabilities including deduplication functionality that groups multiple face detections of the same person into unified appearance records, an OCR fallback system that provides alternative identification using on-screen text, and enhanced timestamp handling for improved accuracy. The orchestrator coordinates this stage seamlessly with visual analysis, metadata structuring, and search index creation. Proper configuration of API keys, a valid reference database, robust error handling, and utilization of OCR fallback capabilities ensure reliable identification and search capabilities.

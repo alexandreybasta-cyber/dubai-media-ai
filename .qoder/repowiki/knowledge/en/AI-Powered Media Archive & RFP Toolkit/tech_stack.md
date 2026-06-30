@@ -1,0 +1,4 @@
+- AI/ML: Alibaba Cloud DashScope (Qwen-VL-Max for visual analysis, Paraformer-v2 for ASR, Qwen-Max for text/metadata, text-embedding-v3 for vectors).
+- Search: FAISS CPU for vector similarity search.
+- Frontend: Next.js 16 with Tailwind CSS v4 and Recharts for data visualization.
+- Document Generation: python-docx, reportlab, and openpyxl for multi-format RFP and evaluation exports.

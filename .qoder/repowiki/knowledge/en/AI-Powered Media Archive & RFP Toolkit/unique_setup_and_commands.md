@@ -1,0 +1,3 @@
+- Environment Configuration: Requires a `.env` file at the root containing `DASHSCOPE_API_KEY` and optional model overrides, loaded via `pydantic-settings`.
+- Orchestration: Use `docker-compose up` to launch the full stack (Backend, Frontend, Nginx) with shared volumes for media uploads.
+- Local Development: Backend runs via `uvicorn main:app --reload`; Frontend via `npm run dev` with `NEXT_PUBLIC_API_URL` pointing to the backend.
