@@ -176,6 +176,12 @@ export function useVideoProcessing() {
       // Create object URL for video player
       const videoUrl = URL.createObjectURL(file);
 
+      // Clear any existing polling from previous upload
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+
       try {
         // Use real upload progress via XHR onprogress callback
         const result = (await api.video.upload(file, (progress) => {
@@ -398,8 +404,11 @@ export function useVideoProcessing() {
 
   const startPollingFallback = useCallback(
     (videoId: string) => {
-      // Don't start another interval if one is already running
-      if (pollIntervalRef.current) return;
+      // Clear any existing interval (could be from a different video)
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
 
       pollIntervalRef.current = setInterval(async () => {
         try {
