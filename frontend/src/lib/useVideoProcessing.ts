@@ -203,8 +203,9 @@ export function useVideoProcessing() {
           stages: INITIAL_STAGES,
         });
 
-        // Connect WebSocket for pipeline updates
-        connectToPipeline(result.video_id);
+        // Start polling for pipeline status updates
+        // Pipeline runs as a subprocess, so we poll the status endpoint directly
+        startPollingFallback(result.video_id);
       } catch (err) {
         updateState({
           uploadState: "error",

@@ -11,6 +11,8 @@
 - [backend/pipeline/ingestion.py](file://backend/pipeline/ingestion.py)
 - [backend/pipeline/audio_analysis.py](file://backend/pipeline/audio_analysis.py)
 - [backend/pipeline/metadata_structuring.py](file://backend/pipeline/metadata_structuring.py)
+- [backend/pipeline/visual_analysis.py](file://backend/pipeline/visual_analysis.py)
+- [backend/pipeline/face_recognition.py](file://backend/pipeline/face_recognition.py)
 - [frontend/src/lib/api.ts](file://frontend/src/lib/api.ts)
 - [frontend/src/lib/useVideoProcessing.ts](file://frontend/src/lib/useVideoProcessing.ts)
 - [frontend/src/components/archive/VideoUpload.tsx](file://frontend/src/components/archive/VideoUpload.tsx)
@@ -23,7 +25,8 @@
 - Added documentation for the new standalone pipeline runner (run_pipeline.py) that executes as a separate process
 - Updated architecture overview to show subprocess execution flow and process isolation benefits
 - Enhanced troubleshooting guidance for subprocess execution and process isolation
-- Maintained backward compatibility with existing API endpoints and response structures
+- Improved resource management documentation with memory leak prevention and system stability measures
+- Updated performance considerations to reflect subprocess isolation benefits
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -47,6 +50,8 @@ This document provides comprehensive API documentation for the video processing 
 - POST /api/reindex for rebuilding search indexes from existing processed videos
 
 The documentation includes request/response schemas, error codes, file upload handling with subprocess execution, and practical examples using curl commands and JavaScript implementations.
+
+**Updated** The system now implements improved process isolation and resource management through subprocess-based execution, preventing memory leaks and ensuring better system stability. The pipeline runs in a completely separate process that cannot affect the main API server, providing enhanced reliability and automatic recovery mechanisms.
 
 ## Project Structure
 The video processing system consists of:
@@ -74,6 +79,8 @@ subgraph "Pipeline Stages"
 ING["ingestion.py<br/>FFmpeg extraction"]
 AUD["audio_analysis.py<br/>ASR transcription"]
 META["metadata_structuring.py<br/>EBUCore/IPTC metadata"]
+VIS["visual_analysis.py<br/>Qwen-VL visual analysis"]
+FACE["face_recognition.py<br/>Reference matching"]
 end
 FE_API --> ROUTER
 FE_HOOK --> FE_API
@@ -82,7 +89,9 @@ MAIN --> ROUTER
 ROUTER --> RUNNER
 RUNNER --> ORCH
 ORCH --> ING
+ORCH --> VIS
 ORCH --> AUD
+ORCH --> FACE
 ORCH --> META
 ORCH --> SI
 CFG --> ORCH
@@ -90,7 +99,7 @@ CFG --> ORCH
 
 **Diagram sources**
 - [backend/main.py:1-44](file://backend/main.py#L1-L44)
-- [backend/routers/video.py:1-313](file://backend/routers/video.py#L1-L313)
+- [backend/routers/video.py:1-314](file://backend/routers/video.py#L1-L314)
 - [backend/run_pipeline.py:1-29](file://backend/run_pipeline.py#L1-L29)
 - [backend/pipeline/orchestrator.py:1-382](file://backend/pipeline/orchestrator.py#L1-L382)
 - [backend/config.py:1-30](file://backend/config.py#L1-L30)
@@ -115,6 +124,8 @@ Key capabilities:
 - Semantic search with dual HTTP method support (GET/POST)
 - Batch reindexing from existing processed videos
 
+**Updated** The system now implements improved process isolation through subprocess-based execution, ensuring that pipeline failures or resource consumption never affect the main server. The standalone pipeline runner provides complete isolation, preventing memory leaks and system instability.
+
 **Section sources**
 - [backend/routers/video.py:41-102](file://backend/routers/video.py#L41-L102)
 - [backend/run_pipeline.py:1-29](file://backend/run_pipeline.py#L1-L29)
@@ -131,7 +142,7 @@ The system follows a staged pipeline architecture with subprocess-based executio
 5. Results are saved as individual JSON artifacts per stage
 6. Search index is built incrementally during processing and can be rebuilt via /api/reindex
 
-**Updated** The system now uses subprocess-based execution for enhanced reliability and process isolation. The main API server launches a completely separate Python process that runs the pipeline independently, ensuring that pipeline failures or resource consumption never affect the main server.
+**Updated** The system now uses subprocess-based execution for enhanced reliability and process isolation. The main API server launches a completely separate Python process that runs the pipeline independently, ensuring that pipeline failures or resource consumption never affect the main server. This architecture prevents memory leaks and ensures system stability through complete process isolation.
 
 ```mermaid
 sequenceDiagram
@@ -145,6 +156,7 @@ participant Stage as "Pipeline Stage"
 Client->>API : "POST /api/video/upload (multipart/form-data)"
 API->>FS : "Save video file"
 API->>Subproc : "subprocess.Popen(run_pipeline.py, video_id, video_path)"
+Note over Subproc : "start_new_session=True<br/>stdin=subprocess.DEVNULL<br/>stdout=pipeline.log"
 Subproc->>Runner : "Execute standalone pipeline runner"
 Runner->>Orchestrator : "process_video(video_id, video_path)"
 Orchestrator->>Stage : "Run ingestion"
@@ -156,6 +168,7 @@ Orchestrator->>FS : "Write status.json"
 Orchestrator-->>Runner : "Pipeline complete"
 Runner-->>Subproc : "Exit subprocess"
 API-->>Client : "{video_id, status}"
+Note over API : "Server remains unaffected<br/>by subprocess execution"
 ```
 
 **Diagram sources**
@@ -192,6 +205,8 @@ Process isolation benefits:
 - Long-running processes don't block server resources
 - Memory leaks in pipeline stages don't affect server stability
 - Process termination is handled independently
+- Automatic recovery from pipeline crashes
+- Resource monitoring and cleanup through separate process lifecycle
 
 Supported formats and limits:
 - Frontend accepts MP4, MOV, AVI
@@ -483,7 +498,7 @@ The video processing endpoints depend on:
 - FFmpeg for local video/audio processing
 - FAISS or numpy for vector search indexing
 
-**Updated** The system now depends on subprocess-based execution for enhanced reliability, with the main API server launching separate processes that handle pipeline execution independently. The standalone pipeline runner (run_pipeline.py) provides complete isolation from the main server process.
+**Updated** The system now depends on subprocess-based execution for enhanced reliability, with the main API server launching separate processes that handle pipeline execution independently. The standalone pipeline runner (run_pipeline.py) provides complete isolation from the main server process, preventing memory leaks and ensuring system stability.
 
 ```mermaid
 graph LR
@@ -491,7 +506,9 @@ Router["routers/video.py"] --> Runner["run_pipeline.py"]
 Runner --> Orchestrator["pipeline/orchestrator.py"]
 Orchestrator --> Config["config.py"]
 Orchestrator --> Ingestion["pipeline/ingestion.py"]
+Orchestrator --> Visual["pipeline/visual_analysis.py"]
 Orchestrator --> Audio["pipeline/audio_analysis.py"]
+Orchestrator --> Face["pipeline/face_recognition.py"]
 Orchestrator --> Metadata["pipeline/metadata_structuring.py"]
 Orchestrator --> SearchIndex["pipeline/search_index.py"]
 FrontendAPI["frontend/src/lib/api.ts"] --> Router
@@ -521,6 +538,7 @@ FrontendUpload["frontend/src/components/archive/VideoUpload.tsx"] --> FrontendHo
 - **Updated** Process isolation ensures that memory leaks or resource exhaustion in pipeline stages don't affect server stability
 - **Updated** Subprocess execution allows for automatic process recovery and cleanup
 - **Updated** Separate process execution enables better resource monitoring and control
+- **Updated** Improved memory management through process isolation prevents accumulation of memory leaks
 
 ## Troubleshooting Guide
 Common issues and resolutions:
@@ -533,6 +551,7 @@ Common issues and resolutions:
 - **Updated** Pipeline not starting: Check pipeline.log file in the video's output directory for execution errors
 - **Updated** Memory issues: Subprocess isolation prevents memory leaks from affecting the main server, but monitor individual process memory usage
 - **Updated** Process termination: Subprocesses can be terminated independently without affecting the main API server
+- **Updated** Resource leaks: Process isolation ensures automatic cleanup when subprocess terminates unexpectedly
 
 Error handling patterns:
 - Upload failures return HTTP 500 with detailed error messages
@@ -543,6 +562,7 @@ Error handling patterns:
 - Reindex operation logs warnings for videos that fail to index and continues processing
 - **Updated** Subprocess failures are isolated and don't affect main server availability
 - **Updated** Pipeline logs are written to separate pipeline.log files for easier debugging
+- **Updated** Process monitoring helps identify and recover from resource exhaustion scenarios
 
 **Section sources**
 - [backend/routers/video.py:57-59](file://backend/routers/video.py#L57-L59)
@@ -552,7 +572,7 @@ Error handling patterns:
 - [frontend/src/lib/api.ts:43-95](file://frontend/src/lib/api.ts#L43-L95)
 
 ## Conclusion
-The video processing endpoints provide a robust foundation for AI-powered media archive workflows with enhanced reliability through subprocess-based execution. They support efficient uploads, process isolation, real-time progress monitoring, and comprehensive metadata extraction with structured outputs suitable for broadcasting standards and semantic search. The new subprocess-based execution model ensures that pipeline failures never affect server availability, while maintaining backward compatibility with existing API endpoints and response structures. The standalone pipeline runner provides complete process isolation, enabling better resource management, automatic recovery, and improved system stability.
+The video processing endpoints provide a robust foundation for AI-powered media archive workflows with enhanced reliability through subprocess-based execution. They support efficient uploads, process isolation, real-time progress monitoring, and comprehensive metadata extraction with structured outputs suitable for broadcasting standards and semantic search. The new subprocess-based execution model ensures that pipeline failures never affect server availability, while maintaining backward compatibility with existing API endpoints and response structures. The standalone pipeline runner provides complete process isolation, enabling better resource management, automatic recovery, and improved system stability. This architecture prevents memory leaks and ensures better system stability through complete process isolation and automatic cleanup mechanisms.
 
 ## Appendices
 

@@ -22,12 +22,11 @@
 
 ## Update Summary
 **Changes Made**
-- Updated Core Components section to reflect subprocess-based architecture with enhanced process isolation
-- Added documentation for the new backend/run_pipeline.py dedicated execution environment
-- Enhanced Architecture Overview to show subprocess execution flow with improved system stability
-- Updated Real-time Progress Tracking section to reflect dual WebSocket and REST polling approaches
-- Revised Troubleshooting Guide for subprocess-based status monitoring
-- Enhanced Performance Considerations to reflect improved process isolation benefits
+- Updated Core Components section to reflect enhanced process isolation improvements
+- Enhanced Architecture Overview to show improved subprocess isolation with stdin=subprocess.DEVNULL and start_new_session=True
+- Updated Real-time Progress Tracking section to reflect dual WebSocket and REST polling approaches with enhanced reliability
+- Revised Troubleshooting Guide for subprocess-based status monitoring with improved isolation
+- Enhanced Performance Considerations to reflect improved process isolation benefits and system stability
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -130,20 +129,20 @@ POLL --> ROUTER
 Key orchestration responsibilities:
 - Sequential stage execution with cooperative yielding for server responsiveness
 - Persistent status and intermediate results
-- **Enhanced**: Subprocess-based execution with complete process isolation
+- **Enhanced**: Subprocess-based execution with complete process isolation using stdin=subprocess.DEVNULL and start_new_session=True
 - Building searchable segments for embedding
 - **Maintained**: WebSocket progress streaming alongside REST polling
 
-**Updated** The pipeline now uses a subprocess-based architecture where the orchestrator runs in a completely separate process, ensuring it can NEVER block the main server regardless of pipeline duration or resource usage. The `run_pipeline.py` script provides a dedicated execution environment that maintains system stability while preserving all real-time progress tracking capabilities.
+**Updated** The pipeline now uses a subprocess-based architecture where the orchestrator runs in a completely separate process, ensuring it can NEVER block the main server regardless of pipeline duration or resource usage. The `run_pipeline.py` script provides a dedicated execution environment that maintains system stability while preserving all real-time progress tracking capabilities. **Enhanced process isolation** is achieved through explicit stdin=subprocess.DEVNULL to prevent SIGTTIN signals from terminal and start_new_session=True to fully detach from the parent process session.
 
 **Section sources**
 - [backend/pipeline/orchestrator.py:44-382](file://backend/pipeline/orchestrator.py#L44-L382)
-- [backend/routers/video.py:85-94](file://backend/routers/video.py#L85-L94)
+- [backend/routers/video.py:85-95](file://backend/routers/video.py#L85-L95)
 - [backend/run_pipeline.py:1-29](file://backend/run_pipeline.py#L1-L29)
 - [backend/config.py:4-30](file://backend/config.py#L4-L30)
 
 ## Architecture Overview
-The pipeline is a server-side orchestration backed by external AI APIs and local file storage. The frontend connects via REST endpoints to observe progress and retrieve results. **The subprocess-based architecture** provides enhanced process isolation and system stability while maintaining real-time status updates through both WebSocket streaming and REST polling.
+The pipeline is a server-side orchestration backed by external AI APIs and local file storage. The frontend connects via REST endpoints to observe progress and retrieve results. **The subprocess-based architecture with enhanced process isolation** provides improved system stability and non-blocking operation while maintaining real-time status updates through both WebSocket streaming and REST polling.
 
 ```mermaid
 sequenceDiagram
@@ -158,7 +157,7 @@ participant ST4 as "Face Recognition"
 participant ST5 as "Metadata Structuring"
 participant ST6 as "Search Index"
 FE->>API : POST /api/video/upload
-API->>SUBPROC : subprocess.Popen(run_pipeline.py, video_id, video_path)
+API->>SUBPROC : subprocess.Popen(run_pipeline.py, video_id, video_path,<br/>stdin=subprocess.DEVNULL,<br/>start_new_session=True)
 SUBPROC->>ORCH : process_video(video_id, video_path)
 ORCH->>ST1 : ingest_video(video_path, output_dir)
 ST1-->>ORCH : ingestion.json
@@ -180,7 +179,7 @@ API-->>FE : metadata.json + transcript.json
 ```
 
 **Diagram sources**
-- [backend/routers/video.py:40-102](file://backend/routers/video.py#L40-L102)
+- [backend/routers/video.py:85-95](file://backend/routers/video.py#L85-L95)
 - [backend/run_pipeline.py:15-28](file://backend/run_pipeline.py#L15-L28)
 - [backend/pipeline/orchestrator.py:44-209](file://backend/pipeline/orchestrator.py#L44-L209)
 - [backend/pipeline/ingestion.py:16-51](file://backend/pipeline/ingestion.py#L16-L51)
@@ -359,10 +358,10 @@ Error handling:
 - [backend/pipeline/search_index.py:59-306](file://backend/pipeline/search_index.py#L59-L306)
 
 ### Real-time Progress Tracking and Status Reporting
-**Updated** The pipeline now uses a dual approach combining WebSocket streaming and REST polling for progress tracking. The frontend connects via REST endpoints to observe progress and retrieve results, while maintaining WebSocket support for real-time updates.
+**Updated** The pipeline now uses a dual approach combining WebSocket streaming and REST polling for progress tracking. The frontend connects via REST endpoints to observe progress and retrieve results, while maintaining WebSocket support for real-time updates. **Enhanced process isolation** through stdin=subprocess.DEVNULL and start_new_session=True ensures reliable subprocess execution and prevents signal-related interruptions.
 
 - Router exposes REST endpoints for status polling and WebSocket endpoints for live updates
-- **Enhanced**: Subprocess execution via run_pipeline.py provides process isolation
+- **Enhanced**: Subprocess execution via run_pipeline.py provides process isolation with explicit stdin=subprocess.DEVNULL and start_new_session=True
 - Frontend hook polls `/api/video/{video_id}/status` every 3 seconds as fallback
 - WebSocket streaming provides real-time progress updates when available
 - Results are fetched via separate endpoints when processing completes
@@ -374,7 +373,7 @@ participant API as "FastAPI Router"
 participant SUBPROC as "run_pipeline.py (subprocess)"
 participant ORCH as "PipelineOrchestrator"
 FE->>API : POST /api/video/upload
-API->>SUBPROC : subprocess.Popen(run_pipeline.py, video_id, video_path)
+API->>SUBPROC : subprocess.Popen(run_pipeline.py, video_id, video_path,<br/>stdin=subprocess.DEVNULL,<br/>start_new_session=True)
 SUBPROC->>ORCH : process_video(video_id, video_path)
 ORCH->>ORCH : Update status.json per stage
 FE->>API : GET /api/video/{video_id}/status (polling)
@@ -386,7 +385,7 @@ API-->>FE : metadata.json + transcript.json
 ```
 
 **Diagram sources**
-- [backend/routers/video.py:40-102](file://backend/routers/video.py#L40-L102)
+- [backend/routers/video.py:85-95](file://backend/routers/video.py#L85-L95)
 - [backend/run_pipeline.py:15-28](file://backend/run_pipeline.py#L15-L28)
 - [backend/routers/video.py:266-313](file://backend/routers/video.py#L266-L313)
 - [backend/pipeline/orchestrator.py:44-209](file://backend/pipeline/orchestrator.py#L44-L209)
@@ -459,8 +458,9 @@ TASK["_run_pipeline"] --> SUBPROC
   - **Event loop fairness**: This ensures the server can handle incoming requests, background tasks, and file operations even during extended processing operations
   - **Process isolation**: Subprocess execution prevents pipeline failures from affecting server stability
   - **Non-blocking operations**: All stage functions are async and use cooperative yielding points
+  - **Enhanced isolation**: Explicit stdin=subprocess.DEVNULL prevents SIGTTIN signals from terminal and start_new_session=True ensures complete session detachment
 
-**Updated** The subprocess-based architecture significantly enhances server responsiveness by providing complete process isolation. The `run_pipeline.py` script ensures that pipeline operations run in a completely separate process, so they can NEVER block the server regardless of pipeline duration or resource usage. The cooperative yielding mechanism ensures that long-running operations don't block the event loop, enabling multiple videos to be processed simultaneously without impacting system performance.
+**Updated** The subprocess-based architecture significantly enhances server responsiveness by providing complete process isolation. The `run_pipeline.py` script ensures that pipeline operations run in a completely separate process, so they can NEVER block the server regardless of pipeline duration or resource usage. The cooperative yielding mechanism ensures that long-running operations don't block the event loop, enabling multiple videos to be processed simultaneously without impacting system performance. **Enhanced process isolation** through stdin=subprocess.DEVNULL eliminates terminal-related signal interruptions and start_new_session=True provides complete session detachment for improved reliability.
 
 [No sources needed since this section provides general guidance]
 
@@ -489,7 +489,7 @@ Common issues and recovery strategies:
   - Action: Install faiss-cpu; ensure permissions for index_dir; rebuild index
 - **Subprocess execution failures**:
   - Symptom: Videos appear stuck in queued status
-  - Action: Check server logs for subprocess execution errors; verify Python path and dependencies
+  - Action: Check server logs for subprocess execution errors; verify Python path and dependencies; ensure stdin=subprocess.DEVNULL and start_new_session=True are properly configured
 - **WebSocket progress streaming issues**:
   - Symptom: Real-time updates not received
   - Action: Verify WebSocket connectivity; check CORS configuration; fallback to REST polling
@@ -502,8 +502,11 @@ Common issues and recovery strategies:
 - **Concurrent processing conflicts**:
   - Symptom: Multiple videos causing resource contention
   - Action: Monitor system resources; consider rate limiting; ensure adequate CPU and memory allocation
+- **Enhanced process isolation issues**:
+  - Symptom: Subprocess termination or signal-related failures
+  - Action: Verify that stdin=subprocess.DEVNULL is properly set to prevent SIGTTIN signals; ensure start_new_session=True is enabled for complete session detachment
 
-**Updated** Added troubleshooting guidance for the subprocess-based architecture, including subprocess execution failures and dual WebSocket/REST polling approaches. The WebSocket callback mechanism remains available as a fallback, while the new subprocess approach provides enhanced system stability and non-blocking operation.
+**Updated** Added troubleshooting guidance for the subprocess-based architecture, including subprocess execution failures and dual WebSocket/REST polling approaches. The WebSocket callback mechanism remains available as a fallback, while the new subprocess approach provides enhanced system stability and non-blocking operation. **Enhanced process isolation** through explicit stdin=subprocess.DEVNULL and start_new_session=True addresses signal-related interruptions and ensures reliable subprocess execution.
 
 **Section sources**
 - [backend/pipeline/visual_analysis.py:135-188](file://backend/pipeline/visual_analysis.py#L135-L188)
@@ -511,19 +514,19 @@ Common issues and recovery strategies:
 - [backend/pipeline/face_recognition.py:241-299](file://backend/pipeline/face_recognition.py#L241-L299)
 - [backend/pipeline/metadata_structuring.py:125-163](file://backend/pipeline/metadata_structuring.py#L125-L163)
 - [backend/pipeline/search_index.py:259-305](file://backend/pipeline/search_index.py#L259-L305)
-- [backend/routers/video.py:85-94](file://backend/routers/video.py#L85-L94)
+- [backend/routers/video.py:85-95](file://backend/routers/video.py#L85-L95)
 
 ## Conclusion
-The pipeline provides a robust, modular, and observable framework for AI-driven media processing. Its sequential orchestration, persistent state, and dual progress tracking mechanisms (WebSocket streaming and REST polling) enable reliable archival workflows. **The subprocess-based architecture** provides enhanced process isolation and system stability, ensuring that pipeline operations never interfere with server responsiveness. The cooperative yielding mechanism ensures that long-running operations don't block the event loop, enabling multiple videos to be processed simultaneously without impacting system performance. By tuning stage parameters, ensuring adequate infrastructure, leveraging retries and fallbacks, and utilizing the new subprocess isolation, operators can achieve scalable and resilient media processing in production environments.
+The pipeline provides a robust, modular, and observable framework for AI-driven media processing. Its sequential orchestration, persistent state, and dual progress tracking mechanisms (WebSocket streaming and REST polling) enable reliable archival workflows. **The subprocess-based architecture with enhanced process isolation** provides improved system stability and non-blocking operation, ensuring that pipeline operations never interfere with server responsiveness. The cooperative yielding mechanism ensures that long-running operations don't block the event loop, enabling multiple videos to be processed simultaneously without impacting system performance. **Enhanced process isolation** through stdin=subprocess.DEVNULL and start_new_session=True eliminates signal-related interruptions and ensures reliable subprocess execution. By tuning stage parameters, ensuring adequate infrastructure, leveraging retries and fallbacks, and utilizing the new subprocess isolation, operators can achieve scalable and resilient media processing in production environments.
 
-**Updated** The pipeline now includes enhanced subprocess-based architecture with improved process isolation and system stability. The `run_pipeline.py` script provides a dedicated execution environment that ensures pipeline operations run independently from the main server, preventing resource contention and improving overall system reliability. The removal of WebSocket callback mechanism in favor of REST polling simplifies the architecture while maintaining all essential functionality for real-time status monitoring.
+**Updated** The pipeline now includes enhanced subprocess-based architecture with improved process isolation and system stability. The `run_pipeline.py` script provides a dedicated execution environment that ensures pipeline operations run independently from the main server, preventing resource contention and improving overall system reliability. **Enhanced process isolation** through explicit stdin=subprocess.DEVNULL prevents SIGTTIN signals from terminal and start_new_session=True ensures complete session detachment for improved reliability. The removal of WebSocket callback mechanism in favor of REST polling simplifies the architecture while maintaining all essential functionality for real-time status monitoring.
 
 [No sources needed since this section summarizes without analyzing specific files]
 
 ## Appendices
 
 ### API Endpoints Overview
-- POST /api/video/upload: Upload video and enqueue processing via subprocess execution
+- POST /api/video/upload: Upload video and enqueue processing via subprocess execution with enhanced isolation
 - GET /api/video/{video_id}/status: Retrieve current pipeline status (REST polling)
 - GET /api/video/{video_id}/metadata: Retrieve structured metadata
 - GET /api/video/{video_id}/transcript: Retrieve speech transcript
@@ -550,6 +553,6 @@ The pipeline provides a robust, modular, and observable framework for AI-driven 
   - Total time can exceed 30min depending on stage throughput
 - **Enhanced**: Subprocess isolation ensures consistent performance even with extended processing times for large video files
 
-**Updated** Server responsiveness improvements through subprocess isolation ensure consistent performance even with extended processing times for large video files. The subprocess architecture allows multiple videos to be processed concurrently without impacting system responsiveness, while the dual progress tracking approach (WebSocket streaming and REST polling) provides flexible monitoring options.
+**Updated** Server responsiveness improvements through enhanced subprocess isolation ensure consistent performance even with extended processing times for large video files. The subprocess architecture allows multiple videos to be processed concurrently without impacting system responsiveness, while the dual progress tracking approach (WebSocket streaming and REST polling) provides flexible monitoring options. **Enhanced process isolation** through stdin=subprocess.DEVNULL and start_new_session=True ensures reliable execution and prevents signal-related interruptions during extended processing operations.
 
 [No sources needed since this section provides general guidance]

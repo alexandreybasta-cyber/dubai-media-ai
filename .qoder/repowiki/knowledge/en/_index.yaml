@@ -3,7 +3,7 @@ schema_version: 1
 locale: en-US
 branch: main
 nodes_managed: true
-exported_at: "2026-06-30T17:01:22Z"
+exported_at: "2026-06-30T17:31:59Z"
 modules:
     "":
         dir_name: AI-Powered Media Archive & RFP Toolkit
@@ -14,21 +14,22 @@ modules:
         depends_on: []
         related_to: []
     build_system:
-        dir_name: Docker Compose & Nginx Orchestration_2
-        title: Docker Compose & Nginx Orchestration
+        dir_name: Docker Compose Orchestration & Dual-Stack Dependency Management
+        title: Docker Compose Orchestration & Dual-Stack Dependency Management
         scope: []
         source_files:
             - docker-compose.yml
             - nginx.conf
             - backend/requirements.txt
             - frontend/package.json
+            - frontend/package-lock.json
             - push-via-api.sh
         children: []
         depends_on: []
         related_to: []
     configuration_system:
-        dir_name: Layered Configuration with Pydantic Settings and Docker Compose_2
-        title: Layered Configuration with Pydantic Settings and Docker Compose
+        dir_name: Configuration System
+        title: Configuration System
         scope: []
         source_files:
             - backend/config.py
@@ -36,8 +37,7 @@ modules:
             - docker-compose.yml
             - nginx.conf
             - frontend/src/lib/api.ts
-            - backend/main.py
-            - backend/requirements.txt
+            - frontend/next.config.ts
         children: []
         depends_on: []
         related_to: []
@@ -65,6 +65,7 @@ modules:
             - backend/pipeline/orchestrator.py
             - backend/services/rfp_creator.py
             - backend/services/rfp_evaluator.py
+            - backend/pipeline/ingestion.py
             - frontend/src/lib/api.ts
             - frontend/src/lib/useVideoProcessing.ts
         children: []
@@ -78,10 +79,10 @@ modules:
             - frontend/src/app/globals.css
             - frontend/postcss.config.mjs
             - frontend/package.json
-            - frontend/src/app/layout.tsx
             - frontend/src/components/Button.tsx
             - frontend/src/components/Card.tsx
             - frontend/src/components/Sidebar.tsx
+            - frontend/src/app/layout.tsx
         children: []
         depends_on: []
         related_to: []
@@ -90,14 +91,16 @@ modules:
         title: Standard Python Logging with Module-Level Loggers
         scope: []
         source_files:
+            - backend/main.py
+            - backend/config.py
             - backend/pipeline/orchestrator.py
             - backend/pipeline/ingestion.py
             - backend/pipeline/visual_analysis.py
-            - backend/pipeline/search_index.py
+            - backend/pipeline/audio_analysis.py
+            - backend/pipeline/face_recognition.py
             - backend/routers/video.py
             - backend/services/rfp_creator.py
-            - backend/config.py
-            - backend/main.py
+            - backend/services/rfp_evaluator.py
         children: []
         depends_on: []
         related_to: []

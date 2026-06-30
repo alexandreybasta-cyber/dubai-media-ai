@@ -1,72 +1,119 @@
 ## Overview
 
-The backend uses **Python's built-in `logging` module** exclusively — no third-party structured logging framework (e.g., structlog, loguru) is configured. Every Python module in the `backend/` tree follows the same convention: a module-level logger created via `logging.getLogger(__name__)`. There is **no centralized logging configuration** (`logging.basicConfig`, `dictConfig`, handlers, or formatters) anywhere in the codebase; the application relies entirely on Python's default root logger behavior.
+The Dubai Media AI Video Processing & RFP Toolkit uses **Python's built-in `logging` module** for all backend logging. The approach follows standard Python conventions with module-level loggers created via `logging.getLogger(__name__)`. There is no centralized logging configuration, structured logging framework, or custom log handlers — the system relies entirely on Python's default logging behavior.
 
-## Key Files and Packages
+## System Architecture
 
-All logging usage lives in the FastAPI backend under `backend/`. The pattern is applied uniformly across three layers:
+### Framework and Approach
+- **Framework**: Python standard library `logging` module (no third-party logging libraries)
+- **Pattern**: Module-level logger instances using `logger = logging.getLogger(__name__)`
+- **Configuration**: None explicitly defined; relies on Python's default root logger configuration
+- **Output**: Logs are emitted to stderr/stdout via the default `StreamHandler` attached by Python when no configuration exists
 
-| Layer | Representative files |
-|---|---|
-| **Pipeline stages** | `backend/pipeline/orchestrator.py`, `ingestion.py`, `visual_analysis.py`, `audio_analysis.py`, `face_recognition.py`, `metadata_structuring.py`, `search_index.py` |
-| **API routers** | `backend/routers/video.py` |
-| **Services** | `backend/services/rfp_creator.py`, `rfp_evaluator.py` |
+### Key Characteristics
+- No `logging.basicConfig()` call anywhere in the codebase
+- No file-based log handlers configured
+- No JSON or structured log formatting
+- No log level configuration in environment variables or config files
+- No log rotation or archival strategy
+- No correlation IDs or request tracing
 
-No frontend (`frontend/`) logging infrastructure exists — the Next.js client does not use any dedicated logging library.
+## Key Files
 
-## Architecture and Conventions
+All backend Python modules follow the same pattern:
 
-### Logger instantiation
-Every module declares its logger at module scope:
-```python
-import logging
-logger = logging.getLogger(__name__)
-```
-This produces hierarchical logger names that mirror the package structure (e.g., `pipeline.orchestrator`, `routers.video`, `services.rfp_creator`).
+| File | Logger Declaration |
+|------|-------------------|
+| `backend/pipeline/orchestrator.py` | `logger = logging.getLogger(__name__)` |
+| `backend/pipeline/ingestion.py` | `logger = logging.getLogger(__name__)` |
+| `backend/pipeline/visual_analysis.py` | `logger = logging.getLogger(__name__)` |
+| `backend/pipeline/audio_analysis.py` | `logger = logging.getLogger(__name__)` |
+| `backend/pipeline/face_recognition.py` | `logger = logging.getLogger(__name__)` |
+| `backend/pipeline/metadata_structuring.py` | `logger = logging.getLogger(__name__)` |
+| `backend/pipeline/search_index.py` | `logger = logging.getLogger(__name__)` |
+| `backend/routers/video.py` | `logger = logging.getLogger(__name__)` |
+| `backend/services/rfp_creator.py` | `logger = logging.getLogger(__name__)` |
+| `backend/services/rfp_evaluator.py` | `logger = logging.getLogger(__name__)` |
 
-### Log levels used
-- **`logger.info`** — routine operational events: stage completion, keyframe extraction counts, index load/save, API response status codes.
-- **`logger.warning`** — non-fatal degradations: missing API keys, empty search index, ffprobe returning no video stream, fallback to numpy when FAISS is unavailable.
-- **`logger.error`** — failures that disrupt normal flow: file I/O errors, API HTTP errors, ffmpeg/ffprobe failures, pipeline stage exceptions (always accompanied by `traceback.format_exc()`).
-- **`logger.debug`** — minimal usage; only seen in WebSocket disconnect/error handling (`routers/video.py`).
+## Logging Conventions
 
-There is **no `CRITICAL` level** usage and **no `FATAL`** usage.
+### Log Level Usage
 
-### Message formatting
-All log calls use **percent-style (`%s`) formatting** with arguments passed as separate parameters rather than f-string interpolation. This defers string construction until the message is actually emitted:
+The codebase uses four log levels consistently:
+
+1. **`logger.info()`** — Normal operational events:
+   - Stage completion: `"Stage %s completed for %s"`
+   - Pipeline lifecycle: `"Pipeline completed for video %s (status: %s)"`
+   - Process milestones: `"Audio extracted to %s"`, `"Thumbnail generated at %s"`
+   - API interactions: `"Sending %d frames to %s model for visual analysis"`, `"Visual analysis API response status: %s"`
+
+2. **`logger.warning()`** — Non-critical issues that don't halt execution:
+   - Missing optional resources: `"No API key provided, returning empty visual analysis"`
+   - Degraded operation: `"No reference faces loaded, skipping identification"`
+   - Parse failures: `"Could not parse JSON from visual analysis response"`
+   - FFmpeg warnings: `"Failed to extract frame at %.1fs"`
+
+3. **`logger.error()`** — Failures requiring attention:
+   - API errors with context: `"Visual analysis API error (attempt %d/3): %s – %s"`
+   - File/system errors: `"ffprobe failed for %s: %s"`, `"Failed to save uploaded file: %s"`
+   - Exception details with tracebacks in orchestrator: `logger.error("Stage %s failed: %s\n%s", stage_name, error_msg, traceback.format_exc())`
+
+4. **`logger.debug()`** — Minimal usage (only in WebSocket error handling):
+   - `logger.debug("WebSocket error for %s: %s", video_id, e)`
+
+### Message Formatting
+
+All log messages use **printf-style formatting** (percent-formatting) rather than f-strings or `.format()`:
 ```python
 logger.info("Stage %s completed for %s", stage_name, output_dir)
-logger.error("Failed to save uploaded file: %s", e)
+logger.error("Pipeline failed for %s: %s", video_id, e)
 ```
 
-### Error context
-When an exception is caught, the orchestrator logs the full traceback:
-```python
-logger.error(
-    "Stage %s failed: %s\n%s",
-    stage_name, error_msg, traceback.format_exc(),
-)
-```
-Other modules typically log just the exception message (`%s` with `e`) without the stack trace.
+This is the recommended Python logging practice as it defers string interpolation until the message is actually emitted.
 
-### No structured fields
-Log records carry **no additional structured fields** (no JSON payload, no request IDs, no correlation IDs, no video_id injection into the log record itself). Context such as `video_id` is interpolated into the human-readable message string only.
+### Error Context
 
-### No handler / formatter configuration
-A grep for `basicConfig`, `dictConfig`, `StreamHandler`, `FileHandler`, and `Formatter` across all `backend/**/*.py` files returns zero matches. Consequently:
-- Output goes to `stderr` via the default `StreamHandler` attached to the root logger.
-- The default format is `levelname:logger_name:message` (or similar, depending on the Python runtime's defaults).
-- Log level filtering is controlled by whatever the runtime or container sets on the root logger (typically `WARNING` unless overridden externally via environment variables or command-line flags not present in this repo).
+Error logs consistently include:
+- **Resource identifiers**: `video_id`, `video_path`, `audio_path`
+- **Attempt counts**: `"(attempt %d/3)"` for retry logic
+- **Exception details**: `type(e).__name__`, `str(e)`, and full tracebacks via `traceback.format_exc()` in critical paths
+- **API response data**: Status codes and truncated response bodies (`resp.text[:500]`, `resp.text[:1000]`)
 
-## Rules Developers Should Follow
+## Rules for Developers
 
-1. **Always use `logging.getLogger(__name__)`** at module scope. Never instantiate `logging.Logger` directly or create child loggers with hardcoded string names.
-2. **Use `%`-style parameterized messages**, not f-strings, to avoid unnecessary string construction when the log level is disabled.
-3. **Choose log levels consistently:**
-   - `info` for expected lifecycle events (stage start/complete, file written, API call made).
-   - `warning` for recoverable anomalies (missing optional config, empty results, fallback paths).
-   - `error` for failures that cause a stage or request to fail; include `traceback.format_exc()` when catching broad `Exception`.
-   - `debug` sparingly for high-frequency diagnostic detail.
-4. **Do not add print statements** for diagnostic output — use the module logger instead.
-5. **Do not introduce a third-party logging framework** unless there is a coordinated decision to add centralized configuration (handlers, formatters, structured output) across the entire backend.
-6. **If structured logging is needed in the future**, consider adding a shared initialization function in `backend/config.py` or a new `backend/logging_config.py` that calls `logging.config.dictConfig()` once at application startup, configuring JSON-formatted output and attaching file/console handlers.
+### Required Patterns
+
+1. **Always use module-level loggers**: Declare `logger = logging.getLogger(__name__)` at module scope, never create loggers inline or use the root logger directly.
+
+2. **Use printf-style formatting**: Pass format arguments as separate parameters to avoid unnecessary string construction:
+   ```python
+   # Correct
+   logger.info("Processing video %s", video_id)
+   # Avoid
+   logger.info(f"Processing video {video_id}")
+   ```
+
+3. **Include contextual identifiers**: Always log `video_id`, file paths, or other relevant identifiers so logs can be correlated to specific operations.
+
+4. **Log exceptions with tracebacks in critical paths**: Use `traceback.format_exc()` when catching exceptions in pipeline stages where debugging context is essential.
+
+5. **Match log level to severity**:
+   - `info`: Normal progress and successful completions
+   - `warning`: Degraded but non-failing conditions
+   - `error`: Actual failures, API errors, file errors
+   - `debug`: Transient issues like WebSocket disconnections
+
+### Current Limitations
+
+- **No production-ready log routing**: Logs go to stdout/stderr only. For containerized deployments (Docker Compose), logs are captured by Docker's logging driver but not persisted or rotated.
+- **No structured logging**: Log entries are plain text, making them difficult to parse programmatically in log aggregation systems.
+- **No configurable log levels**: Cannot adjust verbosity without modifying code or setting the `LOGGING` environment variable externally.
+- **No request correlation**: WebSocket connections and background tasks cannot be traced across log entries beyond manual `video_id` matching.
+
+### Recommendations for Enhancement
+
+If production deployment requires enhanced logging:
+1. Add `logging.basicConfig(level=logging.INFO)` in `backend/main.py` to establish explicit defaults
+2. Consider adding a JSON formatter (e.g., `python-json-logger`) for structured output
+3. Configure log levels via environment variables in `config.py`
+4. Add request/correlation IDs for distributed tracing across pipeline stages
