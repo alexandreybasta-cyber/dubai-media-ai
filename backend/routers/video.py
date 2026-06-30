@@ -1,10 +1,32 @@
+"""
+Video processing API routes.
+Handles upload, status tracking, metadata retrieval, search, and WebSocket progress.
+"""
+
+import json
+import logging
+import os
 import uuid
 from datetime import datetime
+from typing import Dict
 
-from fastapi import APIRouter, UploadFile, File, WebSocket, WebSocketDisconnect
+import aiofiles
+from fastapi import APIRouter, BackgroundTasks, UploadFile, File, WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel
 
+from config import settings
+from pipeline.orchestrator import PipelineOrchestrator
+from pipeline.search_index import SearchIndex
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api", tags=["video"])
+
+# Shared orchestrator and search index instances
+_orchestrator = PipelineOrchestrator()
+
+# Track active WebSocket connections per video_id for pipeline progress
+_active_ws: Dict[str, list] = {}
 
 
 class SearchRequest(BaseModel):
@@ -12,9 +34,56 @@ class SearchRequest(BaseModel):
     top_k: int = 5
 
 
+# ── Upload ──────────────────────────────────────────────────────────
+
 @router.post("/video/upload")
-async def upload_video(file: UploadFile = File(...)):
+async def upload_video(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+):
+    """Upload a video file and start the processing pipeline in the background."""
     video_id = str(uuid.uuid4())
+
+    # Save uploaded file to uploads directory
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    file_ext = os.path.splitext(file.filename or "video.mp4")[1] or ".mp4"
+    saved_filename = f"{video_id}{file_ext}"
+    video_path = os.path.join(settings.UPLOAD_DIR, saved_filename)
+
+    try:
+        async with aiofiles.open(video_path, "wb") as out:
+            while chunk := await file.read(1024 * 1024):  # 1 MB chunks
+                await out.write(chunk)
+    except Exception as e:
+        logger.error("Failed to save uploaded file: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to save uploaded file")
+
+    # Create initial status
+    output_dir = os.path.join(settings.UPLOAD_DIR, video_id)
+    os.makedirs(output_dir, exist_ok=True)
+    initial_status = {
+        "video_id": video_id,
+        "status": "queued",
+        "progress": 0,
+        "stages": {
+            "ingestion": "pending",
+            "visual_analysis": "pending",
+            "audio_analysis": "pending",
+            "face_recognition": "pending",
+            "metadata_structuring": "pending",
+            "search_index": "pending",
+        },
+        "filename": file.filename,
+        "created_at": datetime.utcnow().isoformat(),
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    status_path = os.path.join(output_dir, "status.json")
+    with open(status_path, "w", encoding="utf-8") as f:
+        json.dump(initial_status, f, ensure_ascii=False, indent=2)
+
+    # Launch pipeline in background
+    background_tasks.add_task(_run_pipeline, video_id, video_path)
+
     return {
         "video_id": video_id,
         "filename": file.filename,
@@ -23,153 +92,175 @@ async def upload_video(file: UploadFile = File(...)):
     }
 
 
+async def _run_pipeline(video_id: str, video_path: str):
+    """Background task that runs the full pipeline and notifies WebSocket clients."""
+    async def ws_callback(stage: str, message: str, progress: int, status: str):
+        """Forward progress to all connected WebSocket clients for this video."""
+        payload = {
+            "video_id": video_id,
+            "stage": stage,
+            "message": message,
+            "progress": progress,
+            "status": status,
+        }
+        clients = _active_ws.get(video_id, [])
+        disconnected = []
+        for ws in clients:
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                disconnected.append(ws)
+        for ws in disconnected:
+            clients.remove(ws)
+
+    try:
+        await _orchestrator.process_video(video_id, video_path, ws_callback=ws_callback)
+    except Exception as e:
+        logger.error("Pipeline failed for %s: %s", video_id, e)
+
+
+# ── Status ──────────────────────────────────────────────────────────
+
 @router.get("/video/{video_id}/status")
 async def get_video_status(video_id: str):
-    return {
-        "video_id": video_id,
-        "status": "completed",
-        "progress": 100,
-        "stages": {
-            "upload": "completed",
-            "frame_extraction": "completed",
-            "scene_detection": "completed",
-            "asr": "completed",
-            "visual_analysis": "completed",
-            "metadata_generation": "completed",
-            "embedding": "completed",
-        },
-        "created_at": datetime.utcnow().isoformat(),
-    }
+    """Read the current pipeline status for a video."""
+    status_path = os.path.join(settings.UPLOAD_DIR, video_id, "status.json")
 
+    if not os.path.exists(status_path):
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+
+    try:
+        async with aiofiles.open(status_path, "r", encoding="utf-8") as f:
+            content = await f.read()
+        return json.loads(content)
+    except Exception as e:
+        logger.error("Failed to read status for %s: %s", video_id, e)
+        raise HTTPException(status_code=500, detail="Failed to read status")
+
+
+# ── Metadata ────────────────────────────────────────────────────────
 
 @router.get("/video/{video_id}/metadata")
 async def get_video_metadata(video_id: str):
-    return {
-        "video_id": video_id,
-        "title": "Sample Media Archive Video",
-        "duration_seconds": 185.4,
-        "resolution": "1920x1080",
-        "fps": 25.0,
-        "codec": "h264",
-        "scenes": [
-            {
-                "scene_id": 1,
-                "start_time": 0.0,
-                "end_time": 45.2,
-                "description": "Opening aerial shot of Dubai skyline at sunset",
-                "objects": ["buildings", "sky", "clouds", "city"],
-                "mood": "establishing",
-            },
-            {
-                "scene_id": 2,
-                "start_time": 45.2,
-                "end_time": 92.8,
-                "description": "Interview segment with media executive in studio",
-                "objects": ["person", "desk", "microphone", "studio lights"],
-                "mood": "informational",
-            },
-            {
-                "scene_id": 3,
-                "start_time": 92.8,
-                "end_time": 185.4,
-                "description": "B-roll footage of media production workflow",
-                "objects": ["cameras", "editing suite", "monitors", "crew"],
-                "mood": "dynamic",
-            },
-        ],
-        "summary": "A media archive segment covering Dubai's media landscape, featuring aerial cinematography, executive interviews, and production behind-the-scenes footage.",
-        "tags": ["dubai", "media", "production", "interview", "aerial", "skyline"],
-        "language": "en",
-    }
+    """Retrieve the structured metadata for a processed video."""
+    output_dir = os.path.join(settings.UPLOAD_DIR, video_id)
 
+    if not os.path.isdir(output_dir):
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+
+    result = {}
+
+    # Load each result file if it exists
+    for fname, key in [
+        ("ingestion.json", "ingestion"),
+        ("visual_analysis.json", "visual_analysis"),
+        ("metadata.json", "metadata"),
+        ("faces.json", "faces"),
+    ]:
+        fpath = os.path.join(output_dir, fname)
+        if os.path.exists(fpath):
+            try:
+                async with aiofiles.open(fpath, "r", encoding="utf-8") as f:
+                    content = await f.read()
+                result[key] = json.loads(content)
+            except Exception as e:
+                logger.warning("Could not load %s: %s", fpath, e)
+                result[key] = {"error": str(e)}
+
+    if not result:
+        raise HTTPException(status_code=404, detail="No metadata available yet")
+
+    result["video_id"] = video_id
+    return result
+
+
+# ── Transcript ──────────────────────────────────────────────────────
 
 @router.get("/video/{video_id}/transcript")
 async def get_video_transcript(video_id: str):
-    return {
-        "video_id": video_id,
-        "language": "en",
-        "segments": [
-            {
-                "start": 46.0,
-                "end": 52.3,
-                "text": "Welcome to Dubai Media Incorporated. Today we're exploring the future of digital archiving.",
-                "speaker": "Speaker 1",
-            },
-            {
-                "start": 53.1,
-                "end": 61.8,
-                "text": "Our partnership with Alibaba Cloud brings cutting-edge AI capabilities to our media workflows.",
-                "speaker": "Speaker 1",
-            },
-            {
-                "start": 62.5,
-                "end": 70.0,
-                "text": "From automated metadata extraction to intelligent content search, the possibilities are transformative.",
-                "speaker": "Speaker 1",
-            },
-        ],
-        "full_text": (
-            "Welcome to Dubai Media Incorporated. Today we're exploring the future of digital archiving. "
-            "Our partnership with Alibaba Cloud brings cutting-edge AI capabilities to our media workflows. "
-            "From automated metadata extraction to intelligent content search, the possibilities are transformative."
-        ),
-    }
+    """Retrieve the transcript for a processed video."""
+    transcript_path = os.path.join(settings.UPLOAD_DIR, video_id, "transcript.json")
 
+    if not os.path.exists(transcript_path):
+        raise HTTPException(status_code=404, detail=f"Transcript for {video_id} not found")
+
+    try:
+        async with aiofiles.open(transcript_path, "r", encoding="utf-8") as f:
+            content = await f.read()
+        data = json.loads(content)
+        data["video_id"] = video_id
+        return data
+    except Exception as e:
+        logger.error("Failed to read transcript for %s: %s", video_id, e)
+        raise HTTPException(status_code=500, detail="Failed to read transcript")
+
+
+# ── Search ──────────────────────────────────────────────────────────
 
 @router.post("/search")
 async def semantic_search(request: SearchRequest):
-    return {
-        "query": request.query,
-        "results": [
-            {
-                "video_id": "sample-001",
-                "score": 0.92,
-                "scene_id": 1,
-                "timestamp": 12.5,
-                "description": "Aerial shot of Dubai skyline matching query context",
-                "thumbnail_url": None,
-            },
-            {
-                "video_id": "sample-001",
-                "score": 0.85,
-                "scene_id": 3,
-                "timestamp": 105.0,
-                "description": "Media production workflow segment",
-                "thumbnail_url": None,
-            },
-        ],
-        "total": 2,
-    }
+    """Search across all indexed videos using natural language."""
+    try:
+        results = await _orchestrator.search_index.search(
+            query=request.query,
+            top_k=request.top_k,
+        )
+        return {
+            "query": request.query,
+            "results": results,
+            "total": len(results),
+        }
+    except Exception as e:
+        logger.error("Search failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Search failed: {e}")
 
+
+# ── WebSocket ───────────────────────────────────────────────────────
 
 @router.websocket("/ws/pipeline/{video_id}")
 async def pipeline_websocket(websocket: WebSocket, video_id: str):
+    """
+    WebSocket endpoint for streaming pipeline progress events.
+    Clients connect here to receive real-time updates while a video is processing.
+    """
     await websocket.accept()
+
+    # Register this connection
+    if video_id not in _active_ws:
+        _active_ws[video_id] = []
+    _active_ws[video_id].append(websocket)
+
     try:
-        stages = [
-            ("upload", "Upload received"),
-            ("frame_extraction", "Extracting key frames"),
-            ("scene_detection", "Detecting scenes"),
-            ("asr", "Transcribing audio"),
-            ("visual_analysis", "Analyzing visual content"),
-            ("metadata_generation", "Generating metadata"),
-            ("embedding", "Creating search embeddings"),
-        ]
-        for i, (stage, message) in enumerate(stages):
-            progress = int(((i + 1) / len(stages)) * 100)
+        # Send current status if available
+        status_path = os.path.join(settings.UPLOAD_DIR, video_id, "status.json")
+        if os.path.exists(status_path):
+            with open(status_path, "r", encoding="utf-8") as f:
+                current_status = json.load(f)
             await websocket.send_json({
                 "video_id": video_id,
-                "stage": stage,
-                "message": message,
-                "progress": progress,
-                "status": "completed",
+                "stage": "connected",
+                "message": f"Connected. Current status: {current_status.get('status', 'unknown')}",
+                "progress": current_status.get("progress", 0),
+                "status": current_status.get("status", "unknown"),
             })
-        await websocket.send_json({
-            "video_id": video_id,
-            "stage": "done",
-            "message": "Pipeline completed successfully",
-            "progress": 100,
-            "status": "completed",
-        })
+
+        # Keep connection alive until client disconnects or pipeline ends
+        while True:
+            # Wait for messages from client (e.g. pings or close)
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_json({"type": "pong"})
+
     except WebSocketDisconnect:
         pass
+    except Exception as e:
+        logger.debug("WebSocket error for %s: %s", video_id, e)
+    finally:
+        # Unregister
+        if video_id in _active_ws:
+            try:
+                _active_ws[video_id].remove(websocket)
+            except ValueError:
+                pass
+            if not _active_ws[video_id]:
+                del _active_ws[video_id]

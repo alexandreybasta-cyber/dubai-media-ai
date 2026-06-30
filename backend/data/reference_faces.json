@@ -1,0 +1,100 @@
+[
+  {
+    "id": "1",
+    "name_en": "Sheikh Mohammed bin Rashid Al Maktoum",
+    "name_ar": "الشيخ محمد بن راشد آل مكتوم",
+    "role": "Vice President and Prime Minister of UAE, Ruler of Dubai",
+    "description": "Distinguished man, often wearing white kandura and ghutrah with black agal, known for commanding presence, trimmed beard"
+  },
+  {
+    "id": "2",
+    "name_en": "Sheikh Mohamed bin Zayed Al Nahyan",
+    "name_ar": "الشيخ محمد بن زايد آل نهيان",
+    "role": "President of UAE, Ruler of Abu Dhabi",
+    "description": "Distinguished man in white kandura and ghutrah, often in formal settings, trimmed beard, warm smile"
+  },
+  {
+    "id": "3",
+    "name_en": "Sheikh Hamdan bin Mohammed Al Maktoum",
+    "name_ar": "الشيخ حمدان بن محمد آل مكتوم",
+    "role": "Crown Prince of Dubai, Chairman of Dubai Executive Council",
+    "description": "Young athletic man, often in white kandura or casual attire, known for sports and social media presence, light beard"
+  },
+  {
+    "id": "4",
+    "name_en": "Sheikh Mansour bin Zayed Al Nahyan",
+    "name_ar": "الشيخ منصور بن زايد آل نهيان",
+    "role": "Vice President of UAE, Deputy Prime Minister, Minister of Presidential Affairs",
+    "description": "Distinguished man in white kandura and ghutrah, formal demeanor, often seen in diplomatic settings"
+  },
+  {
+    "id": "5",
+    "name_en": "Sheikh Abdullah bin Zayed Al Nahyan",
+    "name_ar": "الشيخ عبدالله بن زايد آل نهيان",
+    "role": "Minister of Foreign Affairs",
+    "description": "Man in white kandura and ghutrah, glasses, often in diplomatic and press conference settings"
+  },
+  {
+    "id": "6",
+    "name_en": "Sheikh Saif bin Zayed Al Nahyan",
+    "name_ar": "الشيخ سيف بن زايد آل نهيان",
+    "role": "Deputy Prime Minister, Minister of Interior",
+    "description": "Man in white kandura and ghutrah, military bearing, often seen at security and government events"
+  },
+  {
+    "id": "7",
+    "name_en": "Noura Al Kaabi",
+    "name_ar": "نورة الكعبي",
+    "role": "Minister of State, President of Zayed University",
+    "description": "Woman in traditional abaya and sheila, professional appearance, often at cultural and media events"
+  },
+  {
+    "id": "8",
+    "name_en": "Omar Sultan Al Olama",
+    "name_ar": "عمر سلطان العلماء",
+    "role": "Minister of State for Artificial Intelligence",
+    "description": "Young man in white kandura and ghutrah, youthful appearance, often at technology events"
+  },
+  {
+    "id": "9",
+    "name_en": "Sarah Al Amiri",
+    "name_ar": "سارة الأميري",
+    "role": "Minister of State for Public Education and Advanced Technology",
+    "description": "Woman in professional attire or abaya, associated with space and technology programs"
+  },
+  {
+    "id": "10",
+    "name_en": "Hazza Al Mansouri",
+    "name_ar": "هزاع المنصوري",
+    "role": "First UAE Astronaut",
+    "description": "Young athletic man, sometimes in space suit or UAE national dress, confident demeanor"
+  },
+  {
+    "id": "11",
+    "name_en": "Sultan Al Neyadi",
+    "name_ar": "سلطان النيادي",
+    "role": "UAE Astronaut, longest Arab spaceflight",
+    "description": "Young man, sometimes in flight suit or kandura, warm expression, associated with space missions"
+  },
+  {
+    "id": "12",
+    "name_en": "Ahmad Khalil Al Mhairi",
+    "name_ar": "أحمد خليل المحيري",
+    "role": "Director General of Dubai Media Incorporated",
+    "description": "Professional man in kandura or business attire, media industry leader"
+  },
+  {
+    "id": "13",
+    "name_en": "Maryam bint Mohammed Al Maktoum",
+    "name_ar": "مريم بنت محمد آل مكتوم",
+    "role": "Chairperson of Dubai Media Council",
+    "description": "Woman in traditional Emirati dress, sheila, dignified presence at media and cultural events"
+  },
+  {
+    "id": "14",
+    "name_en": "Abdulrahman Al Rashed",
+    "name_ar": "عبدالرحمن الراشد",
+    "role": "Prominent Arab media figure and journalist",
+    "description": "Middle-aged man in business suit or kandura, seen in media and journalistic settings"
+  }
+]

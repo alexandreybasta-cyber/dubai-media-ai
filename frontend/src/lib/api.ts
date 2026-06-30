@@ -98,6 +98,36 @@ export function connectWebSocket(
   return ws;
 }
 
+// ─── RFP Types ──────────────────────────────────────────────────────────
+
+export interface RFPSection {
+  name: string;
+  content_en?: string;
+  content_ar?: string;
+}
+
+export interface RFPCreatePayload {
+  project_title: string;
+  project_overview: string;
+  scope_of_work?: string;
+  technical_requirements?: string[];
+  evaluation_criteria?: { name: string; weight: number; description: string }[];
+  timeline?: { start_date: string; end_date: string; milestones: { name: string; date: string }[] };
+  budget_range?: { min: number; max: number; currency: string } | null;
+  compliance_requirements?: string[];
+  industry?: string;
+  language?: string;
+  tone?: string;
+}
+
+export interface RFPCreateResponse {
+  rfp_id: string;
+  title: string;
+  status: string;
+  sections: RFPSection[];
+  language: string;
+}
+
 // ─── Convenience API Methods ────────────────────────────────────────────
 
 export const api = {
@@ -123,13 +153,8 @@ export const api = {
 
   // RFP endpoints
   rfp: {
-    create: (data: {
-      title: string;
-      project_description: string;
-      tone?: string;
-      language?: string;
-    }) =>
-      apiFetch("/api/rfp/create", {
+    create: (data: RFPCreatePayload) =>
+      apiFetch<RFPCreateResponse>("/api/rfp/create", {
         method: "POST",
         body: JSON.stringify(data),
       }),
@@ -138,14 +163,18 @@ export const api = {
       section_name: string;
       instructions?: string;
     }) =>
-      apiFetch("/api/rfp/regenerate-section", {
+      apiFetch<{ rfp_id: string; section_name: string; content: string; status: string }>("/api/rfp/regenerate-section", {
         method: "POST",
         body: JSON.stringify(data),
       }),
-    exportDocx: (rfpId: string) =>
-      apiFetch(`/api/rfp/${rfpId}/export/docx`),
-    exportPdf: (rfpId: string) =>
-      apiFetch(`/api/rfp/${rfpId}/export/pdf`),
+    exportDocx: (rfpId: string) => {
+      const url = `${API_BASE_URL}/api/rfp/${rfpId}/export/docx`;
+      window.open(url, "_blank");
+    },
+    exportPdf: (rfpId: string) => {
+      const url = `${API_BASE_URL}/api/rfp/${rfpId}/export/pdf`;
+      window.open(url, "_blank");
+    },
     evaluate: (data: { proposals: string[]; criteria?: string[] }) =>
       apiFetch("/api/rfp/evaluate", {
         method: "POST",

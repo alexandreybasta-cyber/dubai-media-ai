@@ -1,18 +1,60 @@
+import json
+import os
 import uuid
 from typing import Optional, List
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 
+from config import settings
+from services.rfp_creator import RFPCreator
+
 router = APIRouter(prefix="/api/rfp", tags=["rfp"])
+rfp_creator = RFPCreator()
+
+RFP_STORAGE_DIR = os.path.join(settings.UPLOAD_DIR, "rfps")
+os.makedirs(RFP_STORAGE_DIR, exist_ok=True)
+
+
+# ─── Models ──────────────────────────────────────────────────────────────────
+
+
+class EvaluationCriterion(BaseModel):
+    name: str
+    weight: int
+    description: str = ""
+
+
+class TimelineMilestone(BaseModel):
+    name: str
+    date: str
+
+
+class TimelineData(BaseModel):
+    start_date: str
+    end_date: str
+    milestones: List[TimelineMilestone] = []
+
+
+class BudgetRange(BaseModel):
+    min: float
+    max: float
+    currency: str = "AED"
 
 
 class RFPCreateRequest(BaseModel):
-    title: str
-    project_description: str
-    sections: Optional[List[str]] = None
-    tone: str = "professional"
+    project_title: str
+    project_overview: str
+    scope_of_work: str = ""
+    technical_requirements: List[str] = []
+    evaluation_criteria: List[EvaluationCriterion] = []
+    timeline: Optional[TimelineData] = None
+    budget_range: Optional[BudgetRange] = None
+    compliance_requirements: List[str] = []
+    industry: str = "Broadcasting"
     language: str = "en"
+    tone: str = "formal"
 
 
 class RegenerateSectionRequest(BaseModel):
@@ -27,96 +69,129 @@ class RFPEvaluateRequest(BaseModel):
     proposals: List[str] = []
 
 
+# ─── Helper ──────────────────────────────────────────────────────────────────
+
+
+def _save_rfp(rfp_id: str, data: dict):
+    path = os.path.join(RFP_STORAGE_DIR, f"{rfp_id}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _load_rfp(rfp_id: str) -> dict:
+    path = os.path.join(RFP_STORAGE_DIR, f"{rfp_id}.json")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail=f"RFP '{rfp_id}' not found")
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+# ─── CREATE Endpoints ────────────────────────────────────────────────────────
+
+
 @router.post("/create")
 async def create_rfp(request: RFPCreateRequest):
     rfp_id = str(uuid.uuid4())
+    input_data = {
+        "project_title": request.project_title,
+        "project_overview": request.project_overview,
+        "scope_of_work": request.scope_of_work,
+        "technical_requirements": request.technical_requirements,
+        "evaluation_criteria": [c.model_dump() for c in request.evaluation_criteria],
+        "timeline": request.timeline.model_dump() if request.timeline else {},
+        "budget_range": request.budget_range.model_dump() if request.budget_range else None,
+        "compliance_requirements": request.compliance_requirements,
+        "industry": request.industry,
+        "language": request.language,
+        "tone": request.tone,
+    }
+
+    try:
+        rfp_data = await rfp_creator.generate_rfp(input_data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    rfp_data["rfp_id"] = rfp_id
+    _save_rfp(rfp_id, rfp_data)
+
     return {
         "rfp_id": rfp_id,
-        "title": request.title,
+        "title": request.project_title,
         "status": "completed",
-        "sections": [
-            {
-                "name": "Executive Summary",
-                "content": (
-                    f"This Request for Proposal outlines the requirements for {request.title}. "
-                    "The selected vendor will deliver a comprehensive solution aligned with "
-                    "Dubai Media Incorporated's strategic vision for digital transformation."
-                ),
-            },
-            {
-                "name": "Project Overview",
-                "content": request.project_description,
-            },
-            {
-                "name": "Scope of Work",
-                "content": (
-                    "The vendor shall provide end-to-end implementation including: "
-                    "system design, development, testing, deployment, training, and "
-                    "12-month post-launch support."
-                ),
-            },
-            {
-                "name": "Technical Requirements",
-                "content": (
-                    "The proposed solution must support cloud-native architecture, "
-                    "high availability (99.9% uptime SLA), and integration with "
-                    "existing media asset management systems."
-                ),
-            },
-            {
-                "name": "Evaluation Criteria",
-                "content": (
-                    "Proposals will be evaluated on: Technical capability (30%), "
-                    "Cost effectiveness (25%), Timeline (20%), Team experience (15%), "
-                    "and Innovation (10%)."
-                ),
-            },
-            {
-                "name": "Submission Guidelines",
-                "content": (
-                    "All proposals must be submitted electronically by the deadline. "
-                    "Proposals should not exceed 50 pages excluding appendices."
-                ),
-            },
-        ],
+        "sections": rfp_data["sections"],
+        "language": rfp_data["language"],
     }
 
 
 @router.post("/regenerate-section")
 async def regenerate_section(request: RegenerateSectionRequest):
+    rfp_data = _load_rfp(request.rfp_id)
+
+    try:
+        new_content = await rfp_creator.regenerate_section(
+            rfp_data, request.section_name, request.instructions or ""
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    # Update stored RFP
+    bilingual = rfp_data.get("language") == "both"
+    for section in rfp_data.get("sections", []):
+        if section["name"] == request.section_name:
+            if bilingual and "---AR---" in new_content:
+                parts = new_content.split("---AR---")
+                section["content_en"] = parts[0].strip()
+                section["content_ar"] = parts[1].strip()
+            elif rfp_data.get("language") == "ar":
+                section["content_ar"] = new_content
+            else:
+                section["content_en"] = new_content
+            break
+
+    _save_rfp(request.rfp_id, rfp_data)
+
     return {
         "rfp_id": request.rfp_id,
         "section_name": request.section_name,
-        "content": (
-            f"[Regenerated] Updated content for '{request.section_name}' section "
-            f"based on instructions: {request.instructions or 'default regeneration'}. "
-            "This section has been refined to better align with project requirements "
-            "and industry best practices."
-        ),
+        "content": new_content,
         "status": "completed",
     }
 
 
 @router.get("/{rfp_id}/export/docx")
 async def export_rfp_docx(rfp_id: str):
-    return {
-        "rfp_id": rfp_id,
-        "format": "docx",
-        "download_url": f"/uploads/rfp/{rfp_id}/document.docx",
-        "status": "ready",
-        "message": "DOCX export generated successfully.",
-    }
+    rfp_data = _load_rfp(rfp_id)
+
+    try:
+        docx_bytes = rfp_creator.export_docx(rfp_data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DOCX generation failed: {str(e)}")
+
+    return Response(
+        content=docx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="RFP_{rfp_id[:8]}.docx"'},
+    )
 
 
 @router.get("/{rfp_id}/export/pdf")
 async def export_rfp_pdf(rfp_id: str):
-    return {
-        "rfp_id": rfp_id,
-        "format": "pdf",
-        "download_url": f"/uploads/rfp/{rfp_id}/document.pdf",
-        "status": "ready",
-        "message": "PDF export generated successfully.",
-    }
+    rfp_data = _load_rfp(rfp_id)
+
+    try:
+        pdf_bytes = rfp_creator.export_pdf(rfp_data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="RFP_{rfp_id[:8]}.pdf"'},
+    )
 
 
 @router.post("/evaluate")
