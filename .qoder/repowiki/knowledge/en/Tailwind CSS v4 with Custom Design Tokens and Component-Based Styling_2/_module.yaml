@@ -6,9 +6,9 @@ source_files:
     - frontend/src/app/globals.css
     - frontend/postcss.config.mjs
     - frontend/package.json
+    - frontend/src/app/layout.tsx
     - frontend/src/components/Button.tsx
     - frontend/src/components/Card.tsx
     - frontend/src/components/Sidebar.tsx
-    - frontend/src/app/layout.tsx
 depends_on: []
 related_to: []

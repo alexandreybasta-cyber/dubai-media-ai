@@ -81,7 +81,7 @@ async def upload_video(
     with open(status_path, "w", encoding="utf-8") as f:
         json.dump(initial_status, f, ensure_ascii=False, indent=2)
 
-    # Launch pipeline as a concurrent asyncio task (non-blocking)
+    # Launch pipeline as background asyncio task (non-blocking)
     asyncio.create_task(_run_pipeline(video_id, video_path))
 
     return {
@@ -93,28 +93,9 @@ async def upload_video(
 
 
 async def _run_pipeline(video_id: str, video_path: str):
-    """Background task that runs the full pipeline and notifies WebSocket clients."""
-    async def ws_callback(stage: str, message: str, progress: int, status: str):
-        """Forward progress to all connected WebSocket clients for this video."""
-        payload = {
-            "video_id": video_id,
-            "stage": stage,
-            "message": message,
-            "progress": progress,
-            "status": status,
-        }
-        clients = _active_ws.get(video_id, [])
-        disconnected = []
-        for ws in clients:
-            try:
-                await ws.send_json(payload)
-            except Exception:
-                disconnected.append(ws)
-        for ws in disconnected:
-            clients.remove(ws)
-
+    """Background task that runs the full pipeline."""
     try:
-        await _orchestrator.process_video(video_id, video_path, ws_callback=ws_callback)
+        await _orchestrator.process_video(video_id, video_path, ws_callback=None)
     except Exception as e:
         logger.error("Pipeline failed for %s: %s", video_id, e)
 

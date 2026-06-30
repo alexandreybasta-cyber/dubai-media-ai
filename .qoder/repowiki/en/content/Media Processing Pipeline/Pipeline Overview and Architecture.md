@@ -15,18 +15,18 @@
 - [useVideoProcessing.ts](file://frontend/src/lib/useVideoProcessing.ts)
 - [PipelineVisualizer.tsx](file://frontend/src/components/archive/PipelineVisualizer.tsx)
 - [APITransparencyPanel.tsx](file://frontend/src/components/archive/APITransparencyPanel.tsx)
+- [SearchDemo.tsx](file://frontend/src/components/archive/SearchDemo.tsx)
 - [reference_faces.json](file://backend/data/reference_faces.json)
 - [iptc_taxonomy.json](file://backend/data/iptc_taxonomy.json)
 </cite>
 
 ## Update Summary
 **Changes Made**
-- Enhanced pipeline orchestration with new OCR text detection extraction capabilities
-- Improved video duration handling with robust ffprobe integration
-- Enhanced search segment building with richer metadata including IPTC video metadata, titles, and thumbnails
-- Updated face recognition module to utilize OCR text detection for person identification
-- Improved metadata structuring with comprehensive IPTC taxonomy integration
-- Enhanced search index building with enriched segment metadata
+- Enhanced thumbnail path normalization logic in orchestrator with robust regex-based path conversion
+- Improved search segment building with consistent URL-accessible paths for all segment types
+- Added comprehensive URL accessibility handling for thumbnail paths across all search segments
+- Enhanced frontend thumbnail URL resolution with consistent path normalization
+- Improved search segment metadata consistency with normalized thumbnail references
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -60,7 +60,7 @@ E["Config<br/>config.py"]
 end
 subgraph "Frontend"
 F["React Hooks<br/>useVideoProcessing.ts"]
-G["UI Components<br/>PipelineVisualizer.tsx<br/>APITransparencyPanel.tsx"]
+G["UI Components<br/>PipelineVisualizer.tsx<br/>APITransparencyPanel.tsx<br/>SearchDemo.tsx"]
 end
 A --> B
 B --> C
@@ -73,11 +73,12 @@ G --> F
 **Diagram sources**
 - [main.py:1-44](file://backend/main.py#L1-L44)
 - [video.py:1-268](file://backend/routers/video.py#L1-L268)
-- [orchestrator.py:1-374](file://backend/pipeline/orchestrator.py#L1-L374)
+- [orchestrator.py:1-382](file://backend/pipeline/orchestrator.py#L1-L382)
 - [config.py:1-30](file://backend/config.py#L1-L30)
-- [useVideoProcessing.ts:1-438](file://frontend/src/lib/useVideoProcessing.ts#L1-L438)
+- [useVideoProcessing.ts:1-537](file://frontend/src/lib/useVideoProcessing.ts#L1-L537)
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
 - [APITransparencyPanel.tsx:1-170](file://frontend/src/components/archive/APITransparencyPanel.tsx#L1-L170)
+- [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
 
 **Section sources**
 - [main.py:1-44](file://backend/main.py#L1-L44)
@@ -85,10 +86,10 @@ G --> F
 - [config.py:1-30](file://backend/config.py#L1-L30)
 
 ## Core Components
-- PipelineOrchestrator: Central coordinator that executes stages sequentially with async support, tracks progress, persists status, and emits WebSocket updates. Now uses local file paths for all stage operations with cooperative multitasking.
+- PipelineOrchestrator: Central coordinator that executes stages sequentially with async support, tracks progress, persists status, and emits WebSocket updates. Now uses local file paths for all stage operations with cooperative multitasking and enhanced thumbnail path normalization.
 - Stage modules: Independent processing units for ingestion, visual analysis, audio transcription, face recognition, metadata structuring, and search index building, all enhanced with async implementations.
 - Routers: REST endpoints for upload, status, metadata, transcript, search, and WebSocket progress streaming with async WebSocket handling.
-- Frontend hooks and components: Real-time visualization of pipeline stages and results with async WebSocket subscriptions.
+- Frontend hooks and components: Real-time visualization of pipeline stages and results with async WebSocket subscriptions and enhanced thumbnail URL resolution.
 
 Key orchestration responsibilities:
 - Initialize and persist status.json with async operations
@@ -98,9 +99,10 @@ Key orchestration responsibilities:
 - Persist combined results.json with async file operations
 - Handle exceptions per stage and record errors with async error handling
 - Manage local file path operations for all external API calls with non-blocking execution
+- **Enhanced**: Normalize thumbnail paths to URL-accessible format for consistent frontend rendering
 
 **Section sources**
-- [orchestrator.py:34-374](file://backend/pipeline/orchestrator.py#L34-L374)
+- [orchestrator.py:34-382](file://backend/pipeline/orchestrator.py#L34-L382)
 - [video.py:25-120](file://backend/routers/video.py#L25-L120)
 
 ## Architecture Overview
@@ -241,7 +243,7 @@ The pipeline implements a comprehensive non-blocking execution architecture that
 ## Detailed Component Analysis
 
 ### PipelineOrchestrator
-The orchestrator defines the canonical stage order and manages execution, progress, and persistence with enhanced async capabilities. The orchestrator now processes local file paths directly instead of URL-based communication, with full async support.
+The orchestrator defines the canonical stage order and manages execution, progress, and persistence with enhanced async capabilities. The orchestrator now processes local file paths directly instead of URL-based communication, with full async support and enhanced thumbnail path normalization.
 
 - Stage names and order:
   1) ingestion
@@ -280,12 +282,18 @@ The orchestrator defines the canonical stage order and manages execution, progre
   - Face recognition loads reference databases from local JSON files
   - Metadata structuring loads taxonomy from local JSON files
 
+- **Enhanced**: Thumbnail path normalization for URL accessibility
+  - Converts filesystem paths to URL-accessible format
+  - Handles various path formats consistently
+  - Ensures all search segments have valid thumbnail references
+
 ```mermaid
 flowchart TD
 Start(["process_video(video_id, video_path, ws_callback)"]) --> InitStatus["Initialize status.json<br/>pending stages, timestamps"]
 InitStatus --> CreateOutputDir["Create output directory<br/>for video_id"]
 CreateOutputDir --> LoopStages{"For each stage"}
-LoopStages --> RunStage["_run_stage(stage_name, stage_index,<br/>total_stages, status, output_dir,<br/>results, ws_callback, coro_fn, result_key)"]
+LoopStages --> YieldControl["await asyncio.sleep(0)<br/>Cooperative yielding"]
+YieldControl --> RunStage["_run_stage(stage_name, stage_index,<br/>total_stages, status, output_dir,<br/>results, ws_callback, coro_fn, result_key)"]
 RunStage --> SaveStage["Save stage result file (optional)"]
 SaveStage --> UpdateStatus["Update stage status + progress"]
 UpdateStatus --> LoopStages
@@ -329,7 +337,7 @@ Finalize --> Done(["Return"])
 - Polls task status with exponential backoff
 - Fetches transcript JSON and normalizes to segments with speaker info and word timings
 - Implements chunked processing with async file operations
-- Uses run_in_executor for ffmpeg operations while maintaining async flow
+- Uses run_inexecutor for ffmpeg operations while maintaining async flow
 
 **Section sources**
 - [audio_analysis.py:33-51](file://backend/pipeline/audio_analysis.py#L33-L51)
@@ -365,7 +373,7 @@ Finalize --> Done(["Return"])
 ### Stage 6: Search Index
 - Builds FAISS vector index using DashScope embeddings
 - Converts scenes + transcript + identified persons into searchable segments
-- **Enhanced**: Now builds richer search segments with IPTC metadata, titles, and thumbnails
+- **Enhanced**: Now builds richer search segments with IPTC metadata, titles, and normalized thumbnail paths
 - Supports semantic search across indexed videos
 - Implements async embedding generation with batch processing
 - Uses numpy fallback when FAISS is unavailable
@@ -375,11 +383,22 @@ Finalize --> Done(["Return"])
 - [search_index.py:88-154](file://backend/pipeline/search_index.py#L88-L154)
 - [search_index.py:156-245](file://backend/pipeline/search_index.py#L156-L245)
 
-### Enhanced Search Segment Building
-The search segment building process has been significantly enhanced to include richer metadata:
+### Enhanced Thumbnail Path Normalization and Search Segment Building
+The search segment building process has been significantly enhanced with robust thumbnail path normalization:
+
+#### Thumbnail Path Normalization Logic
+The orchestrator now includes sophisticated path normalization to ensure consistent URL accessibility:
+
+- **Regex-Based Conversion**: Uses `re.sub(r'^\.\/?' , '/', raw_thumb)` to convert filesystem paths
+- **Format Handling**: Handles various input formats: `"./uploads/id/thumb.jpg"`, `"uploads/id/thumb.jpg"`, `"/uploads/id/thumb.jpg"`
+- **Consistent Output**: Ensures all normalized paths start with "/" for URL accessibility
+- **Fallback Handling**: Gracefully handles empty or invalid thumbnail paths
+
+#### Enhanced Search Segment Building
+The search segment building process now includes:
 
 - **IPTC Video Metadata**: Extracts headline and videoContent information for segment titles
-- **Thumbnail Integration**: Adds thumbnail paths to all segment types for better UI experience
+- **Normalized Thumbnail Integration**: Adds URL-accessible thumbnail paths to all segment types
 - **Person Identification**: Creates specialized person segments with role and timestamp information
 - **Duration Handling**: Utilizes video duration for accurate timestamp calculations
 - **Rich Metadata**: Includes scene types, person names, and thumbnail references in segment metadata
@@ -387,18 +406,19 @@ The search segment building process has been significantly enhanced to include r
 ```mermaid
 flowchart TD
 Start(["Build Searchable Segments"]) --> ExtractMeta["Extract Metadata<br/>- IPTC headline<br/>- Thumbnail path<br/>- Person names"]
-ExtractMeta --> ProcessScenes["Process Visual Scenes<br/>- Scene descriptions<br/>- Scene types<br/>- Timestamps"]
+ExtractMeta --> NormalizeThumb["Normalize Thumbnail Path<br/>- Regex conversion<br/>- URL accessibility<br/>- Format handling"]
+NormalizeThumb --> ProcessScenes["Process Visual Scenes<br/>- Scene descriptions<br/>- Scene types<br/>- Timestamps"]
 ProcessScenes --> ProcessTranscript["Process Transcript<br/>- Text segments<br/>- Word timings<br/>- Speaker info"]
 ProcessTranscript --> ProcessFaces["Process Identified Faces<br/>- Person names<br/>- Roles<br/>- Appearances"]
-ProcessFaces --> CombineSegments["Combine All Segments<br/>- Rich metadata<br/>- Thumbnails<br/>- Titles"]
+ProcessFaces --> CombineSegments["Combine All Segments<br/>- Rich metadata<br/>- Normalized thumbnails<br/>- Titles"]
 CombineSegments --> ReturnSegments["Return Enhanced Segments"]
 ```
 
 **Diagram sources**
-- [orchestrator.py:307-359](file://backend/pipeline/orchestrator.py#L307-L359)
+- [orchestrator.py:307-367](file://backend/pipeline/orchestrator.py#L307-L367)
 
 **Section sources**
-- [orchestrator.py:307-359](file://backend/pipeline/orchestrator.py#L307-L359)
+- [orchestrator.py:307-367](file://backend/pipeline/orchestrator.py#L307-L367)
 
 ### WebSocket Progress Streaming
 - Router registers WebSocket connections per video_id
@@ -442,6 +462,18 @@ FE->>API : "Optionally poll /api/video/{video_id}/status"
 - [orchestrator.py:63-71](file://backend/pipeline/orchestrator.py#L63-L71)
 - [video.py:124-138](file://backend/routers/video.py#L124-L138)
 
+### Enhanced Frontend Thumbnail URL Resolution
+The frontend includes robust thumbnail URL resolution that complements the backend normalization:
+
+- **Format Detection**: Handles various input formats consistently
+- **URL Construction**: Converts normalized paths to full URLs with API base
+- **Fallback Handling**: Gracefully handles missing or invalid thumbnail paths
+- **Browser Compatibility**: Ensures thumbnail URLs are accessible to browsers
+
+**Section sources**
+- [SearchDemo.tsx:9-21](file://frontend/src/components/archive/SearchDemo.tsx#L9-L21)
+- [useVideoProcessing.ts:77-84](file://frontend/src/lib/useVideoProcessing.ts#L77-L84)
+
 ## Dependency Analysis
 The orchestrator depends on stage modules and the SearchIndex. The router composes the orchestrator and exposes REST/WebSocket endpoints. The frontend consumes these endpoints and renders progress and results. All stage modules now operate on local file paths instead of URLs with full async support.
 
@@ -456,6 +488,7 @@ ORCH --> ST6["search_index.py"]
 ROUTER["Routers<br/>video.py"] --> ORCH
 ROUTER --> CFG["Config<br/>config.py"]
 FRONT["Frontend<br/>useVideoProcessing.ts"] --> ROUTER
+FRONT --> SEARCH["SearchDemo.tsx"]
 ```
 
 **Diagram sources**
@@ -463,6 +496,7 @@ FRONT["Frontend<br/>useVideoProcessing.ts"] --> ROUTER
 - [video.py:17-19](file://backend/routers/video.py#L17-L19)
 - [config.py:4-20](file://backend/config.py#L4-L20)
 - [useVideoProcessing.ts:1-10](file://frontend/src/lib/useVideoProcessing.ts#L1-L10)
+- [SearchDemo.tsx:1-10](file://frontend/src/components/archive/SearchDemo.tsx#L1-L10)
 
 **Section sources**
 - [orchestrator.py:14-20](file://backend/pipeline/orchestrator.py#L14-L20)
@@ -479,6 +513,10 @@ FRONT["Frontend<br/>useVideoProcessing.ts"] --> ROUTER
   - Async HTTP clients improve connection reuse and reduce latency
   - Thread pool integration allows CPU-intensive operations without blocking
   - Cooperative yielding prevents event loop starvation
+- **Enhanced Thumbnail Path Processing**:
+  - Regex-based normalization adds minimal computational overhead
+  - Consistent path format reduces frontend URL resolution complexity
+  - Improved thumbnail loading performance across all segment types
 - External API dependencies:
   - Visual analysis, ASR, embedding calls are rate-limited and may require retries
   - Async HTTP clients handle timeouts more efficiently
@@ -525,6 +563,11 @@ Common issues and remedies:
   - Visual analysis may fail to detect OCR text in certain video conditions
   - Face recognition can fallback to OCR-based identification when reference database is unavailable
   - Video duration probing failures can impact OCR timestamp accuracy
+- **Thumbnail Path Issues**:
+  - Thumbnail normalization failures can cause missing thumbnails in search results
+  - Verify that thumbnail paths are accessible and properly formatted
+  - Check frontend URL resolution for malformed thumbnail references
+  - Ensure consistent path formats across all segment types
 
 **Section sources**
 - [visual_analysis.py:61-63](file://backend/pipeline/visual_analysis.py#L61-L63)
@@ -535,15 +578,17 @@ Common issues and remedies:
 - [video.py:116-120](file://backend/routers/video.py#L116-L120)
 
 ## Conclusion
-The PipelineOrchestrator provides a robust, transparent, and resilient framework for sequential video processing with enhanced concurrency capabilities. Its explicit stage ordering, comprehensive error handling, and real-time progress streaming enable reliable operation and excellent observability. The switch to local file path processing eliminates URL-based communication complexity and reduces potential failure points. The enhanced async implementation with cooperative multitasking and non-blocking execution architecture significantly improves throughput while maintaining the predictable resource usage characteristics of sequential processing. 
+The PipelineOrchestrator provides a robust, transparent, and resilient framework for sequential video processing with enhanced concurrency capabilities. Its explicit stage ordering, comprehensive error handling, and real-time progress streaming enable reliable operation and excellent observability. The switch to local file path processing eliminates URL-based communication complexity and reduces potential failure points. The enhanced async implementation with cooperative multitasking and non-blocking execution architecture significantly improves throughput while maintaining the predictable resource usage characteristics of sequential processing.
 
 **Recent Enhancements:**
 - **OCR Text Detection**: Enhanced face recognition with OCR-based person identification fallback
 - **Improved Video Duration Handling**: Robust ffprobe integration for accurate duration processing
 - **Richer Metadata**: Comprehensive IPTC video metadata integration with titles and thumbnails
 - **Enhanced Search Segments**: Improved search index building with enriched segment metadata
+- **Robust Thumbnail Path Normalization**: Enhanced thumbnail path conversion ensuring URL accessibility across all segment types
+- **Consistent Frontend Integration**: Complementary frontend thumbnail URL resolution for seamless user experience
 
-While sequential processing trades throughput for simplicity and predictability, it remains practical for most media archival scenarios and can be scaled by increasing server capacity or splitting large inputs. The async enhancements make the system more responsive and efficient under various load conditions.
+While sequential processing trades throughput for simplicity and predictability, it remains practical for most media archival scenarios and can be scaled by increasing server capacity or splitting large inputs. The async enhancements make the system more responsive and efficient under various load conditions. The new thumbnail path normalization ensures consistent thumbnail display across all search results, improving the overall user experience.
 
 ## Appendices
 
@@ -573,11 +618,13 @@ While sequential processing trades throughput for simplicity and predictability,
 ### Frontend Visualization
 - PipelineVisualizer displays stage icons, statuses, elapsed times, and progress bars
 - APITransparencyPanel aggregates API call metrics for transparency
+- **Enhanced**: SearchDemo now includes robust thumbnail URL resolution with consistent path handling
 
 **Section sources**
 - [PipelineVisualizer.tsx:88-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L88-L181)
 - [APITransparencyPanel.tsx:20-170](file://frontend/src/components/archive/APITransparencyPanel.tsx#L20-L170)
 - [useVideoProcessing.ts:106-118](file://frontend/src/lib/useVideoProcessing.ts#L106-L118)
+- [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
 
 ### Enhanced Concurrency Examples
 - **Async HTTP Client Usage**: All external API calls use httpx.AsyncClient with proper timeout handling
@@ -596,11 +643,14 @@ While sequential processing trades throughput for simplicity and predictability,
 ### Enhanced OCR and Metadata Processing
 - **OCR Text Detection**: Visual analysis now extracts on-screen text for person identification
 - **IPTC Metadata Integration**: Rich video metadata with topic codes and classifications
-- **Thumbnail Enhancement**: All search segments now include thumbnail references
+- **Thumbnail Enhancement**: All search segments now include normalized thumbnail references
 - **Person Identification Fallback**: OCR-based identification when reference database is unavailable
+- **Path Normalization**: Consistent thumbnail path handling across all segment types
 
 **Section sources**
 - [visual_analysis.py:41-43](file://backend/pipeline/visual_analysis.py#L41-L43)
 - [face_recognition.py:191-210](file://backend/pipeline/face_recognition.py#L191-L210)
 - [metadata_structuring.py:47-64](file://backend/pipeline/metadata_structuring.py#L47-L64)
 - [orchestrator.py:313-318](file://backend/pipeline/orchestrator.py#L313-L318)
+- [orchestrator.py:319-326](file://backend/pipeline/orchestrator.py#L319-L326)
+- [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-L21)

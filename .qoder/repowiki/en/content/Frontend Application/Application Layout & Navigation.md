@@ -11,7 +11,9 @@
 - [rfp-evaluator/page.tsx](file://frontend/src/app/rfp-evaluator/page.tsx)
 - [SearchDemo.tsx](file://frontend/src/components/archive/SearchDemo.tsx)
 - [TranscriptPanel.tsx](file://frontend/src/components/archive/TranscriptPanel.tsx)
+- [VideoTimeline.tsx](file://frontend/src/components/archive/VideoTimeline.tsx)
 - [useVideoProcessing.ts](file://frontend/src/lib/useVideoProcessing.ts)
+- [api.ts](file://frontend/src/lib/api.ts)
 - [package.json](file://frontend/package.json)
 - [postcss.config.mjs](file://frontend/postcss.config.mjs)
 - [next.config.ts](file://frontend/next.config.ts)
@@ -20,11 +22,12 @@
 
 ## Update Summary
 **Changes Made**
-- Enhanced timestamp handling with improved parseTimestamp() function in archive page
-- Improved formatTimestamp() function in SearchDemo component with better fallback handling
-- Enhanced person name display with better fallback handling for unknown persons
-- Added robust timestamp parsing for various formats (seconds, MM:SS, HH:MM:SS)
-- Improved person identification with automatic naming for unnamed individuals
+- Enhanced transcript processing logic with improved speaker identification and timestamp handling
+- Added robust timestamp parsing supporting multiple formats (seconds, MM:SS, HH:MM:SS)
+- Implemented intelligent speaker name mapping with automatic numbering
+- Enhanced person identification system with fallback handling for unknown individuals
+- Improved timestamp formatting functions across multiple components
+- Added comprehensive error handling and validation for video processing data
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -32,17 +35,19 @@
 3. [Core Components](#core-components)
 4. [Architecture Overview](#architecture-overview)
 5. [Detailed Component Analysis](#detailed-component-analysis)
-6. [Enhanced Timestamp Handling System](#enhanced-timestamp-handling-system)
-7. [Improved Person Name Display](#improved-person-name-display)
-8. [Dependency Analysis](#dependency-analysis)
-9. [Performance Considerations](#performance-considerations)
-10. [Troubleshooting Guide](#troubleshooting-guide)
-11. [Conclusion](#conclusion)
+6. [Enhanced Transcript Processing System](#enhanced-transcript-processing-system)
+7. [Advanced Timestamp Handling](#advanced-timestamp-handling)
+8. [Intelligent Speaker Identification](#intelligent-speaker-identification)
+9. [Enhanced Person Name Display](#enhanced-person-name-display)
+10. [Dependency Analysis](#dependency-analysis)
+11. [Performance Considerations](#performance-considerations)
+12. [Troubleshooting Guide](#troubleshooting-guide)
+13. [Conclusion](#conclusion)
 
 ## Introduction
 This document explains the Next.js application layout and navigation system used in the frontend. It covers the RootLayout component structure, font configuration with Geist and Geist Mono, responsive design implementation, the sidebar navigation component (menu items, active state management, and mobile responsiveness), the main content area layout, padding, and background styling. It also provides examples of layout customization, theme integration, navigation patterns, and how layout components relate to page rendering, including SSR/SSG considerations and performance optimizations.
 
-**Updated** Enhanced with improved timestamp handling capabilities and better person name display with fallback mechanisms for unknown individuals.
+**Updated** Enhanced with advanced transcript processing capabilities featuring intelligent speaker identification, robust timestamp handling, and improved person name display systems.
 
 ## Project Structure
 The layout system centers around a single RootLayout that wraps all pages and a fixed sidebar navigation. Pages render inside the main content area with consistent padding and background styling. Fonts are configured via Next.js font optimization, and Tailwind CSS provides responsive utilities and theme tokens.
@@ -231,12 +236,114 @@ Layout relationship:
 - [rfp-creator/page.tsx:96-155](file://frontend/src/app/rfp-creator/page.tsx#L96-L155)
 - [rfp-evaluator/page.tsx:133-174](file://frontend/src/app/rfp-evaluator/page.tsx#L133-L174)
 
-## Enhanced Timestamp Handling System
+## Enhanced Transcript Processing System
 
-**Updated** The application now features a comprehensive timestamp handling system with robust parsing and formatting capabilities.
+**Updated** The application now features a comprehensive transcript processing system with intelligent speaker identification and robust timestamp handling.
 
-### Timestamp Parsing in Archive Page
-The `parseTimestamp()` function in the Archive page provides flexible timestamp conversion:
+### Transcript Data Structure Enhancement
+The TranscriptSegment interface now supports enhanced metadata:
+
+```typescript
+export interface TranscriptSegment {
+  speaker: string;
+  start: number;
+  end: number;
+  text: string;
+  language?: string;
+}
+```
+
+Key improvements:
+- **Speaker identification**: Enhanced mapping from raw speaker IDs to friendly labels
+- **Timestamp precision**: Support for both start_time and end_time fields
+- **Language metadata**: Optional language field for multilingual transcripts
+- **Text content**: Full transcript text with proper direction support
+
+### Intelligent Speaker Identification System
+The transcript processing logic implements sophisticated speaker mapping:
+
+```typescript
+let speakerCounter = 0;
+const speakerMap: Record<string, string> = {};
+const transcript: TranscriptSegment[] = rawSegments.map((seg) => {
+  // Map speaker_id to friendly label
+  const rawSpeaker = (seg.speaker_id as string) || (seg.speaker as string) || "unknown";
+  let speaker: string;
+  if (rawSpeaker === "unknown" || rawSpeaker === "UNKNOWN" || !rawSpeaker) {
+    if (!speakerMap["unknown"]) {
+      speakerCounter++;
+      speakerMap["unknown"] = `Speaker ${speakerCounter}`;
+    }
+    speaker = speakerMap["unknown"];
+  } else {
+    if (!speakerMap[rawSpeaker]) {
+      speakerCounter++;
+      speakerMap[rawSpeaker] = `Speaker ${speakerCounter}`;
+    }
+    speaker = speakerMap[rawSpeaker];
+  }
+
+  return {
+    speaker,
+    start: (seg.start_time as number) ?? (seg.start as number) ?? 0,
+    end: (seg.end_time as number) ?? (seg.end as number) ?? 0,
+    text: (seg.text as string) || "",
+    language: ((seg.language as string) !== "unknown" ? (seg.language as string) : undefined),
+  };
+});
+```
+
+Speaker mapping logic:
+1. **Raw speaker extraction**: Tries `speaker_id` then `speaker` fields
+2. **Unknown handling**: Automatically assigns `Speaker 1`, `Speaker 2`, etc.
+3. **Duplicate detection**: Maintains consistent mapping across segments
+4. **Timestamp handling**: Supports both `start_time`/`end_time` and `start`/`end` formats
+5. **Language filtering**: Excludes "unknown" language values
+
+### Enhanced Transcript Panel Implementation
+The TranscriptPanel component provides rich interactive transcript display:
+
+```typescript
+function formatTimestamp(value: unknown): string {
+  // Handle string timestamps (e.g., "00:15", "1:30")
+  if (typeof value === "string") {
+    if (/^\d{1,2}(:\d{2}){1,2}$/.test(value)) return value;
+    const parsed = parseFloat(value);
+    if (!isNaN(parsed)) {
+      const m = Math.floor(parsed / 60);
+      const s = Math.floor(parsed % 60);
+      return `${m}:${s.toString().padStart(2, "0")}`;
+    }
+    return "0:00";
+  }
+  if (typeof value === "number" && !isNaN(value)) {
+    const m = Math.floor(value / 60);
+    const s = Math.floor(value % 60);
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  }
+  return "0:00";
+}
+```
+
+Interactive features:
+- **Auto-scrolling**: Smooth scrolling to active transcript segments
+- **Speaker badges**: Color-coded speaker identification
+- **Timestamp navigation**: Clickable timestamps for video seeking
+- **Language indicators**: Visual cues for multilingual content
+- **Active segment highlighting**: Clear indication of current playback position
+
+**Section sources**
+- [useVideoProcessing.ts:22-28](file://frontend/src/lib/useVideoProcessing.ts#L22-L28)
+- [useVideoProcessing.ts:359-388](file://frontend/src/lib/useVideoProcessing.ts#L359-L388)
+- [TranscriptPanel.tsx:12-28](file://frontend/src/components/archive/TranscriptPanel.tsx#L12-L28)
+- [TranscriptPanel.tsx:30-48](file://frontend/src/components/archive/TranscriptPanel.tsx#L30-L48)
+
+## Advanced Timestamp Handling
+
+**Updated** Enhanced timestamp processing system with comprehensive format support and validation.
+
+### Multi-Format Timestamp Parsing
+The Archive page implements robust timestamp parsing:
 
 ```typescript
 function parseTimestamp(value: unknown): number {
@@ -264,8 +371,8 @@ Supported formats:
 - **Numeric string**: String representation of seconds
 - **Fallback**: Returns 0 for invalid inputs
 
-### Timestamp Formatting in Search Demo
-The `formatTimestamp()` function provides consistent timestamp display:
+### Consistent Timestamp Formatting
+Multiple components use standardized timestamp formatting:
 
 ```typescript
 function formatTimestamp(value: unknown): string {
@@ -297,13 +404,13 @@ function formatTimestamp(value: unknown): string {
 Display formats:
 - **Direct string format**: Preserves "HH:MM:SS" or "MM:SS" formats
 - **Numeric conversion**: Converts seconds to "M:SS" format with zero-padding
-- **Fallback**: Always displays "0:00" for invalid inputs
+- **Validation**: Robust input validation with fallback handling
 
-### Transcript Panel Timestamp Handling
-The TranscriptPanel component uses a simplified timestamp formatter:
+### Video Timeline Timestamp Integration
+The VideoTimeline component uses consistent formatting:
 
 ```typescript
-function formatTimestamp(seconds: number): string {
+function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
@@ -311,21 +418,91 @@ function formatTimestamp(seconds: number): string {
 ```
 
 Integration points:
-- **Video timeline seeking**: Uses parseTimestamp() for precise video navigation
-- **Search result display**: Uses formatTimestamp() for readable timestamp presentation
-- **Transcript segment navigation**: Uses formatTimestamp() for timestamp display
+- **Video player**: Current time and duration display
+- **Scene markers**: Hover tooltips and click handlers
+- **Face appearances**: Timeline visualization with precise timing
+- **Object markers**: Timestamp-based positioning
 
 **Section sources**
-- [archive/page.tsx:12-28](file://frontend/src/app/archive/page.tsx#L12-L28)
-- [SearchDemo.tsx:15-38](file://frontend/src/components/archive/SearchDemo.tsx#L15-L38)
-- [TranscriptPanel.tsx:30-34](file://frontend/src/components/archive/TranscriptPanel.tsx#L30-L34)
+- [archive/page.tsx:14-30](file://frontend/src/app/archive/page.tsx#L14-L30)
+- [SearchDemo.tsx:31-54](file://frontend/src/components/archive/SearchDemo.tsx#L31-L54)
+- [TranscriptPanel.tsx:30-48](file://frontend/src/components/archive/TranscriptPanel.tsx#L30-L48)
+- [VideoTimeline.tsx:20-24](file://frontend/src/components/archive/VideoTimeline.tsx#L20-L24)
 
-## Improved Person Name Display
+## Intelligent Speaker Identification
 
-**Updated** Enhanced person identification system with intelligent fallback handling for unknown individuals.
+**Updated** Advanced speaker identification system with automatic naming and consistent mapping.
+
+### Speaker Mapping Logic
+The transcript processing system implements intelligent speaker identification:
+
+```typescript
+let speakerCounter = 0;
+const speakerMap: Record<string, string> = {};
+const transcript: TranscriptSegment[] = rawSegments.map((seg) => {
+  // Map speaker_id to friendly label
+  const rawSpeaker = (seg.speaker_id as string) || (seg.speaker as string) || "unknown";
+  let speaker: string;
+  if (rawSpeaker === "unknown" || rawSpeaker === "UNKNOWN" || !rawSpeaker) {
+    if (!speakerMap["unknown"]) {
+      speakerCounter++;
+      speakerMap["unknown"] = `Speaker ${speakerCounter}`;
+    }
+    speaker = speakerMap["unknown"];
+  } else {
+    if (!speakerMap[rawSpeaker]) {
+      speakerCounter++;
+      speakerMap[rawSpeaker] = `Speaker ${speakerCounter}`;
+    }
+    speaker = speakerMap[rawSpeaker];
+  }
+
+  return {
+    speaker,
+    start: (seg.start_time as number) ?? (seg.start as number) ?? 0,
+    end: (seg.end_time as number) ?? (seg.end as number) ?? 0,
+    text: (seg.text as string) || "",
+    language: ((seg.language as string) !== "unknown" ? (seg.language as string) : undefined),
+  };
+});
+```
+
+Identification strategy:
+1. **Priority resolution**: `speaker_id` → `speaker` → "unknown"
+2. **Automatic naming**: Sequential numbering for unknown speakers
+3. **Consistent mapping**: Same speaker ID always maps to same friendly name
+4. **Duplicate prevention**: Prevents multiple names for single speaker
+5. **Backward compatibility**: Handles both raw and processed speaker data
+
+### Speaker Visualization System
+The TranscriptPanel implements visual speaker identification:
+
+```typescript
+const SPEAKER_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  "Speaker 1": { bg: "bg-blue-100", text: "text-blue-700", border: "border-blue-200" },
+  "Speaker 2": { bg: "bg-green-100", text: "text-green-700", border: "border-green-200" },
+  "Speaker 3": { bg: "bg-purple-100", text: "text-purple-700", border: "border-purple-200" },
+  "Speaker 4": { bg: "bg-amber-100", text: "text-amber-700", border: "border-amber-200" },
+  "Speaker 5": { bg: "bg-pink-100", text: "text-pink-700", border: "border-pink-200" },
+};
+```
+
+Visual features:
+- **Color coding**: Distinct colors for up to 5 speakers
+- **Badge system**: Clear speaker identification badges
+- **Active highlighting**: Current speaker emphasis
+- **Consistent styling**: Tailwind utility classes for maintainability
+
+**Section sources**
+- [useVideoProcessing.ts:361-388](file://frontend/src/lib/useVideoProcessing.ts#L361-L388)
+- [TranscriptPanel.tsx:12-28](file://frontend/src/components/archive/TranscriptPanel.tsx#L12-L28)
+
+## Enhanced Person Name Display
+
+**Updated** Sophisticated person identification system with automatic naming and appearance synthesis.
 
 ### Automatic Person Naming System
-The useVideoProcessing hook implements sophisticated person name resolution:
+The useVideoProcessing hook implements advanced person identification:
 
 ```typescript
 let unknownCount = 0;
@@ -369,24 +546,6 @@ Appearance synthesis:
 - **Timestamp synthesis**: Converts "MM:SS" timestamps to appearance ranges
 - **Missing data**: Creates empty appearance arrays for unknown persons
 
-### Search Demo Person Display
-The SearchDemo component renders person information with fallback handling:
-
-```typescript
-{(result as unknown as { persons?: string[] }).persons &&
-  (result as unknown as { persons: string[] }).persons.length > 0 && (
-    <p className="text-xs text-primary-600 mt-1">
-      {(result as unknown as { persons: string[] }).persons.join(", ")}
-    </p>
-  )}
-```
-
-Features:
-- **Conditional rendering**: Only displays when persons array exists and is non-empty
-- **Comma-separated list**: Formats multiple persons with proper spacing
-- **Color styling**: Uses primary-600 text color for visual prominence
-- **Responsive design**: Maintains proper spacing and readability
-
 ### Face Recognition Integration
 The system integrates with face recognition pipeline:
 
@@ -411,10 +570,28 @@ Color assignment:
 - **Consistent mapping**: Maintains color consistency across sessions
 - **Visual differentiation**: Enhances person identification in UI components
 
+### Search Demo Person Display
+The SearchDemo component renders person information with enhanced fallback handling:
+
+```typescript
+{(result as unknown as { persons?: string[] }).persons &&
+  (result as unknown as { persons: string[] }).persons.length > 0 && (
+    <p className="text-xs text-primary-600 mt-1">
+      {(result as unknown as { persons: string[] }).persons.join(", ")}
+    </p>
+  )}
+```
+
+Features:
+- **Conditional rendering**: Only displays when persons array exists and is non-empty
+- **Comma-separated list**: Formats multiple persons with proper spacing
+- **Color styling**: Uses primary-600 text color for visual prominence
+- **Responsive design**: Maintains proper spacing and readability
+
 **Section sources**
 - [useVideoProcessing.ts:303-331](file://frontend/src/lib/useVideoProcessing.ts#L303-L331)
-- [SearchDemo.tsx:174-180](file://frontend/src/components/archive/SearchDemo.tsx#L174-L180)
 - [useVideoProcessing.ts:115-118](file://frontend/src/lib/useVideoProcessing.ts#L115-L118)
+- [SearchDemo.tsx:191-196](file://frontend/src/components/archive/SearchDemo.tsx#L191-L196)
 
 ## Dependency Analysis
 External dependencies and build configuration:
@@ -456,8 +633,10 @@ tailwind --> globals["Globals & Theme<br/>(globals.css)"]
 - Tailwind utilities: Prefer utility classes for layout to avoid custom CSS bloat and leverage PurageCSS in production builds.
 - Conditional rendering: Pages use conditional rendering to avoid unnecessary DOM nodes, especially in loading states.
 - SSR/SSG: Pages are server-rendered by default in Next.js; consider static generation for fully static pages where appropriate to reduce server load.
-- **Enhanced** Timestamp processing: Optimized parsing algorithms minimize computational overhead during video seeking operations.
-- **Enhanced** Person name caching: Automatic naming reduces repeated API calls for unknown persons.
+- **Enhanced** Transcript processing: Optimized speaker mapping algorithm minimizes computational overhead during transcript processing.
+- **Enhanced** Timestamp processing: Efficient parsing algorithms with early exit conditions reduce processing time for large transcripts.
+- **Enhanced** Person name caching: Automatic naming system maintains consistent speaker identities across transcript segments.
+- **Enhanced** API integration: WebSocket connection with fallback polling reduces server load and improves reliability.
 
 ## Troubleshooting Guide
 Common issues and resolutions:
@@ -466,18 +645,22 @@ Common issues and resolutions:
 - Active state not highlighting: Confirm the pathname comparison logic matches the intended href values and nested route prefixes.
 - Dark mode not switching colors: Check the dark mode media query and CSS variable overrides.
 - Responsive layout breaking: Use Tailwind responsive modifiers consistently within page components.
+- **Enhanced** Transcript processing errors: Verify backend transcript format matches expected structure with speaker_id, start_time, end_time fields.
+- **Enhanced** Speaker identification issues: Check speaker mapping logic and ensure consistent speaker IDs across segments.
 - **Enhanced** Timestamp parsing errors: Verify timestamp formats match expected patterns (seconds, "MM:SS", "HH:MM:SS").
 - **Enhanced** Person name display issues: Check face recognition pipeline output format and ensure proper fallback handling.
 - **Enhanced** Search demo person list: Verify persons array structure and conditional rendering logic.
+- **Enhanced** Video timeline seeking: Ensure timestamp values are properly formatted and within video duration bounds.
 
 **Section sources**
 - [layout.tsx:30-36](file://frontend/src/app/layout.tsx#L30-L36)
 - [Sidebar.tsx:35-45](file://frontend/src/components/Sidebar.tsx#L35-L45)
 - [globals.css:44-49](file://frontend/src/app/globals.css#L44-L49)
-- [archive/page.tsx:12-28](file://frontend/src/app/archive/page.tsx#L12-L28)
-- [SearchDemo.tsx:15-38](file://frontend/src/components/archive/SearchDemo.tsx#L15-L38)
+- [useVideoProcessing.ts:359-388](file://frontend/src/lib/useVideoProcessing.ts#L359-L388)
+- [archive/page.tsx:14-30](file://frontend/src/app/archive/page.tsx#L14-L30)
+- [SearchDemo.tsx:31-54](file://frontend/src/components/archive/SearchDemo.tsx#L31-L54)
 
 ## Conclusion
 The layout and navigation system is intentionally minimal and efficient. RootLayout centralizes global structure, fonts, and theme tokens, while the fixed sidebar provides persistent navigation with active-state awareness. Pages render within the main content area, leveraging Tailwind utilities for responsive design. The system supports customization through theme variables, font configuration, and component-level styling, while maintaining strong performance characteristics via Next.js font optimization and utility-first CSS.
 
-**Updated** The enhanced timestamp handling system provides robust support for various timestamp formats with intelligent fallbacks, while the improved person name display system offers better identification and labeling for unknown individuals. These enhancements improve user experience by providing more reliable video navigation and clearer person identification throughout the application.
+**Updated** The enhanced transcript processing system provides robust support for multiple timestamp formats with intelligent speaker identification and automatic person naming. These improvements significantly enhance user experience by providing more reliable video navigation, clearer speaker identification, and better handling of diverse video processing outputs. The comprehensive timestamp handling system ensures compatibility with various input formats, while the intelligent speaker mapping creates a seamless experience for users interacting with multilingual and multi-speaker content.

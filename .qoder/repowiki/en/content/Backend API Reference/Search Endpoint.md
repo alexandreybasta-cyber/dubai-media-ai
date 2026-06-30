@@ -12,22 +12,31 @@
 - [SearchDemo.tsx](file://frontend/src/components/archive/SearchDemo.tsx)
 </cite>
 
+## Update Summary
+**Changes Made**
+- Added dual HTTP method support documentation for semantic search (GET and POST)
+- Updated search endpoint section to cover both GET and POST implementations
+- Enhanced response format documentation with improved error handling
+- Updated frontend integration examples to show both HTTP method patterns
+- Added comprehensive examples for both GET and POST search requests
+
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
 4. [Architecture Overview](#architecture-overview)
 5. [Detailed Component Analysis](#detailed-component-analysis)
-6. [Dependency Analysis](#dependency-analysis)
-7. [Performance Considerations](#performance-considerations)
-8. [Troubleshooting Guide](#troubleshooting-guide)
-9. [Conclusion](#conclusion)
+6. [Dual HTTP Method Support](#dual-http-method-support)
+7. [Dependency Analysis](#dependency-analysis)
+8. [Performance Considerations](#performance-considerations)
+9. [Troubleshooting Guide](#troubleshooting-guide)
+10. [Conclusion](#conclusion)
 
 ## Introduction
-This document provides comprehensive API documentation for the semantic search endpoint. It covers the POST /api/search endpoint, including request/response schemas, query processing details, result formatting, performance considerations, and integration examples for frontend applications.
+This document provides comprehensive API documentation for the semantic search endpoint. It covers both POST /api/search and GET /api/search endpoints, including request/response schemas, query processing details, result formatting, performance considerations, and integration examples for frontend applications.
 
 ## Project Structure
-The search functionality spans both backend and frontend components:
+The search functionality spans both backend and frontend components with dual HTTP method support:
 
 ```mermaid
 graph TB
@@ -54,17 +63,17 @@ H --> G
 
 **Diagram sources**
 - [main.py:1-44](file://backend/main.py#L1-L44)
-- [video.py:198-216](file://backend/routers/video.py#L198-L216)
+- [video.py:198-234](file://backend/routers/video.py#L198-L234)
 - [search_index.py:22-245](file://backend/pipeline/search_index.py#L22-L245)
 - [orchestrator.py:34-329](file://backend/pipeline/orchestrator.py#L34-L329)
 - [config.py:4-21](file://backend/config.py#L4-L21)
 
 **Section sources**
 - [main.py:1-44](file://backend/main.py#L1-L44)
-- [video.py:198-216](file://backend/routers/video.py#L198-L216)
+- [video.py:198-234](file://backend/routers/video.py#L198-L234)
 
 ## Core Components
-The search endpoint consists of several key components working together:
+The search endpoint consists of several key components working together with dual HTTP method support:
 
 ### SearchRequest Model
 The request model defines the structure for search queries:
@@ -90,21 +99,24 @@ class SearchResult {
 +string description
 +string scene_type
 +number score
++string title
++string thumbnail
++array persons
 }
 SearchResponse --> SearchResult : "contains"
 ```
 
 **Diagram sources**
-- [video.py:200-216](file://backend/routers/video.py#L200-L216)
-- [search_index.py:156-196](file://backend/pipeline/search_index.py#L156-L196)
+- [video.py:200-234](file://backend/routers/video.py#L200-L234)
+- [search_index.py:241-257](file://backend/pipeline/search_index.py#L241-L257)
 
 **Section sources**
-- [video.py:32-35](file://backend/routers/video.py#L32-L35)
-- [video.py:200-216](file://backend/routers/video.py#L200-L216)
-- [search_index.py:156-196](file://backend/pipeline/search_index.py#L156-L196)
+- [video.py:33-36](file://backend/routers/video.py#L33-L36)
+- [video.py:200-234](file://backend/routers/video.py#L200-L234)
+- [search_index.py:241-257](file://backend/pipeline/search_index.py#L241-L257)
 
 ## Architecture Overview
-The search architecture follows a pipeline-based approach with vector embeddings:
+The search architecture follows a pipeline-based approach with vector embeddings and supports both HTTP methods:
 
 ```mermaid
 sequenceDiagram
@@ -123,18 +135,27 @@ SearchIndex->>FAISS : normalize and search
 FAISS-->>SearchIndex : top_k results
 SearchIndex-->>API : formatted results
 API-->>Client : {query, results, total}
+Note over Client,FAISS : Both GET and POST methods follow identical flow
+Client->>API : GET /api/search?query=...&top_k=...
+API->>Orchestrator : search_index.search(query, top_k)
+Orchestrator->>SearchIndex : search(query, top_k)
+SearchIndex->>Embeddings : get_embeddings([query])
+Embeddings-->>SearchIndex : embedding vectors
+SearchIndex->>FAISS : normalize and search
+FAISS-->>SearchIndex : top_k results
+SearchIndex-->>API : formatted results
+API-->>Client : {query, results, total}
 ```
 
 **Diagram sources**
-- [video.py:200-216](file://backend/routers/video.py#L200-L216)
+- [video.py:200-234](file://backend/routers/video.py#L200-L234)
 - [orchestrator.py:38-42](file://backend/pipeline/orchestrator.py#L38-L42)
-- [search_index.py:156-196](file://backend/pipeline/search_index.py#L156-L196)
-- [search_index.py:198-244](file://backend/pipeline/search_index.py#L198-L244)
+- [search_index.py:214-257](file://backend/pipeline/search_index.py#L214-L257)
 
 ## Detailed Component Analysis
 
 ### Backend Implementation
-The search endpoint is implemented in the video router with the following flow:
+The search endpoint is implemented in the video router with dual HTTP method support:
 
 ```mermaid
 flowchart TD
@@ -145,15 +166,22 @@ CallSearch --> ProcessResults["Format results with metadata"]
 ProcessResults --> Return["Return structured response"]
 Validate --> |Invalid| Error["HTTP 422 Validation Error"]
 CallSearch --> |Exception| Error500["HTTP 500 Internal Error"]
+Start2([GET /api/search]) --> Validate2["Validate query parameters"]
+Validate2 --> Extract2["Extract query and top_k from URL"]
+Extract2 --> CallSearch2["Call orchestrator.search_index.search()"]
+CallSearch2 --> ProcessResults2["Format results with metadata"]
+ProcessResults2 --> Return2["Return structured response"]
+Validate2 --> |Invalid| Error2["HTTP 422 Validation Error"]
+CallSearch2 --> |Exception| Error500_2["HTTP 500 Internal Error"]
 ```
 
 **Diagram sources**
-- [video.py:200-216](file://backend/routers/video.py#L200-L216)
-- [search_index.py:156-196](file://backend/pipeline/search_index.py#L156-L196)
+- [video.py:200-234](file://backend/routers/video.py#L200-L234)
+- [search_index.py:214-257](file://backend/pipeline/search_index.py#L214-L257)
 
 **Section sources**
-- [video.py:200-216](file://backend/routers/video.py#L200-L216)
-- [search_index.py:156-196](file://backend/pipeline/search_index.py#L156-L196)
+- [video.py:200-234](file://backend/routers/video.py#L200-L234)
+- [search_index.py:214-257](file://backend/pipeline/search_index.py#L214-L257)
 
 ### Search Processing Details
 The search pipeline processes queries through several stages:
@@ -162,19 +190,26 @@ The search pipeline processes queries through several stages:
 2. **Embedding Generation**: Converts natural language queries to vectors using DashScope
 3. **Vector Normalization**: Normalizes vectors for cosine similarity calculation
 4. **Index Search**: Performs FAISS vector similarity search
-5. **Result Formatting**: Maps results to standardized response format
+5. **Result Formatting**: Maps results to standardized response format with enhanced metadata
 
 **Section sources**
-- [search_index.py:156-196](file://backend/pipeline/search_index.py#L156-L196)
-- [search_index.py:198-244](file://backend/pipeline/search_index.py#L198-L244)
+- [search_index.py:214-257](file://backend/pipeline/search_index.py#L214-L257)
+- [search_index.py:259-305](file://backend/pipeline/search_index.py#L259-L305)
 
 ### Frontend Integration
-The frontend provides multiple integration patterns:
+The frontend provides multiple integration patterns with dual HTTP method support:
 
-#### Direct API Calls
+#### Direct API Calls (POST Method)
 ```typescript
-// Using the typed API client
+// Using the typed API client with POST method
 const results = await api.video.search("sunset over Dubai Marina", 5);
+```
+
+#### Direct API Calls (GET Method)
+```typescript
+// Using fetch with GET parameters
+const response = await fetch('/api/search?query=sunset%20over%20Dubai%20Marina&top_k=5');
+const results = await response.json();
 ```
 
 #### React Hook Integration
@@ -194,9 +229,70 @@ search("beach volleyball tournament");
 ```
 
 **Section sources**
-- [api.ts:174-178](file://frontend/src/lib/api.ts#L174-L178)
-- [useVideoProcessing.ts:352-368](file://frontend/src/lib/useVideoProcessing.ts#L352-L368)
-- [SearchDemo.tsx:30-44](file://frontend/src/components/archive/SearchDemo.tsx#L30-L44)
+- [api.ts:206-210](file://frontend/src/lib/api.ts#L206-L210)
+- [useVideoProcessing.ts:447-463](file://frontend/src/lib/useVideoProcessing.ts#L447-L463)
+- [SearchDemo.tsx:63-79](file://frontend/src/components/archive/SearchDemo.tsx#L63-L79)
+
+## Dual HTTP Method Support
+
+### POST Method Implementation
+The POST endpoint accepts JSON payloads with the SearchRequest model:
+
+**Endpoint**: `POST /api/search`
+**Content-Type**: `application/json`
+
+**Request Body**:
+```json
+{
+  "query": "sunset over Dubai Marina with no people",
+  "top_k": 5
+}
+```
+
+**Response**:
+```json
+{
+  "query": "sunset over Dubai Marina with no people",
+  "results": [
+    {
+      "video_id": "abc123def456",
+      "title": "Dubai Marina Sunset",
+      "timestamp": 125.5,
+      "description": "Golden sunset over Dubai Marina skyline",
+      "scene_type": "landscape",
+      "score": 0.87,
+      "thumbnail": "/uploads/abc123def456/thumbnail.jpg",
+      "persons": []
+    }
+  ],
+  "total": 1
+}
+```
+
+### GET Method Implementation
+The GET endpoint accepts query parameters:
+
+**Endpoint**: `GET /api/search?query=...&top_k=5`
+
+**Query Parameters**:
+- `query` (required): Natural language search query string
+- `top_k` (optional): Number of results to return (default: 5)
+
+**Response**: Identical to POST method response format
+
+### HTTP Method Comparison
+
+| Aspect | POST Method | GET Method |
+|--------|-------------|------------|
+| Request Format | JSON body | Query parameters |
+| Payload Size | No practical limit | URL length limitations |
+| Security | Better for sensitive queries | Visible in URLs/logs |
+| Caching | Not cacheable | Browser/CDN cacheable |
+| REST Compliance | More RESTful | Traditional web pattern |
+| Error Handling | HTTP status codes | HTTP status codes |
+
+**Section sources**
+- [video.py:201-234](file://backend/routers/video.py#L201-L234)
 
 ## Dependency Analysis
 The search functionality has the following dependencies:
@@ -243,6 +339,8 @@ I[SearchDemo.tsx] --> H
 - Use reasonable top_k values (1-20) for optimal results
 - Cache frequently searched queries at the application level
 - Monitor API key limits and rate limits
+- Choose GET method for simple, cacheable queries
+- Choose POST method for complex queries or when security is a concern
 
 ## Troubleshooting Guide
 
@@ -288,19 +386,30 @@ I[SearchDemo.tsx] --> H
 2. Implement local caching layer
 3. Use connection pooling for embedding requests
 
+#### HTTP Method Specific Issues
+**GET Method Problems**:
+- **URL Length Limits**: Very long queries may exceed URL limits
+- **Caching Interference**: Cached responses may not reflect recent changes
+- **Security Concerns**: Sensitive queries visible in logs
+
+**POST Method Problems**:
+- **Payload Size**: Large JSON payloads may cause timeouts
+- **CORS Configuration**: May require additional CORS setup
+
 **Section sources**
-- [search_index.py:61-70](file://backend/pipeline/search_index.py#L61-L70)
-- [search_index.py:198-244](file://backend/pipeline/search_index.py#L198-L244)
+- [search_index.py:80-120](file://backend/pipeline/search_index.py#L80-L120)
+- [search_index.py:214-257](file://backend/pipeline/search_index.py#L214-L257)
 - [config.py:4-6](file://backend/config.py#L4-L6)
 
 ## Conclusion
-The semantic search endpoint provides powerful natural language search capabilities over processed video content. By combining vector embeddings with a FAISS-based similarity search, it enables intuitive discovery of relevant video segments. The implementation follows modern API design principles with proper validation, error handling, and comprehensive frontend integration patterns.
+The semantic search endpoint provides powerful natural language search capabilities over processed video content with dual HTTP method support. By combining vector embeddings with a FAISS-based similarity search, it enables intuitive discovery of relevant video segments. The implementation follows modern API design principles with proper validation, error handling, and comprehensive frontend integration patterns.
 
 Key benefits include:
-- Natural language query support
+- Natural language query support via both GET and POST methods
 - Real-time processing pipeline integration
 - Scalable vector search architecture
 - Comprehensive frontend integration examples
 - Robust error handling and monitoring
+- Flexible HTTP method selection based on use case requirements
 
-The endpoint is production-ready with proper configuration management and performance considerations for enterprise-scale deployments.
+The endpoint is production-ready with proper configuration management and performance considerations for enterprise-scale deployments. The dual HTTP method support provides flexibility for different integration scenarios while maintaining identical functionality and response formats.

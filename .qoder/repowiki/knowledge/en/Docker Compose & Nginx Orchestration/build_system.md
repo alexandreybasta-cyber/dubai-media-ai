@@ -1,40 +1,28 @@
-The Dubai Media AI Platform Orchestrator uses a **Docker Compose**-centric build and deployment strategy, supplemented by an **Nginx** reverse proxy for unified access and static file serving. There are no dedicated `Makefile`s or complex CI/CD pipelines visible in the repository; the build process is driven primarily by `docker-compose.yml` and standard language-specific package managers (`pip` for Python, `npm` for Node.js).
+The project utilizes a **Docker Compose**-centric build and deployment strategy, orchestrated by a root-level `docker-compose.yml` file. This approach replaces traditional build scripts (like Makefiles) with containerized service definitions for the backend, frontend, and an Nginx reverse proxy.
 
-### Build System Components
+### Core Build Components
+1. **Container Orchestration**: The `docker-compose.yml` defines three primary services:
+   - **Backend**: A FastAPI application built from `./backend`. It uses volume mounting (`./backend:/app`) and the `--reload` flag for hot-reloading during development.
+   - **Frontend**: A Next.js application built from `./frontend`, also using volume mounts for live source updates.
+   - **Nginx**: An `nginx:alpine` instance that serves as a reverse proxy and static file server.
 
-1.  **Container Orchestration (Docker Compose)**:
-    -   The root-level `docker-compose.yml` defines three services: `backend` (FastAPI), `frontend` (Next.js), and `nginx`.
-    -   It relies on local `Dockerfile`s in both `backend/` and `frontend/` directories (though these files are not present in the current tree, they are referenced in the compose config).
-    -   **Development Mode**: The backend service uses `--reload` and volume mounts (`./backend:/app`) to support hot-reloading during development. The frontend also mounts source code for live updates.
-    -   **Environment Management**: Uses a shared `.env` file for configuration (e.g., `DASHSCOPE_API_KEY`).
+2. **Reverse Proxy Configuration**: The `nginx.conf` file handles routing logic:
+   - Proxies `/api/` requests to the backend service on port 8000.
+   - Serves uploaded media files directly from a shared Docker volume at `/uploads/` to improve performance.
+   - Configures CORS headers and increases `client_max_body_size` to 2G to support large video uploads.
+   - Manages WebSocket connections for real-time pipeline feedback.
 
-2.  **Reverse Proxy (Nginx)**:
-    -   An `nginx.conf` file is mounted into an `nginx:alpine` container.
-    -   It handles routing: `/api/` requests are proxied to the backend service, while `/uploads/` are served directly from a shared Docker volume for efficiency.
-    -   It manages CORS headers and large file upload limits (`client_max_body_size 2G`).
-
-3.  **Dependency Management**:
-    -   **Backend**: Managed via `backend/requirements.txt` using `pip`. Key dependencies include `fastapi`, `uvicorn`, `dashscope`, and `ffmpeg-python`.
-    -   **Frontend**: Managed via `frontend/package.json` using `npm`. Key dependencies include `next`, `react`, and `tailwindcss`.
-
-4.  **Build & Run Commands**:
-    -   **Production/Unified**: `docker compose up --build`
-    -   **Manual Development**:
-        -   Backend: `uvicorn main:app --reload --port 8000`
-        -   Frontend: `npm run dev`
+3. **Dependency Management**:
+   - **Backend**: Uses `pip` with pinned versions in `backend/requirements.txt` (e.g., `fastapi==0.115.0`, `dashscope==1.20.0`).
+   - **Frontend**: Uses `npm` with `package.json` and `package-lock.json` for deterministic builds (e.g., `next@16.2.9`, `tailwindcss@^4`).
 
 ### Architecture & Conventions
-
--   **Service Separation**: Clear separation between the AI-processing backend and the React-based frontend, communicating via REST/WebSocket APIs.
--   **Shared Volumes**: A named Docker volume `uploads` is used to share uploaded media files between the backend (writer) and Nginx (reader), avoiding the need to copy large files between containers.
--   **Configuration**: Centralized environment variables in `.env` at the root, consumed by both Docker Compose and the backend's `pydantic-settings`.
+- **Service Separation**: The architecture strictly separates the AI-processing backend from the React-based frontend, communicating via REST and WebSocket APIs.
+- **Shared Volumes**: A named Docker volume `uploads` is shared between the backend (writer) and Nginx (reader), allowing efficient access to processed media without copying files between containers.
+- **Environment Configuration**: Centralized in a root `.env` file, which is consumed by Docker Compose and the backend's `pydantic-settings`.
 
 ### Developer Rules
-
--   **No Makefile**: Developers should use `docker compose` commands directly or standard language tools (`npm`, `pip`) for local development.
--   **Env File**: Always create a `.env` file from `.env.example` before running the application.
--   **Port Mapping**: 
-    -   Frontend: `3000`
-    -   Backend: `8000`
-    -   Nginx Proxy: `8080`
--   **Dockerfiles Required**: To run via Docker Compose, developers must ensure valid `Dockerfile`s exist in `backend/` and `frontend/`, as they are referenced but not currently tracked in the provided directory tree.
+- **Build Command**: Use `docker compose up --build` to start the entire stack.
+- **Local Development**: Developers can run services manually using `uvicorn main:app --reload` (backend) and `npm run dev` (frontend).
+- **Missing Dockerfiles**: The `docker-compose.yml` references `Dockerfile`s in both `backend/` and `frontend/` directories. Developers must ensure these files exist and are correctly configured for containerized builds, as they are not currently present in the root directory tree.
+- **No CI/CD Pipeline**: There are no visible GitHub Actions or other CI configurations; deployment is currently manual or script-based (e.g., `push-via-api.sh`).

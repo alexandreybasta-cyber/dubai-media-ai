@@ -15,9 +15,23 @@
 - [VideoUpload.tsx](file://frontend/src/components/archive/VideoUpload.tsx)
 - [RFPForm.tsx](file://frontend/src/components/rfp/RFPForm.tsx)
 - [EvaluationSetup.tsx](file://frontend/src/components/evaluator/EvaluationSetup.tsx)
+- [MetadataPanel.tsx](file://frontend/src/components/archive/MetadataPanel.tsx)
+- [VideoTimeline.tsx](file://frontend/src/components/archive/VideoTimeline.tsx)
+- [TranscriptPanel.tsx](file://frontend/src/components/archive/TranscriptPanel.tsx)
+- [SearchDemo.tsx](file://frontend/src/components/archive/SearchDemo.tsx)
+- [APITransparencyPanel.tsx](file://frontend/src/components/archive/APITransparencyPanel.tsx)
 - [package.json](file://frontend/package.json)
 - [next.config.ts](file://frontend/next.config.ts)
 </cite>
+
+## Update Summary
+**Changes Made**
+- Enhanced API integration with real upload progress tracking via XMLHttpRequest
+- Improved timestamp formatting utilities across multiple components
+- Enhanced sensitive content display with better flag handling
+- Intelligent thumbnail URL resolution with automatic path normalization
+- Added URL parameter support for loading existing videos via ?video=<video_id>
+- Improved error handling and user feedback mechanisms
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -68,6 +82,11 @@ SU["Sidebar<br/>src/components/Sidebar.tsx"]
 VU["VideoUpload<br/>src/components/archive/VideoUpload.tsx"]
 RFPF["RFPForm<br/>src/components/rfp/RFPForm.tsx"]
 ES["EvaluationSetup<br/>src/components/evaluator/EvaluationSetup.tsx"]
+MP["MetadataPanel<br/>src/components/archive/MetadataPanel.tsx"]
+VT["VideoTimeline<br/>src/components/archive/VideoTimeline.tsx"]
+TP["TranscriptPanel<br/>src/components/archive/TranscriptPanel.tsx"]
+SD["SearchDemo<br/>src/components/archive/SearchDemo.tsx"]
+ATP["APITransparencyPanel<br/>src/components/archive/APITransparencyPanel.tsx"]
 end
 subgraph "Lib"
 API["api.ts<br/>src/lib/api.ts"]
@@ -76,6 +95,11 @@ end
 H --> B
 H --> C
 AR --> VU
+AR --> MP
+AR --> VT
+AR --> TP
+AR --> SD
+AR --> ATP
 RC --> RFPF
 RE --> ES
 AR --> UVP
@@ -88,7 +112,7 @@ UVP --> API
 **Diagram sources**
 - [layout.tsx:22-40](file://frontend/src/app/layout.tsx#L22-L40)
 - [Sidebar.tsx:17-66](file://frontend/src/components/Sidebar.tsx#L17-L66)
-- [archive/page.tsx:12-128](file://frontend/src/app/archive/page.tsx#L12-L128)
+- [archive/page.tsx:12-167](file://frontend/src/app/archive/page.tsx#L12-L167)
 - [rfp-creator/page.tsx:8-158](file://frontend/src/app/rfp-creator/page.tsx#L8-L158)
 - [rfp-evaluator/page.tsx:18-177](file://frontend/src/app/rfp-evaluator/page.tsx#L18-L177)
 - [api.ts:164-244](file://frontend/src/lib/api.ts#L164-L244)
@@ -97,7 +121,7 @@ UVP --> API
 **Section sources**
 - [layout.tsx:1-41](file://frontend/src/app/layout.tsx#L1-L41)
 - [Sidebar.tsx:1-67](file://frontend/src/components/Sidebar.tsx#L1-L67)
-- [archive/page.tsx:1-129](file://frontend/src/app/archive/page.tsx#L1-L129)
+- [archive/page.tsx:1-167](file://frontend/src/app/archive/page.tsx#L1-L167)
 - [rfp-creator/page.tsx:1-159](file://frontend/src/app/rfp-creator/page.tsx#L1-L159)
 - [rfp-evaluator/page.tsx:1-178](file://frontend/src/app/rfp-evaluator/page.tsx#L1-L178)
 
@@ -135,6 +159,11 @@ C2["Card<br/>src/components/Card.tsx"]
 C3["VideoUpload<br/>src/components/archive/VideoUpload.tsx"]
 C4["RFPForm<br/>src/components/rfp/RFPForm.tsx"]
 C5["EvaluationSetup<br/>src/components/evaluator/EvaluationSetup.tsx"]
+C6["MetadataPanel<br/>src/components/archive/MetadataPanel.tsx"]
+C7["VideoTimeline<br/>src/components/archive/VideoTimeline.tsx"]
+C8["TranscriptPanel<br/>src/components/archive/TranscriptPanel.tsx"]
+C9["SearchDemo<br/>src/components/archive/SearchDemo.tsx"]
+C10["APITransparencyPanel<br/>src/components/archive/APITransparencyPanel.tsx"]
 end
 subgraph "State"
 H1["useVideoProcessing<br/>src/lib/useVideoProcessing.ts"]
@@ -144,6 +173,11 @@ L1["api.ts<br/>src/lib/api.ts"]
 end
 P1 --> C1
 P2 --> C3
+P2 --> C6
+P2 --> C7
+P2 --> C8
+P2 --> C9
+P2 --> C10
 P3 --> C4
 P4 --> C5
 P2 --> H1
@@ -154,7 +188,7 @@ P4 --> L1
 
 **Diagram sources**
 - [page.tsx:69-198](file://frontend/src/app/page.tsx#L69-L198)
-- [archive/page.tsx:12-128](file://frontend/src/app/archive/page.tsx#L12-L128)
+- [archive/page.tsx:12-167](file://frontend/src/app/archive/page.tsx#L12-L167)
 - [rfp-creator/page.tsx:8-158](file://frontend/src/app/rfp-creator/page.tsx#L8-L158)
 - [rfp-evaluator/page.tsx:18-177](file://frontend/src/app/rfp-evaluator/page.tsx#L18-L177)
 - [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
@@ -197,6 +231,7 @@ Key responsibilities:
 - Render PipelineVisualizer during processing.
 - Display VideoTimeline, TranscriptPanel, MetadataPanel, and APITransparencyPanel upon completion.
 - Provide a persistent SearchDemo for semantic search across the archive.
+- Support loading existing videos via URL parameters (?video=<video_id>).
 
 ```mermaid
 sequenceDiagram
@@ -207,7 +242,7 @@ participant API as "api.ts"
 participant WS as "WebSocket"
 U->>AU : Select video file
 AU->>VP : uploadVideo(file)
-VP->>API : POST /api/video/upload
+VP->>API : POST /api/video/upload (with progress tracking)
 API-->>VP : {video_id,status}
 VP->>WS : connect /ws/pipeline/{video_id}
 WS-->>VP : stage status updates
@@ -217,17 +252,85 @@ VP->>API : GET /api/video/{video_id}/transcript
 API-->>VP : transcript
 VP-->>AU : updated state (results)
 AU-->>U : render results panels
+Note over AU,VP : URL parameter support : ?video=<video_id>
 ```
 
 **Diagram sources**
-- [archive/page.tsx:12-128](file://frontend/src/app/archive/page.tsx#L12-L128)
+- [archive/page.tsx:12-167](file://frontend/src/app/archive/page.tsx#L12-L167)
 - [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
 - [api.ts:164-244](file://frontend/src/lib/api.ts#L164-L244)
 
 **Section sources**
-- [archive/page.tsx:1-129](file://frontend/src/app/archive/page.tsx#L1-L129)
-- [useVideoProcessing.ts:1-421](file://frontend/src/lib/useVideoProcessing.ts#L1-L421)
+- [archive/page.tsx:1-167](file://frontend/src/app/archive/page.tsx#L1-L167)
+- [useVideoProcessing.ts:1-533](file://frontend/src/lib/useVideoProcessing.ts#L1-L533)
 - [api.ts:164-244](file://frontend/src/lib/api.ts#L164-L244)
+
+### Enhanced API Integration Layer
+The api.ts module has been enhanced with real upload progress tracking and improved error handling:
+
+- **Real Upload Progress Tracking**: Uses XMLHttpRequest instead of fetch for multipart/form-data uploads, enabling precise progress callbacks during file transfer.
+- **Enhanced Error Handling**: Improved error responses with detailed error messages and proper JSON parsing.
+- **WebSocket Integration**: Maintains WebSocket connection helper with typed message shapes for pipeline updates.
+- **Domain-Specific Methods**: Video and RFP operations with proper typing and parameter handling.
+
+**Updated** Enhanced with XMLHttpRequest-based upload progress tracking for better user feedback during large file transfers.
+
+```mermaid
+sequenceDiagram
+participant Client as "Client Code"
+participant API as "api.ts"
+participant Server as "Backend Server"
+Client->>API : uploadFile(file, onProgress)
+API->>API : Create XMLHttpRequest
+API->>Server : POST /api/video/upload (multipart/form-data)
+Server-->>API : Upload progress events
+API-->>Client : onProgress(percent)
+Server-->>API : Upload completion response
+API-->>Client : Resolve with {video_id,status}
+```
+
+**Diagram sources**
+- [api.ts:43-95](file://frontend/src/lib/api.ts#L43-L95)
+
+**Section sources**
+- [api.ts:1-277](file://frontend/src/lib/api.ts#L1-L277)
+
+### Enhanced Video Processing Hook
+The useVideoProcessing hook has been enhanced with improved timestamp handling and better state management:
+
+- **Improved Timestamp Formatting**: Enhanced parsing and formatting functions for various timestamp formats (seconds, MM:SS, HH:MM:SS).
+- **Better State Management**: More robust state updates with proper cleanup and resource management.
+- **Enhanced Error Handling**: Improved error recovery and fallback mechanisms.
+- **Resource Cleanup**: Proper cleanup of WebSockets, polling intervals, and object URLs on component unmount.
+
+**Updated** Enhanced with improved timestamp parsing utilities and better state management for video processing workflows.
+
+**Section sources**
+- [useVideoProcessing.ts:1-533](file://frontend/src/lib/useVideoProcessing.ts#L1-L533)
+
+### Enhanced Component Features
+
+#### VideoUpload Component
+- **Real Progress Tracking**: Displays upload progress with percentage and file size formatting.
+- **Enhanced File Validation**: Improved file type checking and size validation.
+- **Better User Feedback**: Clear error states and loading indicators.
+
+#### MetadataPanel Component
+- **Enhanced Sensitive Content Display**: Improved handling and display of sensitive content flags with better formatting.
+- **Better Tab Management**: Enhanced tab switching with better state persistence.
+- **Improved Data Visualization**: Better display of detected persons, landmarks, and scenes.
+
+#### SearchDemo Component
+- **Intelligent Thumbnail URL Resolution**: Automatic conversion of raw thumbnail paths to accessible URLs.
+- **Enhanced Timestamp Formatting**: Support for various timestamp formats in search results.
+- **Better Result Handling**: Improved result display with person detection information.
+
+**Updated** Enhanced with improved timestamp formatting, better sensitive content display, and intelligent thumbnail URL resolution.
+
+**Section sources**
+- [VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
+- [MetadataPanel.tsx:1-380](file://frontend/src/components/archive/MetadataPanel.tsx#L1-L380)
+- [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
 
 ### RFP Creator
 The RFP Creator page manages form submission, skeleton previews, and section regeneration. It uses the API client to create RFPs, regenerate sections, and export documents.
@@ -324,7 +427,7 @@ Start(["Hook Initialization"]) --> Init["Initialize state:<br/>view, uploadState
 Init --> Upload["User selects file"]
 Upload --> CallUpload["Call uploadVideo(file)"]
 CallUpload --> SetIdle["Set uploadState='uploading'"]
-SetIdle --> PostUpload["POST /api/video/upload"]
+SetIdle --> PostUpload["POST /api/video/upload (XHR with progress)"]
 PostUpload --> GotId{"Got video_id?"}
 GotId --> |Yes| ConnectWS["Connect WebSocket /ws/pipeline/{id}"]
 GotId --> |No| HandleErr["Set uploadState='error'"]
@@ -343,23 +446,7 @@ Wait --> WSMsg
 - [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
 
 **Section sources**
-- [useVideoProcessing.ts:1-421](file://frontend/src/lib/useVideoProcessing.ts#L1-L421)
-
-### API Integration Layer
-The api.ts module provides:
-- A typed fetch wrapper supporting query parameters and JSON parsing.
-- File upload helpers for multipart/form-data.
-- WebSocket connection helper with typed message shape.
-- Domain-specific convenience methods for video and RFP operations.
-- Strongly typed interfaces for request/response payloads.
-
-Integration patterns:
-- Pages import api and call domain methods (e.g., api.video.upload, api.rfp.create).
-- Error handling is centralized in the fetch wrapper and surfaced to pages.
-- Export endpoints open new browser tabs for downloadable artifacts.
-
-**Section sources**
-- [api.ts:1-245](file://frontend/src/lib/api.ts#L1-L245)
+- [useVideoProcessing.ts:1-533](file://frontend/src/lib/useVideoProcessing.ts#L1-L533)
 
 ### Real-Time WebSocket Handling
 The useVideoProcessing hook connects to a WebSocket endpoint to receive pipeline stage updates. It:
@@ -465,12 +552,14 @@ P --> RC["recharts"]
 - Network efficiency: Batch API calls where possible; cancel ongoing requests on route changes.
 - Web Workers: Offload heavy computations (e.g., transcript processing) to workers if needed.
 - Bundle size: Keep icons and charts scoped to pages to avoid unnecessary imports.
+- **Enhanced Upload Performance**: XMLHttpRequest-based uploads provide better progress tracking and user feedback for large files.
 
 ## Troubleshooting Guide
 Common issues and resolutions:
 - Upload failures
   - Symptom: Error displayed in VideoUpload with red banner.
   - Actions: Verify backend connectivity, supported file types (.mp4, .mov, .avi), and file size limits.
+  - **Updated**: Check upload progress tracking for XMLHttpRequest errors.
 - WebSocket disconnects
   - Symptom: Pipeline stalls; fallback polling occurs.
   - Actions: Check network stability; confirm backend WebSocket endpoint availability.
@@ -483,6 +572,12 @@ Common issues and resolutions:
 - Navigation highlighting incorrect
   - Symptom: Sidebar active state mismatch.
   - Actions: Confirm route paths match navigation entries; ensure usePathname is used consistently.
+- **New**: Thumbnail URL resolution issues
+  - Symptom: Missing or broken thumbnails in search results.
+  - Actions: Verify thumbnail path resolution logic handles various formats correctly.
+- **New**: Timestamp formatting problems
+  - Symptom: Incorrect time display in timeline or transcript panels.
+  - Actions: Check timestamp parsing utilities for various input formats.
 
 **Section sources**
 - [VideoUpload.tsx:200-217](file://frontend/src/components/archive/VideoUpload.tsx#L200-L217)
@@ -490,7 +585,7 @@ Common issues and resolutions:
 - [api.ts:31-36](file://frontend/src/lib/api.ts#L31-L36)
 
 ## Conclusion
-The frontend employs a clean separation of concerns with Next.js App Router, reusable UI primitives, a centralized API client, and a dedicated hook for complex state and real-time updates. The architecture supports scalable feature development, robust error handling, and a responsive user experience across devices.
+The frontend employs a clean separation of concerns with Next.js App Router, reusable UI primitives, a centralized API client, and a dedicated hook for complex state and real-time updates. The architecture supports scalable feature development, robust error handling, and a responsive user experience across devices. Recent enhancements include improved upload progress tracking, better timestamp formatting, enhanced sensitive content display, and intelligent thumbnail URL resolution.
 
 ## Appendices
 - Environment variables: NEXT_PUBLIC_API_URL is used to configure the API base URL at runtime.

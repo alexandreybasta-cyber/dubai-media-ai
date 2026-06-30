@@ -24,10 +24,10 @@
 
 ## Update Summary
 **Changes Made**
-- Updated VideoTimeline component documentation to reflect enhanced face appearance handling with null-safe array mapping and click handlers for face appearance ranges
-- Enhanced tooltip information with better face name and time range display
-- Updated MetadataPanel component documentation to reflect Arabic name display alongside English names with proper RTL handling
-- Improved defensive programming practices section with specific examples from the enhanced components
+- Enhanced SearchDemo component with improved thumbnail URL resolution using resolveThumbnailUrl function
+- Enhanced MetadataPanel component with structured flag objects support for sensitive_content field
+- Improved TranscriptPanel with robust timestamp formatting using formatTimestamp function
+- Updated defensive programming practices section with specific examples from enhanced components
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -100,9 +100,9 @@ SB --> ES
 - [Card.tsx:1-17](file://frontend/src/components/Card.tsx#L1-L17)
 - [VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
 - [VideoTimeline.tsx:1-245](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L245)
-- [TranscriptPanel.tsx:1-155](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L155)
-- [MetadataPanel.tsx:1-377](file://frontend/src/components/archive/MetadataPanel.tsx#L1-L377)
-- [SearchDemo.tsx:1-189](file://frontend/src/components/archive/SearchDemo.tsx#L1-L189)
+- [TranscriptPanel.tsx:1-169](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L169)
+- [MetadataPanel.tsx:1-380](file://frontend/src/components/archive/MetadataPanel.tsx#L1-L380)
+- [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
 - [RFPForm.tsx:1-411](file://frontend/src/components/rfp/RFPForm.tsx#L1-L411)
 - [RFPPreview.tsx:1-200](file://frontend/src/components/rfp/RFPPreview.tsx#L1-L200)
@@ -117,9 +117,9 @@ SB --> ES
 - [Card.tsx:1-17](file://frontend/src/components/Card.tsx#L1-L17)
 - [VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
 - [VideoTimeline.tsx:1-245](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L245)
-- [TranscriptPanel.tsx:1-155](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L155)
-- [MetadataPanel.tsx:1-377](file://frontend/src/components/archive/MetadataPanel.tsx#L1-L377)
-- [SearchDemo.tsx:1-189](file://frontend/src/components/archive/SearchDemo.tsx#L1-L189)
+- [TranscriptPanel.tsx:1-169](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L169)
+- [MetadataPanel.tsx:1-380](file://frontend/src/components/archive/MetadataPanel.tsx#L1-L380)
+- [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
 - [RFPForm.tsx:1-411](file://frontend/src/components/rfp/RFPForm.tsx#L1-L411)
 - [RFPPreview.tsx:1-200](file://frontend/src/components/rfp/RFPPreview.tsx#L1-L200)
@@ -145,7 +145,7 @@ These are the foundational building blocks reused across the application.
   - Composition: Wrap with Card or layout containers for grouping.
 
 - Card
-  - Purpose: Lightweight container with rounded corners, border, and padding.
+  - Purpose: lightweight container with rounded corners, border, and padding.
   - Props:
     - children: ReactNode
     - className?: string
@@ -251,9 +251,17 @@ UV-->>VU : metadata, transcript when ready
   - Auto-scroll keeps active segment visible.
 - Styling: Scrollable panel, speaker badges with distinct colors, active segment highlighting.
 - Accessibility: Smooth scroll behavior; clickable buttons for seeking; readable monospace timestamps.
+- **Enhanced Timestamp Formatting**: Implements robust timestamp formatting using formatTimestamp function that handles multiple input types including strings (e.g., "00:15", "1:30"), numeric seconds, and malformed data with graceful fallback to "0:00".
+
+**Updated** Enhanced timestamp formatting capabilities have been implemented to provide robust handling of various timestamp formats:
+
+- **Multi-format support**: Handles string timestamps in "mm:ss" or "hh:mm:ss" format, numeric seconds, and malformed input
+- **Graceful fallback**: Automatically falls back to "0:00" for invalid or undefined timestamps
+- **Consistent output**: Always returns formatted timestamps in "m:ss" format with zero-padded seconds
 
 **Section sources**
 - [TranscriptPanel.tsx:6-59](file://frontend/src/components/archive/TranscriptPanel.tsx#L6-L59)
+- [TranscriptPanel.tsx:30-48](file://frontend/src/components/archive/TranscriptPanel.tsx#L30-L48)
 
 #### MetadataPanel
 - Purpose: Presents processed metadata in tabs: Summary, EBUCore XML, IPTC JSON, Raw JSON.
@@ -266,9 +274,10 @@ UV-->>VU : metadata, transcript when ready
 - Styling: Tabbed interface with active-state underline; dark theme JSON viewer; badge chips for tags.
 - Accessibility: Keyboard navigation among tabs; focusable copy/download buttons.
 
-**Updated** Enhanced multilingual support has been implemented to display Arabic names alongside English names for detected persons. The component now includes:
+**Updated** Enhanced multilingual support and structured flag objects have been implemented to improve metadata display capabilities:
 
 - **Bilingual person display**: When Arabic names are available, they are shown alongside English names in parentheses with proper RTL directionality
+- **Structured flag objects**: Enhanced sensitive_content field now supports both string flags and structured objects with type, severity, and timestamp properties
 - **Improved fallback handling**: Graceful handling of missing Arabic names with conditional rendering
 - **RTL text support**: Proper right-to-left text direction for Arabic content within the badge display
 
@@ -289,8 +298,16 @@ UV-->>VU : metadata, transcript when ready
   - Clicking a result invokes onResultClick.
 - Styling: Search icon, prominent input, result cards with thumbnails and score badges.
 
+**Updated** Enhanced thumbnail URL resolution has been implemented to provide robust handling of various thumbnail path formats:
+
+- **Universal URL resolution**: The resolveThumbnailUrl function handles multiple thumbnail path formats including "./uploads/...", "uploads/...", "/uploads/...", and full URLs
+- **Environment-aware URLs**: Automatically prepends API_BASE_URL for relative paths to ensure browser accessibility
+- **Null-safe handling**: Gracefully handles undefined or null thumbnail values without crashing
+- **Cross-platform compatibility**: Works with different deployment environments and CDN configurations
+
 **Section sources**
 - [SearchDemo.tsx:7-43](file://frontend/src/components/archive/SearchDemo.tsx#L7-L43)
+- [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-L21)
 
 #### PipelineVisualizer
 - Purpose: Visualizes pipeline stage statuses, progress, elapsed time, and messages.
@@ -495,12 +512,27 @@ The VideoTimeline component demonstrates key defensive programming practices:
 - **Metadata fallbacks**: Provides default empty arrays for scenes, faces, and objects when metadata is unavailable
 - **Individual appearance click handlers**: Each face appearance now has its own click handler that seeks to the specific start time of the appearance range
 
+#### SearchDemo Component
+The SearchDemo component includes enhanced defensive programming for thumbnail handling:
+
+- **Thumbnail URL resolution safety**: The resolveThumbnailUrl function handles multiple input formats and edge cases
+- **Environment configuration**: Uses NEXT_PUBLIC_API_URL with fallback to localhost for development
+- **Null-safe rendering**: Thumbnail images are only rendered when valid URLs are available
+
+#### TranscriptPanel Component
+The TranscriptPanel component implements robust timestamp formatting:
+
+- **Multi-type timestamp handling**: formatTimestamp function processes strings, numbers, and invalid inputs gracefully
+- **Regex validation**: String timestamps are validated against expected patterns before processing
+- **Zero-padded output**: Seconds are always zero-padded for consistent formatting
+
 #### MetadataPanel Component
 The MetadataPanel component includes enhanced multilingual support with defensive programming:
 
 - **Conditional Arabic name rendering**: Uses `face.name_ar &&` to conditionally render Arabic names only when available
 - **RTL direction handling**: Applies `dir="rtl"` attribute for proper right-to-left text display
 - **Fallback to English names**: Gracefully falls back to English names when Arabic names are not available
+- **Structured flag objects**: Enhanced sensitive_content field supports both string and object formats
 
 #### General Error Handling Patterns
 - **Early returns**: Functions return early when required data is missing
@@ -518,6 +550,8 @@ The MetadataPanel component includes enhanced multilingual support with defensiv
 - [VideoTimeline.tsx:200-201](file://frontend/src/components/archive/VideoTimeline.tsx#L200-L201)
 - [VideoTimeline.tsx:216-219](file://frontend/src/components/archive/VideoTimeline.tsx#L216-L219)
 - [VideoTimeline.tsx:229-239](file://frontend/src/components/archive/VideoTimeline.tsx#L229-L239)
+- [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-L21)
+- [TranscriptPanel.tsx:30-48](file://frontend/src/components/archive/TranscriptPanel.tsx#L30-L48)
 - [MetadataPanel.tsx:193-198](file://frontend/src/components/archive/MetadataPanel.tsx#L193-L198)
 
 ## Dependency Analysis
@@ -555,9 +589,9 @@ API --> CM["ComparisonMatrix.tsx"]
 - [api.ts:164-244](file://frontend/src/lib/api.ts#L164-L244)
 - [VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
 - [VideoTimeline.tsx:1-245](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L245)
-- [TranscriptPanel.tsx:1-155](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L155)
-- [MetadataPanel.tsx:1-377](file://frontend/src/components/archive/MetadataPanel.tsx#L1-L377)
-- [SearchDemo.tsx:1-189](file://frontend/src/components/archive/SearchDemo.tsx#L1-L189)
+- [TranscriptPanel.tsx:1-169](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L169)
+- [MetadataPanel.tsx:1-380](file://frontend/src/components/archive/MetadataPanel.tsx#L1-L380)
+- [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
 - [RFPForm.tsx:1-411](file://frontend/src/components/rfp/RFPForm.tsx#L1-L411)
 - [RFPPreview.tsx:1-200](file://frontend/src/components/rfp/RFPPreview.tsx#L1-L200)
@@ -602,6 +636,15 @@ API --> CM["ComparisonMatrix.tsx"]
   - **Updated**: Arabic names should now display properly alongside English names with proper RTL directionality.
   - Check if face.name_ar property exists in the metadata structure.
   - Verify that the conditional rendering logic handles missing Arabic names gracefully.
+  - **Updated**: Sensitive content flags now support both string and structured object formats.
+- **SearchDemo thumbnail issues**:
+  - **Updated**: Thumbnail URLs are now resolved using the enhanced resolveThumbnailUrl function.
+  - Verify that thumbnail paths are properly formatted and accessible.
+  - Check API_BASE_URL environment variable configuration.
+- **TranscriptPanel timestamp problems**:
+  - **Updated**: Timestamp formatting now handles multiple input formats and edge cases.
+  - Verify that transcript segments contain valid start/end time values.
+  - Check for malformed timestamp data in the backend response.
 
 **Section sources**
 - [VideoUpload.tsx:199-217](file://frontend/src/components/archive/VideoUpload.tsx#L199-L217)
@@ -609,6 +652,8 @@ API --> CM["ComparisonMatrix.tsx"]
 - [EvaluationSetup.tsx:156-189](file://frontend/src/components/evaluator/EvaluationSetup.tsx#L156-L189)
 - [VideoTimeline.tsx:200-201](file://frontend/src/components/archive/VideoTimeline.tsx#L200-L201)
 - [MetadataPanel.tsx:193-198](file://frontend/src/components/archive/MetadataPanel.tsx#L193-L198)
+- [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-L21)
+- [TranscriptPanel.tsx:30-48](file://frontend/src/components/archive/TranscriptPanel.tsx#L30-L48)
 
 ## Conclusion
-The component library provides a cohesive, accessible, and extensible foundation for the Dubai Media application. Base components (Button, Card) standardize UI patterns; feature-specific components encapsulate complex workflows while integrating with shared state and APIs. The recent defensive programming improvements ensure reliable operation even with incomplete data, while the accessibility enhancements guarantee consistent text visibility across all form components. The enhanced VideoTimeline component now provides granular face detection navigation with improved tooltip information, and the MetadataPanel component offers comprehensive multilingual support with proper RTL handling. By adhering to the documented props, composition patterns, defensive programming practices, and accessibility guidelines, teams can build consistent experiences across Archive, RFP, and Evaluator features.
+The component library provides a cohesive, accessible, and extensible foundation for the Dubai Media application. Base components (Button, Card) standardize UI patterns; feature-specific components encapsulate complex workflows while integrating with shared state and APIs. The recent defensive programming improvements ensure reliable operation even with incomplete data, while the accessibility enhancements guarantee consistent text visibility across all form components. The enhanced VideoTimeline component now provides granular face detection navigation with improved tooltip information, and the MetadataPanel component offers comprehensive multilingual support with proper RTL handling. The SearchDemo component now features robust thumbnail URL resolution that handles various path formats, and the TranscriptPanel provides reliable timestamp formatting across multiple input types. By adhering to the documented props, composition patterns, defensive programming practices, and accessibility guidelines, teams can build consistent experiences across Archive, RFP, and Evaluator features.
