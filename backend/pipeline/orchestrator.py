@@ -73,10 +73,8 @@ class PipelineOrchestrator:
 
         results = {}
 
-        # Compute video URL for API calls (served by nginx / static files mount)
-        video_filename = os.path.basename(video_path)
-        video_url = f"{settings.BASE_URL}/uploads/{video_filename}"
-        audio_url = f"{settings.BASE_URL}/uploads/{video_id}/audio.wav"
+        # Local file paths for API calls (base64-encoded before sending)
+        audio_path = os.path.join(output_dir, "audio.wav")
 
         total_stages = len(STAGE_NAMES)
 
@@ -103,8 +101,8 @@ class PipelineOrchestrator:
             results=results,
             ws_callback=ws_callback,
             coro_fn=lambda: analyze_video_visually(
-                video_url=video_url,
-                api_key=settings.DASHSCOPE_API_KEY,
+                video_path=video_path,
+                api_key=settings.DASHSCOPE_VIDEO_API_KEY,
                 model=settings.MODEL_VIDEO,
                 base_url=settings.DASHSCOPE_BASE_URL,
             ),
@@ -121,7 +119,7 @@ class PipelineOrchestrator:
             results=results,
             ws_callback=ws_callback,
             coro_fn=lambda: transcribe_audio(
-                audio_url=audio_url,
+                audio_path=audio_path,
                 api_key=settings.DASHSCOPE_API_KEY,
                 model=settings.MODEL_ASR,
             ),

@@ -19,8 +19,45 @@ EMBEDDING_DIM = 1024  # text-embedding-v3 dimension
 INDEX_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "search_index")
 
 
+class _NumpyFlatIP:
+    """Minimal numpy-based fallback for FAISS IndexFlatIP (cosine / inner-product)."""
+
+    def __init__(self, dim: int):
+        self.dim = dim
+        self._vectors: Optional[np.ndarray] = None  # (N, dim)
+        self.ntotal = 0
+
+    def add(self, vectors: np.ndarray):
+        if self._vectors is None:
+            self._vectors = vectors.copy()
+        else:
+            self._vectors = np.vstack([self._vectors, vectors])
+        self.ntotal = self._vectors.shape[0]
+
+    def search(self, query: np.ndarray, k: int):
+        """Return (scores, indices) matching FAISS API."""
+        if self._vectors is None or self.ntotal == 0:
+            return np.array([[]], dtype=np.float32), np.array([[-1]], dtype=np.int64)
+        scores = query @ self._vectors.T  # (1, N)
+        k = min(k, self.ntotal)
+        indices = np.argsort(-scores, axis=1)[:, :k]
+        sorted_scores = np.take_along_axis(scores, indices, axis=1)
+        return sorted_scores, indices
+
+
+# Try importing faiss at module level
+try:
+    import faiss as _faiss
+    _HAS_FAISS = True
+    logger.info("FAISS loaded successfully")
+except ImportError:
+    _faiss = None
+    _HAS_FAISS = False
+    logger.warning("faiss-cpu not available, using numpy fallback for search")
+
+
 class SearchIndex:
-    """FAISS-based search index with DashScope text embeddings."""
+    """Vector search index with DashScope text embeddings (FAISS or numpy fallback)."""
 
     def __init__(
         self,
@@ -35,50 +72,68 @@ class SearchIndex:
         self.index_dir = index_dir
         self.index = None
         self.metadata: List[dict] = []  # parallel list of metadata for each vector
+        self._use_faiss = _HAS_FAISS
 
         os.makedirs(self.index_dir, exist_ok=True)
         self._load_index()
 
     def _load_index(self):
-        """Load existing FAISS index and metadata from disk."""
+        """Load existing index and metadata from disk."""
         index_path = os.path.join(self.index_dir, "faiss.index")
         meta_path = os.path.join(self.index_dir, "metadata.pkl")
+        np_path = os.path.join(self.index_dir, "vectors.npy")
 
         try:
-            import faiss
-
-            if os.path.exists(index_path) and os.path.exists(meta_path):
-                self.index = faiss.read_index(index_path)
-                with open(meta_path, "rb") as f:
-                    self.metadata = pickle.load(f)
-                logger.info(
-                    "Loaded search index with %d vectors", self.index.ntotal
-                )
+            if self._use_faiss:
+                if os.path.exists(index_path) and os.path.exists(meta_path):
+                    self.index = _faiss.read_index(index_path)
+                    with open(meta_path, "rb") as f:
+                        self.metadata = pickle.load(f)
+                    logger.info(
+                        "Loaded FAISS index with %d vectors", self.index.ntotal
+                    )
+                else:
+                    self.index = _faiss.IndexFlatIP(EMBEDDING_DIM)
+                    self.metadata = []
+                    logger.info("Created new FAISS index")
             else:
-                self.index = faiss.IndexFlatIP(EMBEDDING_DIM)  # Inner product (cosine after normalization)
-                self.metadata = []
-                logger.info("Created new FAISS index")
-        except ImportError:
-            logger.warning("faiss-cpu not installed, search will be unavailable")
-            self.index = None
-            self.metadata = []
+                # Numpy fallback
+                self.index = _NumpyFlatIP(EMBEDDING_DIM)
+                if os.path.exists(np_path) and os.path.exists(meta_path):
+                    vectors = np.load(np_path)
+                    self.index.add(vectors)
+                    with open(meta_path, "rb") as f:
+                        self.metadata = pickle.load(f)
+                    logger.info(
+                        "Loaded numpy index with %d vectors", self.index.ntotal
+                    )
+                else:
+                    self.metadata = []
+                    logger.info("Created new numpy fallback index")
         except Exception as e:
             logger.error("Failed to load search index: %s", e)
-            import faiss
-            self.index = faiss.IndexFlatIP(EMBEDDING_DIM)
+            if self._use_faiss:
+                self.index = _faiss.IndexFlatIP(EMBEDDING_DIM)
+            else:
+                self.index = _NumpyFlatIP(EMBEDDING_DIM)
             self.metadata = []
 
     def _save_index(self):
-        """Persist FAISS index and metadata to disk."""
+        """Persist index and metadata to disk."""
         if self.index is None:
             return
 
         try:
-            import faiss
-
-            index_path = os.path.join(self.index_dir, "faiss.index")
             meta_path = os.path.join(self.index_dir, "metadata.pkl")
-            faiss.write_index(self.index, index_path)
+
+            if self._use_faiss:
+                index_path = os.path.join(self.index_dir, "faiss.index")
+                _faiss.write_index(self.index, index_path)
+            else:
+                np_path = os.path.join(self.index_dir, "vectors.npy")
+                if self.index._vectors is not None:
+                    np.save(np_path, self.index._vectors)
+
             with open(meta_path, "wb") as f:
                 pickle.dump(self.metadata, f)
             logger.info("Saved search index with %d vectors", self.index.ntotal)
@@ -128,7 +183,7 @@ class SearchIndex:
 
         # Get embeddings in batches (max 25 per call)
         all_embeddings = []
-        batch_size = 25
+        batch_size = 6
         for i in range(0, len(texts), batch_size):
             batch = texts[i : i + batch_size]
             embeddings = await self._get_embeddings(batch)

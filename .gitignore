@@ -26,3 +26,4 @@ push-via-api.sh
 # IDE
 .vscode/
 .idea/
+*.mp4

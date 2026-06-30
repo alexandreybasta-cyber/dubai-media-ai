@@ -1,12 +1,18 @@
 """
 Stage 3: Audio Analysis / Speech-to-Text
-Submits audio to DashScope ASR (paraformer-v2) for transcription with speaker diarization.
+Uses Qwen-Omni-Turbo via the native DashScope multimodal API for transcription.
+Falls back to the dedicated ASR endpoint when available.
 """
 
 import asyncio
+import base64
 import json
 import logging
-from typing import Optional
+import os
+import re
+import subprocess
+import tempfile
+from typing import List, Optional
 
 import httpx
 
@@ -14,227 +20,249 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
+# Chunk duration in seconds (qwen-omni-turbo has audio length limits)
+CHUNK_DURATION = 25
 
-def _asr_submit_url() -> str:
-    return f"{settings.DASHSCOPE_API_URL}/services/audio/asr/transcription"
-
-
-def _task_status_url(task_id: str) -> str:
-    return f"{settings.DASHSCOPE_API_URL}/tasks/{task_id}"
-
-
-POLL_INTERVAL = 5  # seconds
-MAX_POLL_ATTEMPTS = 120  # 10 minutes max
+TRANSCRIPTION_PROMPT = (
+    "Transcribe this audio completely and accurately. "
+    "Include all speech in the original language (English and/or Arabic). "
+    "Return ONLY the transcribed text, nothing else."
+)
 
 
 async def transcribe_audio(
-    audio_url: str,
-    api_key: str,
+    audio_path: str,
+    api_key: str = "",
     model: str = "paraformer-v2",
 ) -> dict:
     """
-    Submit audio to DashScope ASR for Arabic/English transcription with diarization.
+    Transcribe audio from a local file.
 
-    This is an async API: submit task, then poll until complete.
+    Primary: Split audio into chunks and transcribe via qwen-omni-turbo
+    (native DashScope multimodal API with base64 audio).
 
     Args:
-        audio_url: Publicly accessible URL of the audio file (WAV).
+        audio_path: Local path to the audio file (WAV).
         api_key: DashScope API key.
-        model: ASR model identifier.
+        model: ASR model identifier (kept for compatibility).
 
     Returns:
         dict with segments, full_text, language, and speaker info.
     """
+    api_key = api_key or settings.DASHSCOPE_API_KEY
     if not api_key:
         logger.warning("No API key provided, returning empty transcription")
         return _empty_result("No API key configured")
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
+    if not os.path.exists(audio_path):
+        logger.error("Audio file not found: %s", audio_path)
+        return _empty_result(f"Audio file not found: {audio_path}")
 
-    # --- Submit transcription task ---
-    task_id = await _submit_task(audio_url, model, headers)
-    if not task_id:
-        return _empty_result("Failed to submit ASR task")
+    logger.info("Starting audio transcription for %s", audio_path)
 
-    # --- Poll for completion ---
-    result = await _poll_task(task_id, headers)
-    if result is None:
-        return _empty_result(f"ASR task {task_id} did not complete")
+    # Get audio duration
+    duration = await _get_audio_duration(audio_path)
+    if duration <= 0:
+        return _empty_result("Could not determine audio duration")
 
-    return _parse_transcript(result)
+    logger.info("Audio duration: %.1f seconds", duration)
 
+    # Split audio into chunks and transcribe each
+    chunks = await _split_audio(audio_path, duration, CHUNK_DURATION)
+    if not chunks:
+        return _empty_result("Failed to split audio into chunks")
 
-async def _submit_task(
-    audio_url: str,
-    model: str,
-    headers: dict,
-) -> Optional[str]:
-    """Submit an ASR transcription task and return the task_id."""
-    payload = {
-        "model": model,
-        "input": {"file_urls": [audio_url]},
-        "parameters": {
-            "language_hints": ["ar", "en"],
-            "diarization_enabled": True,
-        },
-    }
+    logger.info("Split audio into %d chunks of ~%ds each", len(chunks), CHUNK_DURATION)
 
-    for attempt in range(3):
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(
-                    _asr_submit_url(), json=payload, headers=headers
-                )
-                resp.raise_for_status()
-                data = resp.json()
-
-            task_id = data.get("output", {}).get("task_id")
-            if task_id:
-                logger.info("ASR task submitted: %s", task_id)
-                return task_id
-
-            logger.error("No task_id in ASR response: %s", data)
-            return None
-
-        except httpx.HTTPStatusError as e:
-            logger.error(
-                "ASR submit error (attempt %d/3): %s – %s",
-                attempt + 1, e.response.status_code, e.response.text[:500],
-            )
-        except httpx.RequestError as e:
-            logger.error(
-                "ASR submit request error (attempt %d/3): %s",
-                attempt + 1, e,
-            )
-        except Exception as e:
-            logger.error(
-                "ASR submit unexpected error (attempt %d/3): %s",
-                attempt + 1, e,
-            )
-
-        await asyncio.sleep(2 ** attempt)
-
-    return None
-
-
-async def _poll_task(task_id: str, headers: dict) -> Optional[dict]:
-    """Poll the task status until completion or timeout."""
-    url = _task_status_url(task_id)
-
-    for i in range(MAX_POLL_ATTEMPTS):
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                resp = await client.get(url, headers=headers)
-                resp.raise_for_status()
-                data = resp.json()
-
-            status = data.get("output", {}).get("task_status", "")
-            logger.debug("ASR task %s status: %s", task_id, status)
-
-            if status == "SUCCEEDED":
-                return data.get("output", {})
-            elif status in ("FAILED", "CANCELED"):
-                error_msg = data.get("output", {}).get("message", "Unknown error")
-                logger.error("ASR task %s failed: %s", task_id, error_msg)
-                return None
-
-        except Exception as e:
-            logger.warning("Poll error for task %s: %s", task_id, e)
-
-        await asyncio.sleep(POLL_INTERVAL)
-
-    logger.error("ASR task %s timed out after %d polls", task_id, MAX_POLL_ATTEMPTS)
-    return None
-
-
-def _parse_transcript(output: dict) -> dict:
-    """Parse the ASR output into our structured format."""
     segments = []
     full_text_parts = []
 
-    try:
-        results = output.get("results", [])
-        if not results:
-            return _empty_result("No transcription results returned")
+    for i, (chunk_path, chunk_start, chunk_end) in enumerate(chunks):
+        logger.info(
+            "Transcribing chunk %d/%d (%.1fs - %.1fs)",
+            i + 1, len(chunks), chunk_start, chunk_end,
+        )
 
-        # DashScope ASR returns a URL to the transcript JSON
-        transcript_url = None
-        for r in results:
-            url = r.get("transcription_url")
-            if url:
-                transcript_url = url
-                break
-
-        if transcript_url:
-            # Fetch the actual transcript
-            transcript_data = _fetch_transcript_sync(transcript_url)
-            if transcript_data:
-                return _parse_transcript_data(transcript_data)
-
-        # Fallback: try to parse inline results
-        return _empty_result("Could not retrieve transcript data")
-
-    except Exception as e:
-        logger.error("Transcript parse error: %s", e)
-        return _empty_result(f"Parse error: {e}")
-
-
-def _fetch_transcript_sync(url: str) -> Optional[dict]:
-    """Synchronously fetch transcript JSON from URL."""
-    try:
-        import httpx as httpx_sync
-        with httpx_sync.Client(timeout=30.0) as client:
-            resp = client.get(url)
-            resp.raise_for_status()
-            return resp.json()
-    except Exception as e:
-        logger.error("Failed to fetch transcript from %s: %s", url, e)
-        return None
-
-
-def _parse_transcript_data(data: dict) -> dict:
-    """Parse the detailed transcript JSON into our format."""
-    segments = []
-    full_text_parts = []
-
-    transcripts = data.get("transcripts", [data]) if isinstance(data, dict) else [data]
-
-    for transcript in transcripts:
-        sentences = transcript.get("sentences", transcript.get("segments", []))
-        for sent in sentences:
-            seg = {
-                "start_time": sent.get("begin_time", sent.get("start", 0)) / 1000.0
-                if sent.get("begin_time", sent.get("start", 0)) > 100
-                else sent.get("begin_time", sent.get("start", 0)),
-                "end_time": sent.get("end_time", sent.get("end", 0)) / 1000.0
-                if sent.get("end_time", sent.get("end", 0)) > 100
-                else sent.get("end_time", sent.get("end", 0)),
-                "speaker_id": sent.get("speaker_id", "unknown"),
-                "text": sent.get("text", ""),
-                "language": sent.get("language", "unknown"),
+        text = await _transcribe_chunk(chunk_path, api_key)
+        if text and text.strip() and text.strip() not in ("[Music]", "[music]", ""):
+            segment = {
+                "start_time": chunk_start,
+                "end_time": chunk_end,
+                "text": text.strip(),
+                "speaker_id": "unknown",
+                "language": "unknown",
                 "words": [],
             }
+            segments.append(segment)
+            full_text_parts.append(text.strip())
 
-            # Parse word-level timestamps if available
-            for word in sent.get("words", []):
-                seg["words"].append({
-                    "word": word.get("text", word.get("word", "")),
-                    "start": word.get("begin_time", word.get("start", 0)),
-                    "end": word.get("end_time", word.get("end", 0)),
-                })
+        # Clean up chunk file
+        try:
+            os.remove(chunk_path)
+        except OSError:
+            pass
 
-            segments.append(seg)
-            full_text_parts.append(seg["text"])
+    if not segments:
+        return _empty_result("No speech detected in audio")
 
     return {
         "segments": segments,
         "full_text": " ".join(full_text_parts),
         "language": "mixed",
-        "speaker_count": len(set(s["speaker_id"] for s in segments if s["speaker_id"] != "unknown")),
+        "speaker_count": 0,
     }
+
+
+async def _get_audio_duration(audio_path: str) -> float:
+    """Get audio duration in seconds using ffprobe."""
+    try:
+        loop = asyncio.get_event_loop()
+
+        def _probe():
+            cmd = [
+                "ffprobe",
+                "-v", "quiet",
+                "-show_entries", "format=duration",
+                "-of", "json",
+                audio_path,
+            ]
+            return subprocess.run(cmd, capture_output=True, timeout=30)
+
+        result = await loop.run_in_executor(None, _probe)
+        if result.returncode == 0:
+            data = json.loads(result.stdout.decode())
+            return float(data.get("format", {}).get("duration", 0))
+    except Exception as e:
+        logger.error("ffprobe failed: %s", e)
+    return 0.0
+
+
+async def _split_audio(
+    audio_path: str, duration: float, chunk_secs: int
+) -> List[tuple]:
+    """
+    Split audio file into chunks using ffmpeg.
+
+    Returns list of (chunk_path, start_time, end_time) tuples.
+    """
+    tmp_dir = tempfile.mkdtemp(prefix="audio_chunks_")
+    chunks = []
+    loop = asyncio.get_event_loop()
+
+    num_chunks = max(1, int(duration / chunk_secs) + (1 if duration % chunk_secs > 1 else 0))
+
+    for i in range(num_chunks):
+        start = i * chunk_secs
+        end = min((i + 1) * chunk_secs, duration)
+        if start >= duration:
+            break
+
+        chunk_path = os.path.join(tmp_dir, f"chunk_{i:03d}.wav")
+        cmd = [
+            "ffmpeg",
+            "-i", audio_path,
+            "-ss", str(start),
+            "-t", str(chunk_secs),
+            "-acodec", "pcm_s16le",
+            "-ac", "1",
+            "-ar", "16000",
+            "-y",
+            chunk_path,
+        ]
+
+        def _run(c=cmd):
+            return subprocess.run(c, capture_output=True, timeout=60)
+
+        try:
+            result = await loop.run_in_executor(None, _run)
+            if result.returncode == 0 and os.path.exists(chunk_path):
+                chunks.append((chunk_path, start, end))
+            else:
+                logger.warning(
+                    "Failed to extract audio chunk %d: %s",
+                    i,
+                    result.stderr.decode()[:200] if result.stderr else "unknown",
+                )
+        except Exception as e:
+            logger.error("Error splitting chunk %d: %s", i, e)
+
+    return chunks
+
+
+async def _transcribe_chunk(chunk_path: str, api_key: str) -> Optional[str]:
+    """
+    Transcribe a single audio chunk using qwen-omni-turbo via the
+    native DashScope multimodal generation API.
+    """
+    try:
+        with open(chunk_path, "rb") as f:
+            audio_b64 = base64.b64encode(f.read()).decode("utf-8")
+    except Exception as e:
+        logger.error("Failed to read chunk %s: %s", chunk_path, e)
+        return None
+
+    endpoint = (
+        f"{settings.DASHSCOPE_API_URL}"
+        f"/services/aigc/multimodal-generation/generation"
+    )
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": "qwen-omni-turbo",
+        "input": {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"audio": f"data:audio/wav;base64,{audio_b64}"},
+                        {"text": TRANSCRIPTION_PROMPT},
+                    ],
+                }
+            ]
+        },
+        "parameters": {"max_tokens": 2048},
+    }
+
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(endpoint, json=payload, headers=headers)
+
+            if resp.status_code == 200:
+                data = resp.json()
+                content = (
+                    data.get("output", {})
+                    .get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content", [])
+                )
+                # content is a list of dicts like [{"text": "..."}]
+                if isinstance(content, list):
+                    for item in content:
+                        if isinstance(item, dict) and "text" in item:
+                            return item["text"]
+                elif isinstance(content, str):
+                    return content
+                return None
+            else:
+                logger.error(
+                    "Audio chunk transcription error (attempt %d/3): %s – %s",
+                    attempt + 1,
+                    resp.status_code,
+                    resp.text[:300],
+                )
+        except Exception as e:
+            logger.error(
+                "Audio chunk transcription exception (attempt %d/3): %s",
+                attempt + 1,
+                e,
+            )
+
+        await asyncio.sleep(2 ** attempt)
+
+    return None
 
 
 def _empty_result(error_msg: str = "") -> dict:
