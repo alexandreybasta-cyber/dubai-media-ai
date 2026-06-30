@@ -1,0 +1,1 @@
+Run `docker compose up --build` to start the entire platform (frontend, backend, and nginx) in a single command, or use `cp .env.example .env` to initialize required environment variables before startup.

@@ -1,0 +1,1 @@
+Next.js 16 with React 19, TypeScript, and Tailwind CSS v4. Uses Recharts for data visualization and Heroicons for UI elements.

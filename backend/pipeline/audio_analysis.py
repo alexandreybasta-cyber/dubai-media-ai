@@ -10,10 +10,18 @@ from typing import Optional
 
 import httpx
 
+from backend.config import settings
+
 logger = logging.getLogger(__name__)
 
-ASR_SUBMIT_URL = "https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription"
-TASK_STATUS_URL = "https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}"
+
+def _asr_submit_url() -> str:
+    return f"{settings.DASHSCOPE_API_URL}/services/audio/asr/transcription"
+
+
+def _task_status_url(task_id: str) -> str:
+    return f"{settings.DASHSCOPE_API_URL}/tasks/{task_id}"
+
 
 POLL_INTERVAL = 5  # seconds
 MAX_POLL_ATTEMPTS = 120  # 10 minutes max
@@ -78,7 +86,7 @@ async def _submit_task(
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.post(
-                    ASR_SUBMIT_URL, json=payload, headers=headers
+                    _asr_submit_url(), json=payload, headers=headers
                 )
                 resp.raise_for_status()
                 data = resp.json()
@@ -114,7 +122,7 @@ async def _submit_task(
 
 async def _poll_task(task_id: str, headers: dict) -> Optional[dict]:
     """Poll the task status until completion or timeout."""
-    url = TASK_STATUS_URL.format(task_id=task_id)
+    url = _task_status_url(task_id)
 
     for i in range(MAX_POLL_ATTEMPTS):
         try:

@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: build_system
+title: Docker Compose & Nginx Orchestration
+scope: []
+source_files:
+    - docker-compose.yml
+    - nginx.conf
+    - backend/requirements.txt
+    - frontend/package.json
+    - .env.example
+    - README.md
+depends_on: []
+related_to: []

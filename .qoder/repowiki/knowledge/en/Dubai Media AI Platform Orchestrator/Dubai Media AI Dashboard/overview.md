@@ -1,0 +1,1 @@
+A Next.js application providing tools for AI-powered video metadata extraction, RFP generation, and vendor evaluation.

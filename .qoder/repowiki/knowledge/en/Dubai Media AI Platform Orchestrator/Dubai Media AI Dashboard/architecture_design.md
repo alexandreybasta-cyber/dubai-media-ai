@@ -1,0 +1,4 @@
+- Built on Next.js 16 App Router with a persistent `Sidebar` layout wrapping all routes.
+- Feature-based routing under `src/app` (`/archive`, `/rfp-creator`, `/rfp-evaluator`) maps to domain-specific component clusters in `src/components`.
+- Centralized API interaction via `src/lib/api.ts` using a typed `apiFetch` wrapper and WebSocket helpers for real-time pipeline updates.
+- Complex state management for video processing is encapsulated in the `useVideoProcessing` custom hook, separating UI logic from data fetching.

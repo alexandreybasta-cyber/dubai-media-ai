@@ -1,0 +1,1 @@
+Provides asynchronous video metadata extraction via Alibaba DashScope and AI-driven RFP generation and vendor evaluation services.

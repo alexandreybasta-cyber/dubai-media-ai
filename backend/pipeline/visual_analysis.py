@@ -10,6 +10,8 @@ from typing import Optional
 
 import httpx
 
+from backend.config import settings
+
 logger = logging.getLogger(__name__)
 
 ANALYSIS_PROMPT = """Analyze this video comprehensively for a media archive system. Return ONLY valid JSON with this structure:
@@ -42,9 +44,9 @@ Be thorough. Identify all visible text (Arabic and English), landmarks (especial
 
 async def analyze_video_visually(
     video_url: str,
-    api_key: str,
-    model: str = "qwen-vl-max",
-    base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    api_key: str = "",
+    model: str = "",
+    base_url: str = "",
 ) -> dict:
     """
     Send video to Qwen VL model for comprehensive visual analysis.
@@ -58,6 +60,11 @@ async def analyze_video_visually(
     Returns:
         Parsed JSON dict with scenes, objects, landmarks, faces, text_ocr, etc.
     """
+    # Use settings defaults if not explicitly provided
+    api_key = api_key or settings.DASHSCOPE_VIDEO_API_KEY
+    model = model or settings.MODEL_VIDEO
+    base_url = base_url or settings.DASHSCOPE_BASE_URL
+
     if not api_key:
         logger.warning("No API key provided, returning empty visual analysis")
         return _empty_result("No API key configured")

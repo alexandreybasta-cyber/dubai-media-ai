@@ -1,0 +1,16 @@
+schema_version: 1
+module_path: error_handling
+title: Error Handling — FastAPI HTTPException, Pipeline Resilience, and Frontend API Error Propagation
+scope: []
+source_files:
+    - backend/routers/video.py
+    - backend/routers/rfp.py
+    - backend/pipeline/orchestrator.py
+    - backend/services/rfp_creator.py
+    - backend/services/rfp_evaluator.py
+    - backend/pipeline/ingestion.py
+    - backend/pipeline/audio_analysis.py
+    - backend/pipeline/face_recognition.py
+    - frontend/src/lib/api.ts
+depends_on: []
+related_to: []

@@ -1,0 +1,4 @@
+- **Entry Point**: `main.py` initializes a FastAPI application with CORS, static file serving for uploads, and two primary routers: `video` and `rfp`.
+- **Video Pipeline**: `routers/video.py` handles file uploads and triggers `pipeline.orchestrator.PipelineOrchestrator`. The orchestrator executes a six-stage sequential workflow: ingestion (ffmpeg), visual analysis, audio transcription, face recognition, metadata structuring, and FAISS-based search indexing. Progress is broadcast via WebSocket.
+- **RFP Services**: `routers/rfp.py` exposes endpoints for `services.rfp_creator.RFPCreator` and `services.rfp_evaluator.RFPEvaluator`. These services use Qwen models to generate structured RFP documents and evaluate vendor proposals, exporting results to DOCX, PDF, and XLSX.
+- **Data Persistence**: Uses local JSON files for status tracking and result storage within the `uploads/` directory, and a local FAISS index in `data/search_index/` for semantic search.

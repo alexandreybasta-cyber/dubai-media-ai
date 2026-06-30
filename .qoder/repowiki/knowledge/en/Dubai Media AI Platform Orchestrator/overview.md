@@ -1,0 +1,1 @@
+Orchestrates the AI-powered media processing and dashboard services through a unified Docker Compose environment with Nginx reverse proxying.
