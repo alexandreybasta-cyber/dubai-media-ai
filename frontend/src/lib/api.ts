@@ -106,6 +106,37 @@ export interface RFPSection {
   content_ar?: string;
 }
 
+// ─── Evaluation Types ───────────────────────────────────────────────────
+
+export interface ScoreItem {
+  criterion: string;
+  score: number;
+  justification: string;
+  evidence: string;
+}
+
+export interface MandatoryCompliance {
+  requirement: string;
+  status: string;
+  note: string;
+}
+
+export interface VendorResult {
+  vendor_name: string;
+  scores: ScoreItem[];
+  weighted_total: number;
+  strengths: string[];
+  gaps: string[];
+  risks: string[];
+  mandatory_compliance: MandatoryCompliance[];
+}
+
+export interface EvaluationResults {
+  vendors: VendorResult[];
+  recommendation: string;
+  follow_up_questions: Record<string, string[]>;
+}
+
 export interface RFPCreatePayload {
   project_title: string;
   project_overview: string;
@@ -175,19 +206,37 @@ export const api = {
       const url = `${API_BASE_URL}/api/rfp/${rfpId}/export/pdf`;
       window.open(url, "_blank");
     },
-    evaluate: (data: { proposals: string[]; criteria?: string[] }) =>
-      apiFetch("/api/rfp/evaluate", {
+    evaluate: (formData: FormData) => {
+      return fetch(`${API_BASE_URL}/api/rfp/evaluate`, {
         method: "POST",
-        body: JSON.stringify(data),
-      }),
+        body: formData,
+      }).then(async (res) => {
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || `Evaluate Error: ${res.status}`);
+        }
+        return res.json();
+      });
+    },
     getEvaluationStatus: (evalId: string) =>
-      apiFetch(`/api/rfp/evaluation/${evalId}/status`),
+      apiFetch<{
+        eval_id: string;
+        status: string;
+        progress: number;
+        proposals_evaluated: number;
+        error: string | null;
+        message: string;
+      }>(`/api/rfp/evaluation/${evalId}/status`),
     getEvaluationResults: (evalId: string) =>
-      apiFetch(`/api/rfp/evaluation/${evalId}/results`),
-    exportEvaluationXlsx: (evalId: string) =>
-      apiFetch(`/api/rfp/evaluation/${evalId}/export/xlsx`),
-    exportEvaluationPdf: (evalId: string) =>
-      apiFetch(`/api/rfp/evaluation/${evalId}/export/pdf`),
+      apiFetch<{ eval_id: string; status: string; results: EvaluationResults }>(
+        `/api/rfp/evaluation/${evalId}/results`
+      ),
+    exportEvaluationXlsx: (evalId: string) => {
+      window.open(`${API_BASE_URL}/api/rfp/evaluation/${evalId}/export/xlsx`, "_blank");
+    },
+    exportEvaluationPdf: (evalId: string) => {
+      window.open(`${API_BASE_URL}/api/rfp/evaluation/${evalId}/export/pdf`, "_blank");
+    },
   },
 
   // Health check

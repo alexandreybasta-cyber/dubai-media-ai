@@ -1,20 +1,25 @@
 import json
 import os
 import uuid
+import asyncio
 from typing import Optional, List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 from config import settings
 from services.rfp_creator import RFPCreator
+from services.rfp_evaluator import RFPEvaluator
 
 router = APIRouter(prefix="/api/rfp", tags=["rfp"])
 rfp_creator = RFPCreator()
+rfp_evaluator = RFPEvaluator()
 
 RFP_STORAGE_DIR = os.path.join(settings.UPLOAD_DIR, "rfps")
+EVAL_STORAGE_DIR = os.path.join(settings.UPLOAD_DIR, "evaluations")
 os.makedirs(RFP_STORAGE_DIR, exist_ok=True)
+os.makedirs(EVAL_STORAGE_DIR, exist_ok=True)
 
 
 # ─── Models ──────────────────────────────────────────────────────────────────
@@ -194,97 +199,186 @@ async def export_rfp_pdf(rfp_id: str):
     )
 
 
+# ─── Evaluate Helpers ────────────────────────────────────────────────────────
+
+
+def _save_evaluation(eval_id: str, data: dict):
+    path = os.path.join(EVAL_STORAGE_DIR, f"{eval_id}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def _load_evaluation(eval_id: str) -> dict:
+    path = os.path.join(EVAL_STORAGE_DIR, f"{eval_id}.json")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail=f"Evaluation '{eval_id}' not found")
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+async def _run_evaluation(eval_id: str, rfp_text: str, vendor_responses: list, criteria: list):
+    """Background task to run the AI evaluation."""
+    eval_data = _load_evaluation(eval_id)
+    try:
+        eval_data["status"] = "processing"
+        eval_data["progress"] = 10
+        _save_evaluation(eval_id, eval_data)
+
+        results = await rfp_evaluator.evaluate_responses(rfp_text, vendor_responses, criteria)
+
+        eval_data["status"] = "completed"
+        eval_data["progress"] = 100
+        eval_data["results"] = results
+        eval_data["proposals_evaluated"] = len(vendor_responses)
+        _save_evaluation(eval_id, eval_data)
+    except Exception as e:
+        eval_data["status"] = "failed"
+        eval_data["error"] = str(e)
+        _save_evaluation(eval_id, eval_data)
+
+
+# ─── EVALUATE Endpoints ──────────────────────────────────────────────────────
+
+
 @router.post("/evaluate")
-async def evaluate_rfp(request: RFPEvaluateRequest):
+async def evaluate_rfp(
+    background_tasks: BackgroundTasks,
+    rfp_file: UploadFile = File(...),
+    vendor_files: List[UploadFile] = File(...),
+    vendor_names: str = Form(...),
+    criteria: str = Form(...),
+):
     eval_id = str(uuid.uuid4())
+
+    # Parse vendor names and criteria from JSON strings
+    try:
+        names_list = json.loads(vendor_names)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="vendor_names must be valid JSON array")
+
+    try:
+        criteria_list = json.loads(criteria)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="criteria must be valid JSON array")
+
+    if len(names_list) != len(vendor_files):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Number of vendor names ({len(names_list)}) must match vendor files ({len(vendor_files)})",
+        )
+
+    if len(vendor_files) < 2:
+        raise HTTPException(status_code=400, detail="At least 2 vendor responses required")
+
+    # Extract text from RFP file
+    rfp_bytes = await rfp_file.read()
+    rfp_text = rfp_evaluator.extract_text(rfp_bytes, rfp_file.filename or "rfp.pdf")
+
+    if not rfp_text.strip():
+        raise HTTPException(status_code=400, detail="Could not extract text from RFP file")
+
+    # Extract text from vendor files
+    vendor_responses = []
+    for i, vf in enumerate(vendor_files):
+        vf_bytes = await vf.read()
+        vf_text = rfp_evaluator.extract_text(vf_bytes, vf.filename or f"vendor_{i}.pdf")
+        vendor_responses.append({
+            "vendor_name": names_list[i],
+            "response_text": vf_text,
+        })
+
+    # Create initial evaluation record
+    eval_data = {
+        "eval_id": eval_id,
+        "status": "queued",
+        "progress": 0,
+        "proposals_evaluated": 0,
+        "vendor_names": names_list,
+        "criteria": criteria_list,
+        "results": None,
+        "error": None,
+    }
+    _save_evaluation(eval_id, eval_data)
+
+    # Run evaluation in background
+    background_tasks.add_task(_run_evaluation, eval_id, rfp_text, vendor_responses, criteria_list)
+
     return {
         "eval_id": eval_id,
-        "status": "processing",
-        "proposals_count": len(request.proposals),
+        "status": "queued",
+        "proposals_count": len(vendor_responses),
         "message": "Evaluation started. Use the status endpoint to track progress.",
     }
 
 
 @router.get("/evaluation/{eval_id}/status")
 async def get_evaluation_status(eval_id: str):
+    eval_data = _load_evaluation(eval_id)
     return {
         "eval_id": eval_id,
-        "status": "completed",
-        "progress": 100,
-        "proposals_evaluated": 3,
-        "message": "All proposals have been evaluated.",
+        "status": eval_data.get("status", "unknown"),
+        "progress": eval_data.get("progress", 0),
+        "proposals_evaluated": eval_data.get("proposals_evaluated", 0),
+        "error": eval_data.get("error"),
+        "message": (
+            "Evaluation complete." if eval_data.get("status") == "completed"
+            else "Evaluation in progress..." if eval_data.get("status") == "processing"
+            else "Evaluation queued." if eval_data.get("status") == "queued"
+            else f"Evaluation failed: {eval_data.get('error', 'Unknown error')}"
+        ),
     }
 
 
 @router.get("/evaluation/{eval_id}/results")
 async def get_evaluation_results(eval_id: str):
+    eval_data = _load_evaluation(eval_id)
+
+    if eval_data.get("status") != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Evaluation not yet completed. Current status: {eval_data.get('status')}",
+        )
+
     return {
         "eval_id": eval_id,
         "status": "completed",
-        "rankings": [
-            {
-                "rank": 1,
-                "proposal_name": "Vendor A - TechSolutions Inc.",
-                "overall_score": 87.5,
-                "scores": {
-                    "technical_capability": 90,
-                    "cost_effectiveness": 82,
-                    "timeline": 88,
-                    "team_experience": 85,
-                    "innovation": 92,
-                },
-                "recommendation": "Strongly Recommended",
-                "summary": "Comprehensive solution with strong AI capabilities and proven media industry track record.",
-            },
-            {
-                "rank": 2,
-                "proposal_name": "Vendor B - MediaTech Global",
-                "overall_score": 79.2,
-                "scores": {
-                    "technical_capability": 78,
-                    "cost_effectiveness": 88,
-                    "timeline": 75,
-                    "team_experience": 80,
-                    "innovation": 70,
-                },
-                "recommendation": "Recommended with Reservations",
-                "summary": "Cost-effective proposal but limited innovation in AI-driven features.",
-            },
-            {
-                "rank": 3,
-                "proposal_name": "Vendor C - Digital Dynamics",
-                "overall_score": 72.0,
-                "scores": {
-                    "technical_capability": 70,
-                    "cost_effectiveness": 75,
-                    "timeline": 80,
-                    "team_experience": 65,
-                    "innovation": 68,
-                },
-                "recommendation": "Not Recommended",
-                "summary": "Lacks depth in media-specific AI capabilities.",
-            },
-        ],
+        "results": eval_data.get("results"),
     }
 
 
 @router.get("/evaluation/{eval_id}/export/xlsx")
 async def export_evaluation_xlsx(eval_id: str):
-    return {
-        "eval_id": eval_id,
-        "format": "xlsx",
-        "download_url": f"/uploads/evaluation/{eval_id}/results.xlsx",
-        "status": "ready",
-        "message": "Excel export generated successfully.",
-    }
+    eval_data = _load_evaluation(eval_id)
+
+    if eval_data.get("status") != "completed" or not eval_data.get("results"):
+        raise HTTPException(status_code=400, detail="Evaluation not completed yet")
+
+    try:
+        xlsx_bytes = rfp_evaluator.export_xlsx(eval_data["results"])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"XLSX generation failed: {str(e)}")
+
+    return Response(
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="Evaluation_{eval_id[:8]}.xlsx"'},
+    )
 
 
 @router.get("/evaluation/{eval_id}/export/pdf")
 async def export_evaluation_pdf(eval_id: str):
-    return {
-        "eval_id": eval_id,
-        "format": "pdf",
-        "download_url": f"/uploads/evaluation/{eval_id}/report.pdf",
-        "status": "ready",
-        "message": "PDF evaluation report generated successfully.",
-    }
+    eval_data = _load_evaluation(eval_id)
+
+    if eval_data.get("status") != "completed" or not eval_data.get("results"):
+        raise HTTPException(status_code=400, detail="Evaluation not completed yet")
+
+    try:
+        pdf_bytes = rfp_evaluator.export_pdf_report(eval_data["results"])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="Evaluation_{eval_id[:8]}.pdf"'},
+    )

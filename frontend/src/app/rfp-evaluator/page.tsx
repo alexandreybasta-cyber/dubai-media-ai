@@ -1,94 +1,177 @@
 "use client";
 
-import { ArrowUpTrayIcon } from "@heroicons/react/24/outline";
+import { useState, useEffect, useRef } from "react";
+import { ArrowLeftIcon } from "@heroicons/react/24/outline";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
+import {
+  EvaluationSetup,
+  Criterion,
+} from "@/components/evaluator/EvaluationSetup";
+import { ComparisonMatrix } from "@/components/evaluator/ComparisonMatrix";
+import { VendorScorecard } from "@/components/evaluator/VendorScorecard";
+import { RecommendationPanel } from "@/components/evaluator/RecommendationPanel";
+import { api, type EvaluationResults } from "@/lib/api";
+
+type Phase = "setup" | "evaluating" | "results";
 
 export default function RFPEvaluatorPage() {
+  const [phase, setPhase] = useState<Phase>("setup");
+  const [evalId, setEvalId] = useState<string>("");
+  const [results, setResults] = useState<EvaluationResults | null>(null);
+  const [criteriaWeights, setCriteriaWeights] = useState<Record<string, number>>({});
+  const [progressMessage, setProgressMessage] = useState<string>("");
+  const [error, setError] = useState<string>("");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  const startEvaluation = async ({
+    rfpFile,
+    vendors,
+    criteria,
+  }: {
+    rfpFile: File;
+    vendors: { name: string; file: File }[];
+    criteria: Criterion[];
+  }) => {
+    setError("");
+    setProgressMessage("Uploading files...");
+
+    // Build weights map for the results UI
+    const weights: Record<string, number> = {};
+    criteria.forEach((c) => {
+      weights[c.name] = c.weight;
+    });
+    setCriteriaWeights(weights);
+
+    // Build FormData
+    const formData = new FormData();
+    formData.append("rfp_file", rfpFile);
+    vendors.forEach((v) => formData.append("vendor_files", v.file));
+    formData.append("vendor_names", JSON.stringify(vendors.map((v) => v.name)));
+    formData.append("criteria", JSON.stringify(criteria));
+
+    try {
+      const response = (await api.rfp.evaluate(formData)) as {
+        eval_id: string;
+        status: string;
+      };
+      setEvalId(response.eval_id);
+      setPhase("evaluating");
+      setProgressMessage("Evaluating with Qwen AI...");
+
+      // Begin polling
+      pollRef.current = setInterval(async () => {
+        try {
+          const status = await api.rfp.getEvaluationStatus(response.eval_id);
+          setProgressMessage(status.message);
+
+          if (status.status === "completed") {
+            if (pollRef.current) clearInterval(pollRef.current);
+            const resultsResponse = await api.rfp.getEvaluationResults(
+              response.eval_id
+            );
+            setResults(resultsResponse.results);
+            setPhase("results");
+          } else if (status.status === "failed") {
+            if (pollRef.current) clearInterval(pollRef.current);
+            setError(`Evaluation failed: ${status.error || "Unknown error"}`);
+            setPhase("setup");
+          }
+        } catch (err) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setError(
+            err instanceof Error ? err.message : "Failed to poll evaluation status"
+          );
+          setPhase("setup");
+        }
+      }, 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start evaluation");
+      throw err;
+    }
+  };
+
+  const resetToSetup = () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    setPhase("setup");
+    setResults(null);
+    setEvalId("");
+    setProgressMessage("");
+    setError("");
+  };
+
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">RFP Evaluator</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Evaluate and compare vendor proposals with AI-powered scoring and
-          analysis
-        </p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">RFP Evaluator</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            Evaluate and compare vendor proposals with AI-powered scoring and
+            analysis
+          </p>
+        </div>
+        {phase === "results" && (
+          <Button variant="secondary" onClick={resetToSetup}>
+            <ArrowLeftIcon className="w-4 h-4 mr-2" />
+            New Evaluation
+          </Button>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <Card>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Upload Proposals
-            </h2>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors">
-              <ArrowUpTrayIcon className="w-10 h-10 text-gray-400 mx-auto" />
-              <p className="mt-3 text-sm text-gray-600">
-                Upload vendor proposal documents (PDF, DOCX)
-              </p>
-              <p className="mt-1 text-xs text-gray-400">
-                You can upload multiple proposals for comparative evaluation
-              </p>
-              <Button className="mt-4">Select Files</Button>
-            </div>
-          </Card>
-
-          <Card className="mt-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Evaluation Criteria
-            </h2>
-            <div className="space-y-3">
-              {[
-                { name: "Technical Capability", weight: 30 },
-                { name: "Cost Effectiveness", weight: 25 },
-                { name: "Timeline", weight: 20 },
-                { name: "Team Experience", weight: 15 },
-                { name: "Innovation", weight: 10 },
-              ].map((criterion) => (
-                <div
-                  key={criterion.name}
-                  className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg"
-                >
-                  <span className="text-sm text-gray-700">
-                    {criterion.name}
-                  </span>
-                  <span className="text-sm font-medium text-primary-600">
-                    {criterion.weight}%
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4">
-              <Button>Start Evaluation</Button>
-            </div>
-          </Card>
+      {error && phase === "setup" && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+          {error}
         </div>
+      )}
 
-        <div className="space-y-6">
-          <Card>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Evaluation Results
+      {phase === "setup" && (
+        <EvaluationSetup
+          onEvaluate={startEvaluation}
+          isEvaluating={false}
+          progressMessage=""
+        />
+      )}
+
+      {phase === "evaluating" && (
+        <Card>
+          <div className="py-16 text-center">
+            <div className="inline-block w-16 h-16 border-4 border-primary-200 border-t-primary-500 rounded-full animate-spin mb-6" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+              Evaluating with Qwen AI
             </h2>
-            <p className="text-sm text-gray-500 text-center py-8">
-              Upload proposals and run an evaluation to see results here.
+            <p className="text-sm text-gray-600">{progressMessage}</p>
+            <p className="text-xs text-gray-400 mt-4">
+              Evaluation ID: {evalId.substring(0, 8)}…
             </p>
-          </Card>
+          </div>
+        </Card>
+      )}
 
-          <Card>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Export Results
+      {phase === "results" && results && (
+        <div className="space-y-8">
+          <ComparisonMatrix
+            results={results}
+            criteriaWeights={criteriaWeights}
+            onExportXlsx={() => api.rfp.exportEvaluationXlsx(evalId)}
+            onExportPdf={() => api.rfp.exportEvaluationPdf(evalId)}
+          />
+
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 mb-4">
+              Vendor Scorecards
             </h2>
-            <div className="space-y-2">
-              <Button variant="secondary" className="w-full">
-                Export as Excel
-              </Button>
-              <Button variant="secondary" className="w-full">
-                Export as PDF Report
-              </Button>
-            </div>
-          </Card>
+            <VendorScorecard vendors={results.vendors} />
+          </div>
+
+          <RecommendationPanel results={results} />
         </div>
-      </div>
+      )}
     </div>
   );
 }
