@@ -15,6 +15,14 @@
 - [main.py](file://backend/main.py)
 </cite>
 
+## Update Summary
+**Changes Made**
+- Enhanced Data Transformation Layer documentation for comprehensive mapping logic
+- Added detailed VideoMetadata interface mapping documentation
+- Updated data transformation patterns section with specific backend-to-frontend mapping examples
+- Expanded API endpoint mapping section with detailed response structure documentation
+- Added comprehensive transformation examples showing backend response to frontend interface mapping
+
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
@@ -55,14 +63,14 @@ D --> F
 
 **Diagram sources**
 - [api.ts:1-245](file://frontend/src/lib/api.ts#L1-L245)
-- [useVideoProcessing.ts:1-421](file://frontend/src/lib/useVideoProcessing.ts#L1-L421)
+- [useVideoProcessing.ts:1-465](file://frontend/src/lib/useVideoProcessing.ts#L1-L465)
 - [main.py:1-44](file://backend/main.py#L1-L44)
-- [video.py:1-267](file://backend/routers/video.py#L1-L267)
+- [video.py:1-268](file://backend/routers/video.py#L1-L268)
 - [rfp.py:1-385](file://backend/routers/rfp.py#L1-L385)
 
 **Section sources**
 - [api.ts:1-245](file://frontend/src/lib/api.ts#L1-L245)
-- [useVideoProcessing.ts:1-421](file://frontend/src/lib/useVideoProcessing.ts#L1-L421)
+- [useVideoProcessing.ts:1-465](file://frontend/src/lib/useVideoProcessing.ts#L1-L465)
 - [main.py:1-44](file://backend/main.py#L1-L44)
 
 ## Core Components
@@ -115,7 +123,7 @@ The hook manages:
 State structure:
 - View modes: upload, processing, results
 - Upload state: idle, uploading, uploaded, error
-- Pipeline stages: ingestion, visual_analysis, audio_speech, face_recognition, metadata_structuring, search_indexing
+- Pipeline stages: ingestion, visual_analysis, audio_speech, face_recognition, metadata_structuring, search_index
 - Metadata: faces, scenes, objects, landmarks, sensitive content indicators
 - Transcript segments with speaker, timestamps, and optional language
 - Search results: video_id, title, timestamp, description, score
@@ -124,7 +132,7 @@ State structure:
 **Section sources**
 - [useVideoProcessing.ts:88-104](file://frontend/src/lib/useVideoProcessing.ts#L88-L104)
 - [useVideoProcessing.ts:106-113](file://frontend/src/lib/useVideoProcessing.ts#L106-L113)
-- [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
+- [useVideoProcessing.ts:122-465](file://frontend/src/lib/useVideoProcessing.ts#L122-L465)
 
 ## Architecture Overview
 The frontend communicates with backend endpoints through a typed HTTP client and real-time WebSocket channels. The video processing workflow combines asynchronous uploads, background pipeline execution, and live progress updates.
@@ -199,7 +207,7 @@ Typed request/response models:
 - [video.py:143-174](file://backend/routers/video.py#L143-L174)
 - [video.py:179-195](file://backend/routers/video.py#L179-L195)
 - [video.py:200-215](file://backend/routers/video.py#L200-L215)
-- [video.py:220-267](file://backend/routers/video.py#L220-L267)
+- [video.py:220-268](file://backend/routers/video.py#L220-L268)
 - [rfp.py:97-130](file://backend/routers/rfp.py#L97-L130)
 - [rfp.py:133-167](file://backend/routers/rfp.py#L133-L167)
 - [rfp.py:243-311](file://backend/routers/rfp.py#L243-L311)
@@ -207,17 +215,91 @@ Typed request/response models:
 - [rfp.py:332-346](file://backend/routers/rfp.py#L332-L346)
 
 ### Data Transformation Patterns
-- Upload progress: simulated progress updates during upload; real progress requires XMLHttpRequest
-- Metadata enrichment: assigns deterministic face colors for visualization
-- Bilingual content: splits regenerated section content into English and Arabic when language is "both"
-- Search results: transforms backend search results into a normalized shape for UI consumption
-- Evaluation results: stores vendor scores, mandatory compliance, strengths, gaps, and risks
+**Updated** Comprehensive frontend data transformation layer implementation with detailed mapping logic for backend responses to VideoMetadata interface.
+
+The data transformation layer in useVideoProcessing.ts implements sophisticated mapping logic to convert backend response structures into frontend-friendly interfaces:
+
+#### Backend Response Structure to Frontend Interface Mapping
+The backend returns metadata in a hierarchical structure:
+```json
+{
+  "video_id": "string",
+  "ingestion": {
+    "duration": number
+  },
+  "visual_analysis": {
+    "scenes": [...],
+    "objects": [...],
+    "landmarks": [...],
+    "sensitive_content": [...],
+    "faces": [...],
+    "era_estimate": {
+      "decade": "string"
+    }
+  },
+  "metadata": {
+    "title": "string",
+    "topic": "string",
+    "sentiment_tags": ["string"],
+    "ebucore_xml": "string",
+    "iptc_video_metadata": {}
+  },
+  "faces": ["detected_face_objects"]
+}
+```
+
+The transformation logic maps this to the VideoMetadata interface:
+
+#### Key Transformation Examples
+1. **Duration Mapping**: Extracted from `ingestion.duration` with fallback to 0
+2. **Sentiment Processing**: Converts array of sentiment tags to comma-separated string
+3. **Face Detection**: Prioritizes visual analysis faces over top-level faces
+4. **Color Assignment**: Automatically assigns deterministic face colors from predefined palette
+5. **Scene Boundary Normalization**: Transforms scene data with optional thumbnails
+6. **Object Confidence**: Normalizes object detection confidence scores
+7. **Landmark Timestamps**: Structures landmark data with name and timestamp pairs
+
+#### Transformation Implementation Details
+The `fetchResults` function (lines 284-340) orchestrates the complete transformation:
+
+```typescript
+// Backend structure -> Frontend interface mapping
+const metadata: VideoMetadata = {
+  video_id: videoId,
+  duration: (ingestion.duration as number) || 0,
+  title: (metaBlock.title as string) || undefined,
+  topic: (metaBlock.topic as string) || undefined,
+  sentiment: ((metaBlock.sentiment_tags as string[]) || []).join(", ") || undefined,
+  era: ((visualAnalysis.era_estimate as Record<string, unknown>)?.decade as string) || undefined,
+  scenes: (visualAnalysis.scenes || []) as SceneBoundary[],
+  faces: topLevelFaces.length > 0 ? topLevelFaces : visualFaces,
+  objects: (visualAnalysis.objects || []) as DetectedObject[],
+  landmarks: (visualAnalysis.landmarks || []) as { name: string; timestamp: number }[],
+  sensitive_content: (visualAnalysis.sensitive_content || []) as string[],
+  ebucore_xml: (metaBlock.ebucore_xml as string) || undefined,
+  iptc_json: (metaBlock.iptc_video_metadata as Record<string, unknown>) || undefined,
+  raw: raw,
+};
+```
+
+#### Face Color Assignment Strategy
+Deterministic color assignment ensures consistent visualization:
+- Uses predefined color palette: `["#3B82F6", "#10B981", "#8B5CF6", "#F59E0B", "#EF4444", "#06B6D4", "#EC4899", "#14B8A6"]`
+- Applies modulo arithmetic for cyclic color assignment
+- Preserves existing face colors when present in backend data
+
+#### Transcript Transformation
+Simple but effective transformation:
+- Extracts segments array from backend response
+- Ensures proper typing with TranscriptSegment interface
+- Handles missing segments gracefully with empty array fallback
 
 **Section sources**
-- [useVideoProcessing.ts:176-182](file://frontend/src/lib/useVideoProcessing.ts#L176-L182)
-- [useVideoProcessing.ts:288-294](file://frontend/src/lib/useVideoProcessing.ts#L288-L294)
-- [useVideoProcessing.ts:352-368](file://frontend/src/lib/useVideoProcessing.ts#L352-L368)
-- [rfp-creator/page.tsx:34-65](file://frontend/src/app/rfp-creator/page.tsx#L34-L65)
+- [useVideoProcessing.ts:284-340](file://frontend/src/lib/useVideoProcessing.ts#L284-L340)
+- [useVideoProcessing.ts:291-316](file://frontend/src/lib/useVideoProcessing.ts#L291-L316)
+- [useVideoProcessing.ts:318-325](file://frontend/src/lib/useVideoProcessing.ts#L318-L325)
+- [useVideoProcessing.ts:327-329](file://frontend/src/lib/useVideoProcessing.ts#L327-L329)
+- [useVideoProcessing.ts:115-118](file://frontend/src/lib/useVideoProcessing.ts#L115-L118)
 
 ### Async Operations, Loading States, Error Boundaries, and Retry Mechanisms
 - Upload: sets uploading state, simulates progress, handles errors, and transitions to processing view upon success
@@ -254,7 +336,7 @@ Typed request/response models:
 - [main.py:27-35](file://backend/main.py#L27-L35)
 - [main.py:35-44](file://backend/main.py#L35-L44)
 - [video.py:95-120](file://backend/routers/video.py#L95-L120)
-- [video.py:218-267](file://backend/routers/video.py#L218-L267)
+- [video.py:218-268](file://backend/routers/video.py#L218-L268)
 - [rfp.py:219-238](file://backend/routers/rfp.py#L219-L238)
 
 ## Dependency Analysis
@@ -279,13 +361,13 @@ API --> Backend["Backend Routers"]
 - [RFPForm.tsx:1-411](file://frontend/src/components/rfp/RFPForm.tsx#L1-L411)
 - [rfp-creator/page.tsx:1-159](file://frontend/src/app/rfp-creator/page.tsx#L1-L159)
 - [rfp-evaluator/page.tsx:1-178](file://frontend/src/app/rfp-evaluator/page.tsx#L1-L178)
-- [useVideoProcessing.ts:1-421](file://frontend/src/lib/useVideoProcessing.ts#L1-L421)
+- [useVideoProcessing.ts:1-465](file://frontend/src/lib/useVideoProcessing.ts#L1-L465)
 - [api.ts:1-245](file://frontend/src/lib/api.ts#L1-L245)
-- [video.py:1-267](file://backend/routers/video.py#L1-L267)
+- [video.py:1-268](file://backend/routers/video.py#L1-L268)
 - [rfp.py:1-385](file://backend/routers/rfp.py#L1-L385)
 
 **Section sources**
-- [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
+- [useVideoProcessing.ts:122-465](file://frontend/src/lib/useVideoProcessing.ts#L122-L465)
 - [api.ts:162-244](file://frontend/src/lib/api.ts#L162-L244)
 
 ## Performance Considerations
@@ -293,8 +375,7 @@ API --> Backend["Backend Routers"]
 - Parallelization: metadata and transcript fetches occur concurrently after pipeline completion
 - UI responsiveness: progress simulation during upload prevents blocking; skeleton loaders for RFP preview
 - Cleanup: WebSocket and object URLs are released on component unmount to prevent memory leaks
-
-[No sources needed since this section provides general guidance]
+- Data transformation optimization: efficient mapping reduces computational overhead during state updates
 
 ## Troubleshooting Guide
 Common issues and resolutions:
@@ -303,6 +384,7 @@ Common issues and resolutions:
 - Evaluation timeouts: adjust polling interval and handle transient errors gracefully; ensure sufficient vendor files and valid JSON inputs
 - Search failures: validate query length and backend search index availability; clear search results on error
 - Export failures: confirm backend export endpoints and file system permissions
+- Data transformation errors: verify backend response structure consistency; check for missing fields in transformed data
 
 **Section sources**
 - [useVideoProcessing.ts:202-208](file://frontend/src/lib/useVideoProcessing.ts#L202-L208)
@@ -311,4 +393,4 @@ Common issues and resolutions:
 - [rfp-evaluator/page.tsx:86-98](file://frontend/src/app/rfp-evaluator/page.tsx#L86-L98)
 
 ## Conclusion
-The frontend API integration layer provides a clean, typed interface to backend services with robust real-time capabilities. The useVideoProcessing hook centralizes state management, error handling, and integration logic, enabling responsive UIs for video processing and RFP workflows. The design balances optimistic updates, fallback mechanisms, and clear separation of concerns between presentation and data access.
+The frontend API integration layer provides a clean, typed interface to backend services with robust real-time capabilities. The useVideoProcessing hook centralizes state management, error handling, and integration logic, enabling responsive UIs for video processing and RFP workflows. The comprehensive data transformation layer ensures seamless mapping between backend response structures and frontend interface requirements, maintaining data integrity while optimizing performance. The design balances optimistic updates, fallback mechanisms, and clear separation of concerns between presentation and data access.

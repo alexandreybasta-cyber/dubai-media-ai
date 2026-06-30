@@ -7,5 +7,7 @@ source_files:
     - frontend/package.json
     - frontend/package-lock.json
     - docker-compose.yml
+    - backend/config.py
+    - frontend/tsconfig.json
 depends_on: []
 related_to: []

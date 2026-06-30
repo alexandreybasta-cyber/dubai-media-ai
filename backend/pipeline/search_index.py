@@ -176,6 +176,9 @@ class SearchIndex:
                 "description": text,
                 "scene_type": seg.get("scene_type", ""),
                 "type": seg.get("type", "scene"),
+                "title": seg.get("title", "Untitled"),
+                "thumbnail": seg.get("thumbnail", ""),
+                "persons": seg.get("persons", []),
             })
 
         if not texts:
@@ -242,10 +245,13 @@ class SearchIndex:
             meta = self.metadata[idx]
             results.append({
                 "video_id": meta["video_id"],
+                "title": meta.get("title", "Untitled"),
                 "timestamp": meta["timestamp"],
                 "description": meta["description"],
                 "scene_type": meta.get("scene_type", ""),
                 "score": float(score),
+                "thumbnail": meta.get("thumbnail", ""),
+                "persons": meta.get("persons", []),
             })
 
         return results

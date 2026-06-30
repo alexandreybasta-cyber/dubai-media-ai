@@ -3,7 +3,7 @@ schema_version: 1
 locale: en-US
 branch: main
 nodes_managed: true
-exported_at: "2026-06-30T10:16:32Z"
+exported_at: "2026-06-30T11:15:16Z"
 modules:
     "":
         dir_name: Dubai Media AI Video Processing & RFP Toolkit
@@ -22,7 +22,8 @@ modules:
             - nginx.conf
             - backend/requirements.txt
             - frontend/package.json
-            - push-via-api.sh
+            - .env.example
+            - README.md
         children: []
         depends_on: []
         related_to: []
@@ -49,6 +50,8 @@ modules:
             - frontend/package.json
             - frontend/package-lock.json
             - docker-compose.yml
+            - backend/config.py
+            - frontend/tsconfig.json
         children: []
         depends_on: []
         related_to: []
@@ -89,16 +92,12 @@ modules:
         title: Standard Python Logging with Module-Level Loggers
         scope: []
         source_files:
-            - backend/main.py
-            - backend/config.py
-            - backend/pipeline/orchestrator.py
-            - backend/pipeline/ingestion.py
-            - backend/pipeline/visual_analysis.py
             - backend/pipeline/audio_analysis.py
             - backend/pipeline/face_recognition.py
+            - backend/pipeline/ingestion.py
+            - backend/pipeline/orchestrator.py
             - backend/routers/video.py
-            - backend/services/rfp_creator.py
-            - backend/services/rfp_evaluator.py
+            - backend/main.py
         children: []
         depends_on: []
         related_to: []

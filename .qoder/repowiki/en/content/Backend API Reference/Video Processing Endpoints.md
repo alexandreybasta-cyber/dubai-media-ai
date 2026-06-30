@@ -15,6 +15,14 @@
 - [README.md](file://README.md)
 </cite>
 
+## Update Summary
+**Changes Made**
+- Updated architecture overview to reflect asyncio task execution model replacing BackgroundTasks
+- Enhanced status retrieval optimization details with synchronous file reading
+- Updated WebSocket progress streaming mechanisms with improved connection management
+- Revised performance considerations for async implementation with non-blocking execution
+- Added detailed asyncio task lifecycle management and resource optimization
+
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
@@ -38,7 +46,7 @@ The documentation includes request/response schemas, error codes, file upload ha
 
 ## Project Structure
 The video processing system consists of:
-- FastAPI backend with routers and pipeline orchestration
+- FastAPI backend with routers and pipeline orchestration using asyncio task execution
 - AI pipeline stages powered by Alibaba Cloud DashScope models
 - Frontend client utilities for uploading and consuming the APIs
 
@@ -73,8 +81,8 @@ CFG --> ORCH
 
 **Diagram sources**
 - [backend/main.py:1-44](file://backend/main.py#L1-L44)
-- [backend/routers/video.py:1-267](file://backend/routers/video.py#L1-L267)
-- [backend/pipeline/orchestrator.py:1-329](file://backend/pipeline/orchestrator.py#L1-L329)
+- [backend/routers/video.py:1-268](file://backend/routers/video.py#L1-L268)
+- [backend/pipeline/orchestrator.py:1-330](file://backend/pipeline/orchestrator.py#L1-L330)
 - [backend/config.py:1-21](file://backend/config.py#L1-L21)
 
 **Section sources**
@@ -82,12 +90,12 @@ CFG --> ORCH
 - [backend/main.py:1-44](file://backend/main.py#L1-L44)
 
 ## Core Components
-- Video upload router: Handles multipart/form-data uploads, saves files, initializes status, and starts the background pipeline
-- Pipeline orchestrator: Coordinates six stages with progress tracking and error handling
+- Video upload router: Handles multipart/form-data uploads, saves files, initializes status, and starts the background pipeline using asyncio tasks for non-blocking execution
+- Pipeline orchestrator: Coordinates six stages with progress tracking and error handling using async/await patterns
 - Frontend API utilities: Provide typed helpers for uploads, status polling, and WebSocket progress streaming
 
 Key capabilities:
-- Real-time progress via WebSocket
+- Real-time progress via WebSocket with optimized connection management
 - Structured metadata generation (EBUCore XML, IPTC)
 - Speech-to-text with speaker diarization
 - Semantic search indexing
@@ -98,25 +106,27 @@ Key capabilities:
 - [frontend/src/lib/api.ts:164-183](file://frontend/src/lib/api.ts#L164-L183)
 
 ## Architecture Overview
-The system follows a staged pipeline architecture:
+The system follows a staged pipeline architecture with asyncio task execution:
 1. Upload endpoint receives multipart/form-data and persists the video
-2. Background task runs the orchestrator which executes stages sequentially
+2. Asyncio task runs the orchestrator which executes stages sequentially with optimized status updates
 3. Progress updates are streamed via WebSocket and persisted to status.json
 4. Results are saved as individual JSON artifacts per stage
+
+**Updated** The system now uses asyncio.create_task() for non-blocking background execution instead of BackgroundTasks dependency, providing better resource management and reduced memory overhead. The asyncio task model enables concurrent video processing with improved system responsiveness.
 
 ```mermaid
 sequenceDiagram
 participant Client as "Client"
 participant API as "FastAPI Router"
 participant FS as "Filesystem"
-participant BG as "Background Task"
+participant Task as "Asyncio Task"
 participant Orchestrator as "Pipeline Orchestrator"
 participant Stage as "Pipeline Stage"
 participant WS as "WebSocket"
 Client->>API : "POST /api/video/upload (multipart/form-data)"
 API->>FS : "Save video file"
-API->>BG : "Start background pipeline"
-BG->>Orchestrator : "process_video(video_id, video_path)"
+API->>Task : "asyncio.create_task(_run_pipeline)"
+Task->>Orchestrator : "process_video(video_id, video_path)"
 Orchestrator->>Stage : "Run ingestion"
 Stage-->>Orchestrator : "Stage result"
 Orchestrator->>FS : "Write status.json"
@@ -125,8 +135,8 @@ Orchestrator->>Stage : "Run next stage"
 Stage-->>Orchestrator : "Stage result"
 Orchestrator->>FS : "Write status.json"
 Orchestrator->>WS : "Send progress event"
-Orchestrator-->>BG : "Pipeline complete"
-BG-->>API : "Return queued response"
+Orchestrator-->>Task : "Pipeline complete"
+Task-->>API : "Return queued response"
 API-->>Client : "{video_id, status}"
 ```
 
@@ -138,7 +148,7 @@ API-->>Client : "{video_id, status}"
 ## Detailed Component Analysis
 
 ### POST /api/video/upload
-Purpose: Upload a video file and start the processing pipeline in the background.
+Purpose: Upload a video file and start the processing pipeline using asyncio task execution.
 
 - Method: POST
 - Path: /api/video/upload
@@ -152,9 +162,9 @@ Purpose: Upload a video file and start the processing pipeline in the background
   - message: informational message
 
 Behavior:
-- Validates and saves the uploaded file to the configured upload directory
+- Validates and saves the uploaded file to the configured upload directory using async file operations
 - Creates initial status.json with pending stages
-- Starts background pipeline execution
+- Launches pipeline as asyncio task using asyncio.create_task() for non-blocking execution
 - Returns immediately with queued status
 
 Supported formats and limits:
@@ -191,7 +201,7 @@ console.log("video_id:", result.video_id);
 - [frontend/src/components/archive/VideoUpload.tsx:23-24](file://frontend/src/components/archive/VideoUpload.tsx#L23-L24)
 
 ### GET /api/video/{video_id}/status
-Purpose: Retrieve the current pipeline status and progress.
+Purpose: Retrieve the current pipeline status and progress using optimized synchronous file reading.
 
 - Method: GET
 - Path: /api/video/{video_id}/status
@@ -206,6 +216,8 @@ Purpose: Retrieve the current pipeline status and progress.
   - created_at: ISO timestamp
   - updated_at: ISO timestamp
   - errors: object mapping failed stages to error messages
+
+**Updated** Status retrieval now uses synchronous file reading for the tiny status.json file to avoid thread pool contention, providing optimal performance for frequent status checks. This optimization ensures minimal CPU overhead during high-frequency polling scenarios.
 
 curl example:
 ```bash
@@ -222,11 +234,12 @@ console.log("stages:", status.stages);
 
 WebSocket alternative:
 - Connect to ws://localhost:8000/ws/pipeline/{video_id}
-- Receive real-time progress updates during processing
+- Receive real-time progress updates during processing with improved connection management
+- Automatic fallback to REST polling when WebSocket connections fail
 
 **Section sources**
 - [backend/routers/video.py:124-139](file://backend/routers/video.py#L124-L139)
-- [backend/routers/video.py:220-267](file://backend/routers/video.py#L220-L267)
+- [backend/routers/video.py:220-268](file://backend/routers/video.py#L220-L268)
 - [backend/pipeline/orchestrator.py:62-72](file://backend/pipeline/orchestrator.py#L62-L72)
 
 ### GET /api/video/{video_id}/metadata
@@ -328,10 +341,12 @@ console.log("segments count:", transcript.segments.length);
 
 ## Dependency Analysis
 The video processing endpoints depend on:
-- FastAPI routing and background tasks
+- FastAPI routing with asyncio task execution
 - Filesystem for saving uploads and results
 - External AI services (DashScope) for vision, ASR, and text generation
 - FFmpeg for local video/audio processing
+
+**Updated** The system no longer depends on BackgroundTasks, using asyncio.create_task() for background execution instead. This provides better resource management and enables concurrent video processing without blocking the main event loop.
 
 ```mermaid
 graph LR
@@ -358,21 +373,29 @@ FrontendUpload["frontend/src/components/archive/VideoUpload.tsx"] --> FrontendHo
 ## Performance Considerations
 - Large video files increase processing time; consider chunked uploads and compression
 - ASR transcription is asynchronous and may take several minutes for long audio
-- Real-time progress streaming via WebSocket reduces polling overhead
+- Real-time progress streaming via WebSocket reduces polling overhead with optimized connection management
 - Results are persisted as JSON files; ensure sufficient disk space for large archives
 - FFmpeg operations require adequate CPU/memory resources
+- **Updated** Optimized status retrieval uses synchronous file reading for tiny status.json files to avoid thread pool contention
+- **Updated** Asyncio task execution model provides better resource management compared to BackgroundTasks, enabling concurrent video processing
+- **Updated** Non-blocking execution model prevents event loop starvation and improves system responsiveness under load
+- **Updated** WebSocket connection pooling optimizes memory usage and reduces connection overhead
 
 ## Troubleshooting Guide
 Common issues and resolutions:
 - 404 Not Found: Video ID not found or status file missing
 - 500 Internal Server Error: File save failures or pipeline exceptions
 - API key errors: Ensure DASHSCOPE_API_KEY is configured
-- WebSocket disconnects: Use fallback REST status polling
+- WebSocket disconnects: Use fallback REST status polling with automatic retry
+- **Updated** Asyncio task failures: Check _run_pipeline function for error handling and logging
+- **Updated** Memory leaks: Monitor asyncio task lifecycle and ensure proper cleanup
 
 Error handling patterns:
 - Upload failures return HTTP 500 with detailed error messages
 - Pipeline stage failures are recorded in status.errors
 - Frontend gracefully handles WebSocket errors by falling back to REST polling
+- **Updated** Asyncio task execution errors are logged and handled in _run_pipeline function
+- **Updated** WebSocket connection cleanup removes disconnected clients from _active_ws registry
 
 **Section sources**
 - [backend/routers/video.py:57-59](file://backend/routers/video.py#L57-L59)
@@ -381,7 +404,7 @@ Error handling patterns:
 - [backend/pipeline/orchestrator.py:259-282](file://backend/pipeline/orchestrator.py#L259-L282)
 
 ## Conclusion
-The video processing endpoints provide a robust foundation for AI-powered media archive workflows. They support efficient uploads, real-time progress monitoring, and comprehensive metadata extraction with structured outputs suitable for broadcasting standards and semantic search.
+The video processing endpoints provide a robust foundation for AI-powered media archive workflows. They support efficient uploads, real-time progress monitoring, and comprehensive metadata extraction with structured outputs suitable for broadcasting standards and semantic search. The updated asyncio task execution model provides better performance and resource management compared to the previous BackgroundTasks implementation, enabling concurrent video processing and improved system responsiveness.
 
 ## Appendices
 
@@ -452,3 +475,5 @@ ws.onmessage = (event) => {
   console.log(`Stage ${data.stage}: ${data.message}`);
 };
 ```
+
+**Updated** WebSocket fallback mechanism automatically switches to REST polling when WebSocket connections fail, ensuring reliable progress monitoring. The asyncio task model ensures that multiple video processing jobs can run concurrently without blocking the main event loop.

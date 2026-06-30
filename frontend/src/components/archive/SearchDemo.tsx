@@ -12,10 +12,29 @@ interface SearchDemoProps {
   onResultClick?: (result: SearchResult) => void;
 }
 
-function formatTimestamp(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
+function formatTimestamp(value: unknown): string {
+  // Handle string timestamps (e.g., "00:15", "1:30", "01:02:03")
+  if (typeof value === "string") {
+    if (/^\d{1,2}(:\d{2}){1,2}$/.test(value)) {
+      return value;
+    }
+    // Try parsing as a number string
+    const parsed = parseFloat(value);
+    if (!isNaN(parsed)) {
+      const m = Math.floor(parsed / 60);
+      const s = Math.floor(parsed % 60);
+      return `${m}:${s.toString().padStart(2, "0")}`;
+    }
+    return "0:00";
+  }
+  // Handle numeric seconds
+  if (typeof value === "number" && !isNaN(value)) {
+    const m = Math.floor(value / 60);
+    const s = Math.floor(value % 60);
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  }
+  // Fallback for NaN, undefined, null, etc.
+  return "0:00";
 }
 
 export default function SearchDemo({
@@ -144,7 +163,7 @@ export default function SearchDemo({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-medium text-gray-900 truncate">
-                    {result.title || "Untitled"}
+                    {result.title || result.description?.slice(0, 40) || "Untitled"}
                   </p>
                   <span className="text-xs text-gray-400 font-mono flex-shrink-0">
                     @{formatTimestamp(result.timestamp)}
@@ -153,6 +172,12 @@ export default function SearchDemo({
                 <p className="text-xs text-gray-600 mt-1 line-clamp-2">
                   {result.description}
                 </p>
+                {(result as unknown as { persons?: string[] }).persons &&
+                  (result as unknown as { persons: string[] }).persons.length > 0 && (
+                  <p className="text-xs text-primary-600 mt-1">
+                    {(result as unknown as { persons: string[] }).persons.join(", ")}
+                  </p>
+                )}
               </div>
 
               {/* Score */}

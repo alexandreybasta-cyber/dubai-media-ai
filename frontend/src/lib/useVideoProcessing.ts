@@ -295,8 +295,40 @@ export function useVideoProcessing() {
       const ingestion = (raw.ingestion || {}) as Record<string, unknown>;
       const visualAnalysis = (raw.visual_analysis || {}) as Record<string, unknown>;
       const metaBlock = (raw.metadata || {}) as Record<string, unknown>;
-      const topLevelFaces = (raw.faces || []) as DetectedFace[];
-      const visualFaces = (visualAnalysis.faces || []) as DetectedFace[];
+      // Transform backend faces to frontend format
+      const rawFaces = (raw.faces || []) as Array<Record<string, unknown>>;
+      const rawVisualFaces = (visualAnalysis.faces || []) as Array<Record<string, unknown>>;
+      const sourceFaces = rawFaces.length > 0 ? rawFaces : rawVisualFaces;
+
+      let unknownCount = 0;
+      const mappedFaces: DetectedFace[] = sourceFaces.map((face) => {
+        // Map name_en → name, with fallback
+        let name = (face.name_en as string) || (face.name as string) || "";
+        if (!name) {
+          unknownCount++;
+          name = `Person ${unknownCount}`;
+        }
+
+        // Map appearances or synthesize from timestamp
+        let appearances = face.appearances as { start: number; end: number }[] | undefined;
+        if (!appearances || appearances.length === 0) {
+          const ts = face.timestamp as string;
+          if (ts) {
+            const parts = ts.split(":");
+            const seconds = (parseInt(parts[0] || "0") * 60) + parseInt(parts[1] || "0");
+            appearances = [{ start: seconds, end: seconds + 15 }];
+          } else {
+            appearances = [];
+          }
+        }
+
+        return {
+          name,
+          name_ar: (face.name_ar as string) || undefined,
+          appearances,
+          color: "",
+        };
+      });
 
       const metadata: VideoMetadata = {
         video_id: videoId,
@@ -306,7 +338,7 @@ export function useVideoProcessing() {
         sentiment: ((metaBlock.sentiment_tags as string[]) || []).join(", ") || undefined,
         era: ((visualAnalysis.era_estimate as Record<string, unknown>)?.decade as string) || undefined,
         scenes: (visualAnalysis.scenes || []) as SceneBoundary[],
-        faces: topLevelFaces.length > 0 ? topLevelFaces : visualFaces,
+        faces: mappedFaces,
         objects: (visualAnalysis.objects || []) as DetectedObject[],
         landmarks: (visualAnalysis.landmarks || []) as { name: string; timestamp: number }[],
         sensitive_content: (visualAnalysis.sensitive_content || []) as string[],

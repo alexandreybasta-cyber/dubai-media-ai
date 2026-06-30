@@ -24,10 +24,9 @@
 
 ## Update Summary
 **Changes Made**
-- Updated accessibility section to reflect comprehensive CSS improvements for text visibility on dark backgrounds
-- Added documentation for consistent text colors (#1f2937 for inputs/textareas/selects, #6b7280 for placeholders)
-- Enhanced form component accessibility guidelines
-- Removed duplicate Tailwind CSS imports and conflicting dark mode media queries
+- Updated VideoTimeline component documentation to reflect defensive programming improvements
+- Added documentation for null-checks in face appearances array mapping
+- Enhanced error handling and robustness section for archive components
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -36,10 +35,11 @@
 4. [Architecture Overview](#architecture-overview)
 5. [Detailed Component Analysis](#detailed-component-analysis)
 6. [Accessibility Improvements](#accessibility-improvements)
-7. [Dependency Analysis](#dependency-analysis)
-8. [Performance Considerations](#performance-considerations)
-9. [Troubleshooting Guide](#troubleshooting-guide)
-10. [Conclusion](#conclusion)
+7. [Defensive Programming and Error Handling](#defensive-programming-and-error-handling)
+8. [Dependency Analysis](#dependency-analysis)
+9. [Performance Considerations](#performance-considerations)
+10. [Troubleshooting Guide](#troubleshooting-guide)
+11. [Conclusion](#conclusion)
 
 ## Introduction
 This document describes the reusable UI component library used across the Dubai Media application. It covers foundational components (Button, Card) and specialized components grouped by feature areas: Archive, RFP Creator, and RFP Evaluator. For each component, we document props, events, styling patterns, composition guidelines, state management integration, accessibility, responsiveness, and performance characteristics. The goal is to enable consistent development and easy reuse across pages such as Archive Metadata, RFP Creator, and RFP Evaluator.
@@ -225,9 +225,13 @@ UV-->>VU : metadata, transcript when ready
 - Styling: Dark video container, progress overlay, blue scene markers, yellow object dots, primary-position indicator.
 - Accessibility: Keyboard-accessible scrubber; tooltips provide context.
 - State integration: Subscribes to video timeupdate and loadedmetadata; syncs with current time prop.
+- **Defensive Programming Improvements**: Implements null-safe face appearances mapping with fallback to empty array to prevent crashes when metadata is incomplete.
+
+**Updated** Defensive programming improvements have been implemented to enhance the reliability of face appearance rendering. The component now includes null-safe array mapping to handle cases where face appearances data might be missing or undefined.
 
 **Section sources**
 - [VideoTimeline.tsx:11-58](file://frontend/src/components/archive/VideoTimeline.tsx#L11-L58)
+- [VideoTimeline.tsx:200-201](file://frontend/src/components/archive/VideoTimeline.tsx#L200-L201)
 - [useVideoProcessing.ts:370-381](file://frontend/src/lib/useVideoProcessing.ts#L370-L381)
 
 #### TranscriptPanel
@@ -457,6 +461,42 @@ These changes ensure consistent text visibility across:
 - [globals.css:31-42](file://frontend/src/app/globals.css#L31-L42)
 - [globals.css:86-91](file://frontend/src/app/globals.css#L86-L91)
 
+## Defensive Programming and Error Handling
+
+**Updated** The component library now includes comprehensive defensive programming practices to ensure robust operation even when data is incomplete or unexpected.
+
+### Null-Safe Data Access Patterns
+Components consistently implement null-safe data access patterns to prevent runtime errors:
+
+- **Optional chaining operators (?.)**: Used for accessing nested properties that may be undefined
+- **Logical OR fallbacks (|| [])**: Ensures arrays always have a valid fallback
+- **Conditional rendering**: Components check for data existence before attempting to render
+
+### Specific Defensive Programming Improvements
+
+#### VideoTimeline Component
+The VideoTimeline component demonstrates key defensive programming practices:
+
+- **Face appearances safety**: Uses `(face.appearances || []).map()` to safely handle null/undefined appearances arrays
+- **Duration validation**: Checks `duration > 0` before calculating percentages to prevent division by zero
+- **Metadata fallbacks**: Provides default empty arrays for scenes, faces, and objects when metadata is unavailable
+
+#### General Error Handling Patterns
+- **Early returns**: Functions return early when required data is missing
+- **Safe calculations**: Percentage calculations include bounds checking
+- **Graceful degradation**: Components render partial content when data is incomplete
+
+### Benefits of Defensive Programming
+- **Improved reliability**: Components continue functioning even with incomplete data
+- **Better user experience**: Users see meaningful content rather than blank screens
+- **Easier debugging**: Clear error boundaries help identify data source issues
+- **Future-proofing**: Components can handle API changes gracefully
+
+**Section sources**
+- [VideoTimeline.tsx:84-86](file://frontend/src/components/archive/VideoTimeline.tsx#L84-L86)
+- [VideoTimeline.tsx:200-201](file://frontend/src/components/archive/VideoTimeline.tsx#L200-L201)
+- [VideoTimeline.tsx:229-239](file://frontend/src/components/archive/VideoTimeline.tsx#L229-L239)
+
 ## Dependency Analysis
 - Component coupling:
   - Archive components depend on useVideoProcessing for state and on api for REST/WebSocket calls.
@@ -530,11 +570,16 @@ API --> CM["ComparisonMatrix.tsx"]
   - Validate required fields and weights; ensure submit conditions are met.
 - Evaluation errors:
   - Review validation messages and ensure RFP and vendor documents are present.
+- **VideoTimeline rendering issues**:
+  - Check if face appearances data is available in metadata.
+  - Verify that duration is properly calculated before rendering appearance bars.
+  - Ensure metadata is fully loaded before attempting to render timeline components.
 
 **Section sources**
 - [VideoUpload.tsx:199-217](file://frontend/src/components/archive/VideoUpload.tsx#L199-L217)
 - [useVideoProcessing.ts:215-276](file://frontend/src/lib/useVideoProcessing.ts#L215-L276)
 - [EvaluationSetup.tsx:156-189](file://frontend/src/components/evaluator/EvaluationSetup.tsx#L156-L189)
+- [VideoTimeline.tsx:200-201](file://frontend/src/components/archive/VideoTimeline.tsx#L200-L201)
 
 ## Conclusion
-The component library provides a cohesive, accessible, and extensible foundation for the Dubai Media application. Base components (Button, Card) standardize UI patterns; feature-specific components encapsulate complex workflows while integrating with shared state and APIs. The recent accessibility improvements ensure consistent text visibility across all form components, with systematic color standards and optimized CSS structure. By adhering to the documented props, composition patterns, and accessibility guidelines, teams can build consistent experiences across Archive, RFP, and Evaluator features.
+The component library provides a cohesive, accessible, and extensible foundation for the Dubai Media application. Base components (Button, Card) standardize UI patterns; feature-specific components encapsulate complex workflows while integrating with shared state and APIs. The recent defensive programming improvements ensure reliable operation even with incomplete data, while the accessibility enhancements guarantee consistent text visibility across all form components. By adhering to the documented props, composition patterns, defensive programming practices, and accessibility guidelines, teams can build consistent experiences across Archive, RFP, and Evaluator features.

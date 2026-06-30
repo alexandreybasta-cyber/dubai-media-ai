@@ -36,7 +36,7 @@ Return ONLY valid JSON with this structure:
     {"timestamp": "MM:SS", "name": "...", "location": "city, country"}
   ],
   "faces": [
-    {"timestamp": "MM:SS", "description": "physical description of person", "bbox": "approximate position", "age_estimate": "30-40", "gender": "male|female"}
+    {"timestamp": "MM:SS", "description": "physical description of person", "bbox": "approximate position", "age_estimate": "30-40", "gender": "male|female", "on_screen_name": "name if visible as overlay/lower-third near this person, null otherwise", "on_screen_title": "title/role if visible as overlay near this person, null otherwise", "source_channel": "channel/network logo visible in frame, null otherwise"}
   ],
   "text_ocr": [
     {"timestamp": "MM:SS", "text": "text visible on screen", "language": "ar|en|other"}
@@ -49,7 +49,9 @@ Return ONLY valid JSON with this structure:
   "overall_summary_ar": "ملخص موجز بالعربية"
 }
 
-Be thorough. Identify all visible text (Arabic and English), landmarks (especially UAE landmarks like Burj Khalifa, Dubai Frame, etc.), and notable persons. For scenes, describe the visual content, mood, and camera work. For faces, provide detailed physical descriptions that could help with identification."""
+Be thorough. Identify all visible text (Arabic and English), landmarks (especially UAE landmarks like Burj Khalifa, Dubai Frame, etc.), and notable persons. For scenes, describe the visual content, mood, and camera work. For faces, provide detailed physical descriptions that could help with identification.
+
+IMPORTANT: Pay special attention to on-screen text overlays such as lower-thirds (name + title text that appears over or below a person's face), chyrons, and channel logos. If a name label is visible near a person's face, ALWAYS include it in the on_screen_name field for that face entry. This is critical for person identification."""
 
 
 async def analyze_video_visually(

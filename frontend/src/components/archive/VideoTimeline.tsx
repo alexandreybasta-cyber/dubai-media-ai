@@ -195,7 +195,7 @@ export default function VideoTimeline({
                   className="text-xs font-medium min-w-[80px] truncate"
                   style={{ color: face.color }}
                 >
-                  {face.name}
+                  {face.name || "Unknown"}
                 </span>
                 <div className="flex-1 relative h-3 bg-gray-50 rounded">
                   {(face.appearances || []).map((app, j) => {
@@ -215,7 +215,7 @@ export default function VideoTimeline({
                           backgroundColor: face.color,
                         }}
                         onClick={() => onSeek(app.start)}
-                        title={`${face.name}: ${formatTime(app.start)} - ${formatTime(app.end)}`}
+                        title={`${face.name || "Unknown"}: ${formatTime(app.start)} - ${formatTime(app.end)}`}
                       />
                     );
                   })}

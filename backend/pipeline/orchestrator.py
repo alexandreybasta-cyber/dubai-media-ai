@@ -128,6 +128,8 @@ class PipelineOrchestrator:
 
         # ── Stage 4: Face Recognition ──────────────────────────────
         faces_detected = results.get("visual_analysis", {}).get("faces", [])
+        text_ocr = results.get("visual_analysis", {}).get("text_ocr", [])
+        video_duration = results.get("ingestion", {}).get("duration", 0)
         await self._run_stage(
             stage_name="face_recognition",
             stage_index=3,
@@ -138,6 +140,8 @@ class PipelineOrchestrator:
             ws_callback=ws_callback,
             coro_fn=lambda: identify_faces(
                 faces_detected=faces_detected,
+                text_ocr=text_ocr,
+                video_duration=video_duration,
                 api_key=settings.DASHSCOPE_API_KEY,
                 model=settings.MODEL_TEXT,
                 base_url=settings.DASHSCOPE_BASE_URL,
@@ -281,17 +285,51 @@ class PipelineOrchestrator:
                     status="failed",
                 )
 
+    @staticmethod
+    def _timestamp_to_seconds(ts) -> float:
+        """Convert timestamp string 'MM:SS', 'HH:MM:SS', or 'M:SS' to numeric seconds.
+        If already numeric, return as float."""
+        if isinstance(ts, (int, float)):
+            return float(ts)
+        if not isinstance(ts, str):
+            return 0.0
+        parts = ts.strip().split(":")
+        try:
+            if len(parts) == 3:
+                return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+            elif len(parts) == 2:
+                return int(parts[0]) * 60 + float(parts[1])
+            else:
+                return float(parts[0])
+        except (ValueError, IndexError):
+            return 0.0
+
     def _build_searchable_segments(self, results: dict) -> list:
         """Combine scenes and transcript into a flat list of searchable segments."""
         segments = []
+
+        # Extract shared metadata
+        metadata = results.get("metadata", {})
+        iptc = metadata.get("iptc_video_metadata", {})
+        headline = iptc.get("videoContent", {}).get("headline", "")
+        title = headline if headline else "Untitled"
+
+        ingestion = results.get("ingestion", {})
+        thumbnail = ingestion.get("thumbnail_path", "")
+
+        # Build person name lookup from faces
+        faces_list = results.get("faces", [])
+        person_names = [f.get("name_en", "") for f in faces_list if f.get("identified") and f.get("name_en")]
 
         # Add scenes from visual analysis
         for scene in results.get("visual_analysis", {}).get("scenes", []):
             segments.append({
                 "description_en": scene.get("description_en", ""),
-                "timestamp": scene.get("timestamp", "0:00"),
+                "timestamp": self._timestamp_to_seconds(scene.get("timestamp", "0:00")),
                 "scene_type": scene.get("scene_type", ""),
                 "type": "scene",
+                "title": title,
+                "thumbnail": thumbnail,
             })
 
         # Add transcript segments
@@ -299,17 +337,23 @@ class PipelineOrchestrator:
             if seg.get("text"):
                 segments.append({
                     "description_en": seg["text"],
-                    "timestamp": seg.get("start_time", 0),
+                    "timestamp": self._timestamp_to_seconds(seg.get("start_time", 0)),
                     "type": "transcript",
+                    "title": title,
+                    "thumbnail": thumbnail,
                 })
 
         # Add identified persons
-        for face in results.get("faces", []):
+        for face in faces_list:
             if face.get("identified") and face.get("name_en"):
+                person_name = face["name_en"]
                 segments.append({
-                    "description_en": f"{face['name_en']} ({face.get('role', '')}) appears at {face.get('timestamp', 'unknown')}",
-                    "timestamp": face.get("timestamp", "0:00"),
+                    "description_en": f"{person_name} ({face.get('role', '')}) appears at {face.get('timestamp', 'unknown')}",
+                    "timestamp": self._timestamp_to_seconds(face.get("timestamp", "0:00")),
                     "type": "person",
+                    "title": title,
+                    "thumbnail": thumbnail,
+                    "persons": [person_name],
                 })
 
         return segments

@@ -9,6 +9,24 @@ import MetadataPanel from "@/components/archive/MetadataPanel";
 import SearchDemo from "@/components/archive/SearchDemo";
 import APITransparencyPanel from "@/components/archive/APITransparencyPanel";
 
+/** Convert a timestamp (number of seconds, or "MM:SS" / "HH:MM:SS" string) to seconds */
+function parseTimestamp(value: unknown): number {
+  if (typeof value === "number" && !isNaN(value)) return value;
+  if (typeof value === "string") {
+    // Try "HH:MM:SS" or "MM:SS"
+    const parts = value.split(":").map(Number);
+    if (parts.length === 3 && parts.every((p) => !isNaN(p))) {
+      return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+    if (parts.length === 2 && parts.every((p) => !isNaN(p))) {
+      return parts[0] * 60 + parts[1];
+    }
+    const parsed = parseFloat(value);
+    if (!isNaN(parsed)) return parsed;
+  }
+  return 0;
+}
+
 export default function ArchivePage() {
   const {
     state,
@@ -119,7 +137,7 @@ export default function ArchivePage() {
           searchQuery={state.searchQuery}
           onSearch={search}
           onResultClick={(result) => {
-            seekTo(result.timestamp);
+            seekTo(parseTimestamp(result.timestamp));
           }}
         />
       </div>

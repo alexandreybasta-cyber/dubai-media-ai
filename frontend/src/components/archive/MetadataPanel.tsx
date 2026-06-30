@@ -190,7 +190,7 @@ function SummaryTab({ metadata }: { metadata: VideoMetadata }) {
                   className="w-2 h-2 rounded-full"
                   style={{ backgroundColor: face.color }}
                 />
-                <span>{face.name}</span>
+                <span>{face.name || "Unknown"}</span>
                 {face.name_ar && (
                   <span className="text-gray-400" dir="rtl">
                     ({face.name_ar})

@@ -51,9 +51,81 @@ If no match is found, respond with:
 Only match if the description strongly suggests a specific person. Be conservative — do not guess."""
 
 
+def _timestamp_to_seconds(ts: str) -> float:
+    """Convert MM:SS timestamp to seconds."""
+    try:
+        parts = ts.split(":")
+        if len(parts) == 2:
+            return int(parts[0]) * 60 + int(parts[1])
+    except (ValueError, AttributeError):
+        pass
+    return 0.0
+
+
+def _deduplicate_faces(enriched: list, video_duration: float) -> list:
+    """
+    Group faces by identity, compute merged appearance intervals,
+    and return one entry per unique person.
+    """
+    if not enriched:
+        return []
+
+    # Calculate frame interval (12 keyframes extracted)
+    interval = video_duration / 12 if video_duration > 0 else 0
+
+    # Group faces by identity key
+    groups: dict = {}
+    for face in enriched:
+        if face.get("identified"):
+            key = face.get("name_en") or "unknown"
+        else:
+            key = f"_unidentified_{face.get('description', id(face))}"
+
+        if key not in groups:
+            groups[key] = []
+        groups[key].append(face)
+
+    # Build deduplicated output
+    output = []
+    for key, faces in groups.items():
+        # Use first face as the representative entry
+        rep = faces[0].copy()
+
+        # Compute appearances from timestamps
+        ranges = []
+        for f in faces:
+            ts = f.get("timestamp", "0:00")
+            center = _timestamp_to_seconds(ts)
+            half = interval / 2
+            start = max(0, center - half)
+            end = min(video_duration, center + half) if video_duration > 0 else center + half
+            ranges.append((start, end))
+
+        # Sort and merge overlapping/adjacent ranges
+        ranges.sort()
+        merged = []
+        for start, end in ranges:
+            if merged and start <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                merged.append((start, end))
+
+        rep["appearances"] = [{"start": round(s, 1), "end": round(e, 1)} for s, e in merged]
+
+        # Remove per-frame fields that don't apply to the merged entry
+        for field in ["timestamp", "bbox", "frame_index", "on_screen_name", "on_screen_title"]:
+            rep.pop(field, None)
+
+        output.append(rep)
+
+    return output
+
+
 async def identify_faces(
     faces_detected: list,
     api_key: str,
+    text_ocr: list = None,
+    video_duration: float = 0,
     model: str = "qwen-max",
     base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1",
 ) -> list:
@@ -64,6 +136,8 @@ async def identify_faces(
         faces_detected: List of face dicts from visual analysis
             (each with description, age_estimate, gender, timestamp, bbox).
         api_key: DashScope API key.
+        text_ocr: List of OCR text detections from visual analysis.
+        video_duration: Total video duration in seconds.
         model: Text model for matching.
         base_url: API base URL.
 
@@ -75,18 +149,22 @@ async def identify_faces(
 
     if not api_key:
         logger.warning("No API key for face recognition, returning unidentified faces")
-        return [
+        enriched = [
             {**face, "identified": False, "name_en": None, "name_ar": None, "role": None, "confidence": 0}
             for face in faces_detected
         ]
+        return _deduplicate_faces(enriched, video_duration)
 
     reference_faces = _load_reference_faces()
     if not reference_faces:
         logger.warning("No reference faces loaded, skipping identification")
-        return [
+        enriched = [
             {**face, "identified": False, "name_en": None, "name_ar": None, "role": None, "confidence": 0}
             for face in faces_detected
         ]
+        # Apply OCR fallback even without reference DB
+        enriched = _apply_ocr_fallback(enriched, faces_detected)
+        return _deduplicate_faces(enriched, video_duration)
 
     # Build reference list string
     ref_lines = []
@@ -104,7 +182,32 @@ async def identify_faces(
         )
         enriched.append(result)
 
-    return enriched
+    # Apply OCR name fallback for unidentified faces
+    enriched = _apply_ocr_fallback(enriched, faces_detected)
+
+    return _deduplicate_faces(enriched, video_duration)
+
+
+def _apply_ocr_fallback(enriched: list, faces_detected: list) -> list:
+    """For faces that remain unidentified, try OCR on_screen_name fallback."""
+    result = []
+    for i, face_result in enumerate(enriched):
+        if not face_result.get("identified"):
+            original_face = faces_detected[i] if i < len(faces_detected) else {}
+            on_screen_name = original_face.get("on_screen_name") or face_result.get("on_screen_name")
+            on_screen_title = original_face.get("on_screen_title") or face_result.get("on_screen_title")
+            if on_screen_name:
+                face_result = {
+                    **face_result,
+                    "identified": True,
+                    "name_en": on_screen_name,
+                    "name_ar": None,
+                    "role": on_screen_title,
+                    "confidence": 0.9,
+                    "source": "ocr",
+                }
+        result.append(face_result)
+    return result
 
 
 async def _match_single_face(
@@ -162,6 +265,7 @@ async def _match_single_face(
                         "reference_id": ref_id,
                         "confidence": match_result.get("confidence", 0),
                         "reasoning": match_result.get("reasoning", ""),
+                        "source": "reference_db",
                     }
 
             return {
