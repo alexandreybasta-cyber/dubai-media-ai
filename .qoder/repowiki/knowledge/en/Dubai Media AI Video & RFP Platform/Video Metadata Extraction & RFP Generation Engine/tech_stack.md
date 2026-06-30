@@ -1,4 +1,0 @@
-- **AI Integration**: Alibaba Cloud DashScope SDK (`dashscope`) for Qwen-VL (visual), Paraformer (ASR), and text embeddings.
-- **Search**: FAISS CPU (`faiss-cpu`) for vector similarity search on video segments.
-- **Document Generation**: `python-docx` and `reportlab` for programmatic DOCX and PDF creation; `openpyxl` for Excel exports.
-- **Media Processing**: `ffmpeg-python` for audio extraction and thumbnail generation.

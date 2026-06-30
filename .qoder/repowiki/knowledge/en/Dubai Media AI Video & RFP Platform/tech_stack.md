@@ -1,1 +1,0 @@
-Docker Compose for multi-service orchestration; Nginx as the reverse proxy and static file server.

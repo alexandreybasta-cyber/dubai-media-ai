@@ -1,3 +1,0 @@
-- Uses `docker-compose.yml` to define and link the `backend` (FastAPI) and `frontend` (Next.js) services, ensuring they share a common `uploads` volume for media artifacts.
-- Employs an `nginx` service as the entry point (port 8080), configured via `nginx.conf` to proxy API requests (`/api/`) and WebSocket connections (`/ws/`) to the backend while serving static uploads with CORS headers.
-- Centralizes configuration through a shared `.env` file, injecting the `DASHSCOPE_API_KEY` and model settings into the backend service at runtime.

@@ -3,6 +3,7 @@ Video processing API routes.
 Handles upload, status tracking, metadata retrieval, search, and WebSocket progress.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -11,7 +12,7 @@ from datetime import datetime
 from typing import Dict
 
 import aiofiles
-from fastapi import APIRouter, BackgroundTasks, UploadFile, File, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import APIRouter, UploadFile, File, WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel
 
 from config import settings
@@ -38,7 +39,6 @@ class SearchRequest(BaseModel):
 
 @router.post("/video/upload")
 async def upload_video(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
 ):
     """Upload a video file and start the processing pipeline in the background."""
@@ -81,8 +81,8 @@ async def upload_video(
     with open(status_path, "w", encoding="utf-8") as f:
         json.dump(initial_status, f, ensure_ascii=False, indent=2)
 
-    # Launch pipeline in background
-    background_tasks.add_task(_run_pipeline, video_id, video_path)
+    # Launch pipeline as a concurrent asyncio task (non-blocking)
+    asyncio.create_task(_run_pipeline(video_id, video_path))
 
     return {
         "video_id": video_id,
@@ -130,8 +130,9 @@ async def get_video_status(video_id: str):
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
 
     try:
-        async with aiofiles.open(status_path, "r", encoding="utf-8") as f:
-            content = await f.read()
+        # Use synchronous read for this tiny file to avoid thread pool contention
+        with open(status_path, "r", encoding="utf-8") as f:
+            content = f.read()
         return json.loads(content)
     except Exception as e:
         logger.error("Failed to read status for %s: %s", video_id, e)

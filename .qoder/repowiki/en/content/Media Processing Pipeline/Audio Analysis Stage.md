@@ -16,10 +16,12 @@
 
 ## Update Summary
 **Changes Made**
-- Updated ASR service configuration section to reflect dynamic URL construction using settings system
-- Added documentation for new helper functions `_asr_submit_url()` and `_task_status_url()`
-- Updated API integration section to show how DASHSCOPE_API_URL setting controls endpoint construction
-- Enhanced troubleshooting guide with new configuration-related issues
+- Updated from DashScope ASR (paraformer-v2) with URL-based polling to Qwen-Omni-Turbo multimodal API with base64 audio encoding
+- Added ffmpeg-based audio chunking with configurable chunk duration (25 seconds)
+- Implemented synchronous base64 encoding approach replacing asynchronous URL polling
+- Added ffprobe duration detection for audio processing optimization
+- Enhanced error handling and retry mechanisms for robust transcription
+- Updated API integration to use native DashScope multimodal generation endpoint
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -34,12 +36,12 @@
 10. [Appendices](#appendices)
 
 ## Introduction
-This document explains the audio analysis and speech-to-text transcription stage powered by Alibaba Cloud DashScope's Paraformer ASR model. It covers how audio is extracted from video, preprocessing steps, asynchronous transcription workflow, API integration, parameter configuration, response parsing, and how the resulting transcript connects to semantic search. It also includes practical guidance on performance, latency, quality factors, and troubleshooting.
+This document explains the audio analysis and speech-to-text transcription stage powered by Alibaba Cloud DashScope's Qwen-Omni-Turbo multimodal API. The system has evolved from asynchronous URL-based polling to a synchronous base64 audio encoding approach with intelligent chunking. It covers audio extraction from video, preprocessing steps, chunked transcription workflow, API integration, parameter configuration, response parsing, and how the resulting transcript connects to semantic search. It also includes practical guidance on performance, latency, quality factors, and troubleshooting.
 
 ## Project Structure
 The audio analysis stage is part of a six-stage pipeline orchestrated by the backend. The relevant modules are:
 - Audio extraction and ingestion: prepares audio for ASR
-- Audio analysis: submits audio to DashScope ASR and parses results
+- Audio analysis: submits audio chunks to Qwen-Omni-Turbo via base64 encoding and parses results
 - Orchestration: coordinates stages and passes artifacts between them
 - API: exposes endpoints to upload videos, retrieve status, transcripts, and trigger search
 - Search index: builds a vector index from scenes and transcript for semantic search
@@ -49,22 +51,26 @@ The audio analysis stage is part of a six-stage pipeline orchestrated by the bac
 graph TB
 subgraph "Backend"
 A["ingestion.py<br/>Extract audio, metadata, thumbnail"]
-B["audio_analysis.py<br/>DashScope ASR submission + polling"]
+B["audio_analysis.py<br/>Qwen-Omni-Turbo base64 transcription + chunking"]
 C["orchestrator.py<br/>Pipeline orchestration"]
 D["video.py<br/>Upload/status/transcript endpoints"]
 E["search_index.py<br/>FAISS index builder"]
 F["config.py<br/>Settings and model names"]
 end
 subgraph "External"
-G["DashScope ASR API"]
+G["DashScope Multimodal API"]
 H["DashScope Embeddings API"]
 I["FAISS Index"]
+J["FFmpeg"]
+K["FFprobe"]
 end
 C --> A
 C --> B
 C --> E
 D --> C
 B --> G
+B --> J
+B --> K
 E --> H
 E --> I
 F --> C
@@ -86,7 +92,9 @@ F --> E
 
 ## Core Components
 - Audio ingestion: extracts 16 kHz mono WAV audio and a thumbnail from the uploaded video for downstream stages.
-- ASR transcription: asynchronously submits audio to DashScope Paraformer ASR, polls for completion, and parses the transcript into structured segments with speaker and word-level timestamps.
+- ASR transcription: synchronously encodes audio chunks as base64 and submits them to Qwen-Omni-Turbo multimodal API with intelligent chunking and retry mechanisms.
+- Audio chunking: splits long audio files into 25-second chunks using ffmpeg for optimal processing limits.
+- Duration detection: uses ffprobe to determine audio length for efficient chunk calculation.
 - Orchestration: wires ingestion and ASR into the pipeline, computes URLs for audio assets, and saves results.
 - API endpoints: expose upload, status, and transcript retrieval; WebSocket provides live progress.
 - Search index: converts scenes and transcript segments into embeddings and adds them to FAISS for semantic search.
@@ -94,15 +102,17 @@ F --> E
 **Section sources**
 - [ingestion.py:16-51](file://backend/pipeline/ingestion.py#L16-L51)
 - [audio_analysis.py:22-59](file://backend/pipeline/audio_analysis.py#L22-L59)
+- [audio_analysis.py:140-189](file://backend/pipeline/audio_analysis.py#L140-L189)
+- [audio_analysis.py:116-137](file://backend/pipeline/audio_analysis.py#L116-L137)
 - [orchestrator.py:114-129](file://backend/pipeline/orchestrator.py#L114-L129)
 - [video.py:39-92](file://backend/routers/video.py#L39-L92)
 - [search_index.py:88-154](file://backend/pipeline/search_index.py#L88-L154)
 
 ## Architecture Overview
-The audio analysis stage participates in a sequential pipeline:
+The audio analysis stage participates in a sequential pipeline with significant architectural improvements:
 1. Upload a video via API
 2. Ingestion stage extracts audio and metadata
-3. Audio analysis stage sends audio URL to DashScope ASR
+3. Audio analysis stage detects duration, chunks audio, encodes base64, and submits to Qwen-Omni-Turbo
 4. Results are persisted and later consumed by semantic search
 
 ```mermaid
@@ -112,16 +122,19 @@ participant API as "FastAPI video.py"
 participant Orchestrator as "orchestrator.py"
 participant Ingest as "ingestion.py"
 participant ASR as "audio_analysis.py"
-participant DashScope as "DashScope ASR"
+participant DashScope as "DashScope Multimodal API"
 Client->>API : POST /api/video/upload
 API->>Orchestrator : process_video(video_id, video_path)
 Orchestrator->>Ingest : extract audio/thumbnail/metadata
 Ingest-->>Orchestrator : {audio_path, thumbnail_path, ...}
-Orchestrator->>ASR : transcribe_audio(audio_url, api_key, model)
-ASR->>DashScope : POST transcription task
-DashScope-->>ASR : task_id
-ASR->>DashScope : GET task status (poll)
-DashScope-->>ASR : SUCCEEDED with results
+Orchestrator->>ASR : transcribe_audio(audio_path, api_key, model)
+ASR->>ASR : _get_audio_duration(audio_path)
+ASR->>ASR : _split_audio(audio_path, duration, chunk_secs)
+loop For each chunk
+ASR->>ASR : _transcribe_chunk(chunk_path, api_key)
+ASR->>DashScope : POST multimodal generation
+DashScope-->>ASR : Transcribed text
+end
 ASR-->>Orchestrator : parsed transcript segments
 Orchestrator-->>API : save transcript.json and update status
 Client->>API : GET /api/video/{id}/transcript
@@ -132,7 +145,10 @@ API-->>Client : transcript.json
 - [video.py:39-92](file://backend/routers/video.py#L39-L92)
 - [orchestrator.py:44-207](file://backend/pipeline/orchestrator.py#L44-L207)
 - [ingestion.py:16-51](file://backend/pipeline/ingestion.py#L16-L51)
-- [audio_analysis.py:22-59](file://backend/pipeline/audio_analysis.py#L22-L59)
+- [audio_analysis.py:33-113](file://backend/pipeline/audio_analysis.py#L33-L113)
+- [audio_analysis.py:116-137](file://backend/pipeline/audio_analysis.py#L116-L137)
+- [audio_analysis.py:140-189](file://backend/pipeline/audio_analysis.py#L140-L189)
+- [audio_analysis.py:192-265](file://backend/pipeline/audio_analysis.py#L192-L265)
 
 ## Detailed Component Analysis
 
@@ -151,91 +167,42 @@ Key behaviors:
 - [ingestion.py:100-122](file://backend/pipeline/ingestion.py#L100-L122)
 - [ingestion.py:124-146](file://backend/pipeline/ingestion.py#L124-L146)
 
-### Preprocessing for ASR
-- The orchestrator constructs the audio URL for DashScope consumption.
-- The URL points to the static uploads directory served by the backend.
-- The ingestion stage ensures audio.wav is present and ready.
+### Audio Duration Detection and Chunking
+- Detects audio duration using ffprobe for precise chunk calculation.
+- Splits audio into 25-second chunks using ffmpeg with 16kHz mono WAV output.
+- Each chunk maintains accurate start and end timestamps for timeline alignment.
 
-Important note:
-- The audio must be publicly reachable by the DashScope service. In development, the backend serves uploads statically; in production, use a CDN or object storage URL.
-
-**Section sources**
-- [orchestrator.py:77-79](file://backend/pipeline/orchestrator.py#L77-L79)
-- [main.py:35](file://backend/main.py#L35)
-
-### ASR Transcription Workflow (DashScope Paraformer)
-- Submits an asynchronous transcription task with:
-  - Model: configurable (default paraformer-v2)
-  - Input: array of file URLs (single audio file)
-  - Parameters: language hints (Arabic and English), speaker diarization enabled
-- Polls task status until completion or failure, with bounded retries and timeouts.
-- Parses the returned transcript into structured segments:
-  - Segment-level: start/end times, speaker ID, text, language
-  - Word-level: optional word timestamps
-  - Aggregated full text and speaker count
-
-**Updated** The ASR service configuration now uses dynamic URL construction based on the settings system. The helper functions `_asr_submit_url()` and `_task_status_url()` construct appropriate API endpoints using the configured `DASHSCOPE_API_URL` setting, eliminating hardcoded URLs.
-
-```mermaid
-flowchart TD
-Start(["Start ASR"]) --> CheckKey{"API key present?"}
-CheckKey --> |No| Empty["Return empty result"]
-CheckKey --> |Yes| Submit["POST task to DashScope"]
-Submit --> TaskId{"task_id received?"}
-TaskId --> |No| Empty
-TaskId --> |Yes| Poll["Poll task status"]
-Poll --> Status{"SUCCEEDED/FAILED/CANCELED"}
-Status --> |FAILED or CANCELED| Empty
-Status --> |SUCCEEDED| Fetch["Fetch transcript JSON"]
-Fetch --> Parse["Parse segments + words"]
-Parse --> Done(["Return structured transcript"])
-Empty --> Done
-```
-
-**Diagram sources**
-- [audio_analysis.py:22-59](file://backend/pipeline/audio_analysis.py#L22-L59)
-- [audio_analysis.py:62-112](file://backend/pipeline/audio_analysis.py#L62-L112)
-- [audio_analysis.py:115-142](file://backend/pipeline/audio_analysis.py#L115-L142)
-- [audio_analysis.py:145-175](file://backend/pipeline/audio_analysis.py#L145-L175)
-- [audio_analysis.py:177-187](file://backend/pipeline/audio_analysis.py#L177-L187)
-- [audio_analysis.py:190-229](file://backend/pipeline/audio_analysis.py#L190-L229)
+Key improvements:
+- **Chunk Duration**: 25 seconds (optimized for Qwen-Omni-Turbo audio length limits)
+- **Base64 Encoding**: Each chunk is encoded to base64 before transmission
+- **Retry Mechanisms**: Up to 3 attempts with exponential backoff for robustness
+- **Memory Management**: Temporary chunk files are cleaned up after processing
 
 **Section sources**
-- [audio_analysis.py:22-59](file://backend/pipeline/audio_analysis.py#L22-L59)
-- [audio_analysis.py:62-112](file://backend/pipeline/audio_analysis.py#L62-L112)
-- [audio_analysis.py:115-142](file://backend/pipeline/audio_analysis.py#L115-L142)
-- [audio_analysis.py:145-175](file://backend/pipeline/audio_analysis.py#L145-L175)
-- [audio_analysis.py:177-187](file://backend/pipeline/audio_analysis.py#L177-L187)
-- [audio_analysis.py:190-229](file://backend/pipeline/audio_analysis.py#L190-L229)
+- [audio_analysis.py:116-137](file://backend/pipeline/audio_analysis.py#L116-L137)
+- [audio_analysis.py:140-189](file://backend/pipeline/audio_analysis.py#L140-L189)
 
-### API Integration and Parameter Configuration
-- Model selection: configurable via settings (default paraformer-v2).
-- Authentication: Bearer token from DASHSCOPE_API_KEY.
-- Dynamic URL construction: The ASR service endpoints are constructed dynamically using the `DASHSCOPE_API_URL` setting from the configuration system.
-- Endpoints:
-  - POST /api/video/upload: starts pipeline
-  - GET /api/video/{id}/transcript: retrieves transcript.json
-  - GET /api/video/{id}/status: reads status.json
-  - WS /ws/pipeline/{id}: real-time progress
+### Qwen-Omni-Turbo Multimodal API Integration
+- **Model**: Qwen-Omni-Turbo (multimodal generation API)
+- **Endpoint**: `{DASHSCOPE_API_URL}/services/aigc/multimodal-generation/generation`
+- **Input Format**: Base64-encoded audio with transcription prompt
+- **Authentication**: Bearer token from DASHSCOPE_API_KEY
+- **Parameters**: max_tokens: 2048 for comprehensive transcription
 
-Environment variables:
-- DASHSCOPE_API_KEY: required for all DashScope calls
-- DASHSCOPE_API_URL: base URL for DashScope API endpoints (used for dynamic URL construction)
-- MODEL_ASR: selects the ASR model
-- BASE_URL: used to construct audio URLs for external access
-
-**Updated** The ASR service configuration now uses the settings system for dynamic URL construction. The `DASHSCOPE_API_URL` setting controls the base URL for all DashScope API endpoints, including ASR transcription and task status operations.
+Key features:
+- **Synchronous Processing**: Direct API calls replace asynchronous polling
+- **Intelligent Retry**: Exponential backoff for transient failures
+- **Error Handling**: Comprehensive logging and graceful degradation
+- **Prompt Engineering**: Specific transcription instructions for accuracy
 
 **Section sources**
-- [config.py:4-20](file://backend/config.py#L4-L20)
-- [video.py:39-92](file://backend/routers/video.py#L39-L92)
-- [video.py:179-196](file://backend/routers/video.py#L179-L196)
-- [README.md:112-125](file://README.md#L112-L125)
+- [audio_analysis.py:192-265](file://backend/pipeline/audio_analysis.py#L192-L265)
+- [config.py:8-9](file://backend/config.py#L8-L9)
 
 ### Transcript Generation and Timestamp Alignment
-- Segments include start_time and end_time in seconds.
-- Word-level timestamps are included when available.
-- Speaker diarization assigns speaker_id per segment.
+- Segments include start_time and end_time in seconds (accurate to chunk boundaries).
+- Word-level timestamps are not available in this implementation.
+- Speaker diarization is not performed; speaker_id remains "unknown".
 - The orchestrator saves transcript.json for later retrieval and search indexing.
 
 Frontend integration:
@@ -243,7 +210,7 @@ Frontend integration:
 - Clicking a timestamp seeks the player to the aligned position.
 
 **Section sources**
-- [audio_analysis.py:190-229](file://backend/pipeline/audio_analysis.py#L190-L229)
+- [audio_analysis.py:86-113](file://backend/pipeline/audio_analysis.py#L86-L113)
 - [video.py:179-196](file://backend/routers/video.py#L179-L196)
 - [TranscriptPanel.tsx:36-154](file://frontend/src/components/archive/TranscriptPanel.tsx#L36-L154)
 
@@ -275,18 +242,21 @@ FAISS --> Results["Top-k Matches<br/>video_id, timestamp, description"]
 
 ## Dependency Analysis
 - Runtime dependencies include httpx for HTTP, ffmpeg-python for audio extraction, and aiofiles for async file IO.
-- The ASR stage depends on DashScope's transcription and task status endpoints.
+- The ASR stage depends on DashScope's multimodal generation API endpoint.
 - The search stage depends on DashScope embeddings and FAISS for vector search.
+- **New Dependencies**: ffmpeg and ffprobe for audio processing and duration detection.
 
 ```mermaid
 graph TB
 A["audio_analysis.py"] --> B["httpx"]
 A --> C["logging"]
+A --> J["ffmpeg"]
+A --> K["ffprobe"]
 D["ingestion.py"] --> E["ffmpeg-python"]
 D --> F["aiofiles"]
 G["search_index.py"] --> H["httpx"]
 G --> I["numpy"]
-G --> J["faiss-cpu"]
+G --> J
 ```
 
 **Diagram sources**
@@ -299,55 +269,56 @@ G --> J["faiss-cpu"]
 - [requirements.txt:1-16](file://backend/requirements.txt#L1-L16)
 
 ## Performance Considerations
-- Latency drivers:
-  - ASR asynchronous polling: expect several minutes for long audio.
-  - Network latency to DashScope endpoints.
-  - Disk I/O for saving intermediate artifacts and transcripts.
-- Throughput:
-  - The pipeline runs stages sequentially; concurrency is limited to one video at a time per worker.
-  - Consider scaling workers or splitting long videos for improved throughput.
-- Quality factors:
-  - Audio sampling rate and mono channelization improve ASR accuracy.
-  - Clear audio with minimal background noise yields better transcripts.
-  - Language hints (Arabic and English) help bilingual recognition.
-- Resource usage:
-  - FAISS index grows with the number of indexed segments; manage index persistence and memory footprint.
+- **Latency Drivers**:
+  - **Base64 Encoding**: Time proportional to audio size (linear scaling)
+  - **API Calls**: Each 25-second chunk requires separate API call
+  - **Network Latency**: DashScope API response times vary by region
+  - **Chunk Processing**: Sequential processing of chunks (no parallelization)
+- **Throughput**:
+  - **Sequential Processing**: Chunks are processed one after another
+  - **Memory Usage**: Base64 encoding increases memory by ~33%
+  - **Disk I/O**: Temporary chunk files require additional storage
+- **Quality Factors**:
+  - **Audio Sampling Rate**: 16kHz mono WAV ensures optimal ASR quality
+  - **Chunk Size**: 25-second chunks balance accuracy and API limits
+  - **Language Support**: Qwen-Omni-Turbo handles English and Arabic effectively
+- **Resource Usage**:
+  - **CPU**: ffmpeg processing and base64 encoding
+  - **Memory**: Base64-encoded audio buffers
+  - **Storage**: Temporary chunk files during processing
 
 ## Troubleshooting Guide
 Common issues and resolutions:
-- No API key configured:
-  - Symptom: empty transcription result and warning logs.
-  - Action: set DASHSCOPE_API_KEY in environment.
-- ASR task submission failures:
-  - Symptom: errors during task submission or missing task_id.
-  - Action: retry with exponential backoff; verify network connectivity and endpoint URLs.
-- ASR polling timeouts:
-  - Symptom: task does not complete within the maximum attempts.
-  - Action: reduce video length or increase timeouts; check DashScope quotas.
-- Missing transcript data:
-  - Symptom: could not retrieve transcript JSON.
-  - Action: confirm the audio URL is publicly accessible; verify file exists.
-- ffprobe/ffmpeg errors:
-  - Symptom: ingestion fails due to probing or extraction errors.
-  - Action: ensure FFmpeg is installed and in PATH; verify video codec compatibility.
-- Search index unavailable:
-  - Symptom: FAISS not installed or index loading fails.
-  - Action: install faiss-cpu; ensure index files exist and are readable.
-- **Updated** Dynamic URL configuration issues:
-  - Symptom: ASR requests fail with invalid endpoint errors.
-  - Action: verify DASHSCOPE_API_URL setting is properly configured in environment; ensure the URL includes the correct region and endpoint structure for your DashScope deployment.
+- **Missing FFmpeg/FFprobe**:
+  - Symptom: ffprobe failures with duration detection
+  - Action: Install FFmpeg and ensure it's in PATH; verify installation with `ffmpeg -version`
+- **Base64 Encoding Errors**:
+  - Symptom: Failed to read chunk file or encode audio
+  - Action: Check file permissions and available disk space; verify audio file integrity
+- **API Key Issues**:
+  - Symptom: Authentication failures or empty responses
+  - Action: Verify DASHSCOPE_API_KEY is set correctly; check API quota limits
+- **Chunk Processing Failures**:
+  - Symptom: Individual chunks failing while others succeed
+  - Action: Check audio quality in problematic segments; verify chunk boundaries
+- **Timeout Issues**:
+  - Symptom: API calls timing out during transcription
+  - Action: Increase timeout values; check network connectivity; consider reducing chunk size
+- **Memory Issues**:
+  - Symptom: Out of memory errors during base64 encoding
+  - Action: Process shorter audio files; monitor system resources; consider chunk size adjustment
+- **Audio Quality Problems**:
+  - Symptom: Poor transcription accuracy
+  - Action: Ensure 16kHz mono WAV format; minimize background noise; check audio levels
 
 **Section sources**
-- [audio_analysis.py:40-42](file://backend/pipeline/audio_analysis.py#L40-L42)
-- [audio_analysis.py:94-111](file://backend/pipeline/audio_analysis.py#L94-L111)
-- [audio_analysis.py:136-142](file://backend/pipeline/audio_analysis.py#L136-L142)
-- [audio_analysis.py:163-170](file://backend/pipeline/audio_analysis.py#L163-L170)
-- [ingestion.py:92-97](file://backend/pipeline/ingestion.py#L92-L97)
-- [ingestion.py:116-121](file://backend/pipeline/ingestion.py#L116-L121)
-- [search_index.py:61-70](file://backend/pipeline/search_index.py#L61-L70)
+- [audio_analysis.py:57-59](file://backend/pipeline/audio_analysis.py#L57-L59)
+- [audio_analysis.py:116-137](file://backend/pipeline/audio_analysis.py#L116-L137)
+- [audio_analysis.py:198-202](file://backend/pipeline/audio_analysis.py#L198-L202)
+- [audio_analysis.py:256-261](file://backend/pipeline/audio_analysis.py#L256-L261)
 
 ## Conclusion
-The audio analysis stage transforms video audio into structured, timestamp-aligned transcripts using DashScope's Paraformer ASR. It integrates tightly with ingestion, orchestration, and semantic search to enable rich, searchable video archives. By tuning audio quality, leveraging language hints, and ensuring reliable network access, teams can achieve accurate, low-latency transcription suitable for downstream applications.
+The audio analysis stage has evolved significantly, transitioning from asynchronous URL-based polling to a robust synchronous base64 encoding approach with intelligent chunking. The new Qwen-Omni-Turbo integration provides superior transcription capabilities with better error handling, retry mechanisms, and performance characteristics. By leveraging ffmpeg-based chunking, ffprobe duration detection, and optimized base64 encoding, the system achieves reliable, high-quality speech-to-text transcription suitable for downstream semantic search applications.
 
 ## Appendices
 
@@ -368,15 +339,42 @@ The audio analysis stage transforms video audio into structured, timestamp-align
 - [TranscriptPanel.tsx:36-154](file://frontend/src/components/archive/TranscriptPanel.tsx#L36-L154)
 - [VideoTimeline.tsx:26-244](file://frontend/src/components/archive/VideoTimeline.tsx#L26-L244)
 
-### Dynamic URL Configuration Details
-**Updated** The ASR service now uses dynamic URL construction for enhanced flexibility and maintainability:
+### Qwen-Omni-Turbo Configuration Details
+The audio analysis system now uses Qwen-Omni-Turbo multimodal API with the following configuration:
 
-- **Base URL Setting**: The `DASHSCOPE_API_URL` setting in the configuration system controls the base URL for all DashScope API endpoints.
-- **Helper Functions**: Two new helper functions construct specific endpoints:
-  - `_asr_submit_url()`: Returns `${DASHSCOPE_API_URL}/services/audio/asr/transcription`
-  - `_task_status_url(task_id)`: Returns `${DASHSCOPE_API_URL}/tasks/${task_id}`
-- **Configuration Flexibility**: This approach allows easy switching between different DashScope regions, environments, or custom deployments without code changes.
+- **Model**: qwen-omni-turbo (multimodal generation)
+- **Endpoint**: `{DASHSCOPE_API_URL}/services/aigc/multimodal-generation/generation`
+- **Chunk Duration**: 25 seconds (optimized for API limits)
+- **Audio Format**: 16kHz mono WAV (base64 encoded)
+- **Max Tokens**: 2048 (for comprehensive transcription)
+- **Retry Strategy**: Up to 3 attempts with exponential backoff
+- **Error Handling**: Graceful degradation with empty results
 
 **Section sources**
-- [audio_analysis.py:18-24](file://backend/pipeline/audio_analysis.py#L18-L24)
-- [config.py:8-9](file://backend/config.py#L8-L9)
+- [audio_analysis.py:23-30](file://backend/pipeline/audio_analysis.py#L23-L30)
+- [audio_analysis.py:204-226](file://backend/pipeline/audio_analysis.py#L204-L226)
+- [audio_analysis.py:228-263](file://backend/pipeline/audio_analysis.py#L228-L263)
+
+### Audio Processing Pipeline
+The complete audio processing workflow involves multiple stages:
+
+```mermaid
+flowchart TD
+Start(["Start Audio Processing"]) --> Probe["ffprobe duration detection"]
+Probe --> Split["ffmpeg audio splitting (25s chunks)"]
+Split --> Encode["Base64 encoding"]
+Encode --> API["Qwen-Omni-Turbo API call"]
+API --> Parse["Parse response"]
+Parse --> Merge["Merge segments"]
+Merge --> Cleanup["Clean up temp files"]
+Cleanup --> Done(["Complete"])
+```
+
+**Diagram sources**
+- [audio_analysis.py:116-137](file://backend/pipeline/audio_analysis.py#L116-L137)
+- [audio_analysis.py:140-189](file://backend/pipeline/audio_analysis.py#L140-L189)
+- [audio_analysis.py:192-265](file://backend/pipeline/audio_analysis.py#L192-L265)
+
+**Section sources**
+- [audio_analysis.py:116-189](file://backend/pipeline/audio_analysis.py#L116-L189)
+- [audio_analysis.py:192-265](file://backend/pipeline/audio_analysis.py#L192-L265)

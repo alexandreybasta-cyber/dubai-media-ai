@@ -1,3 +1,0 @@
-- Asynchronous LLM calls in services implement exponential backoff retries (up to 3 attempts) for handling API timeouts and rate limits.
-- Pipeline stages and background tasks use per-item JSON status files (e.g., `status.json`, `results.json`) for persistent state tracking and progress reporting.
-- Service methods consistently validate the presence of `DASHSCOPE_API_KEY` in settings before initiating network requests to prevent silent failures.

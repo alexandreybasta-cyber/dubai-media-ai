@@ -217,6 +217,9 @@ class PipelineOrchestrator:
         save_result: bool = True,
     ):
         """Execute a single pipeline stage with error handling and progress tracking."""
+        # Yield to event loop to ensure server stays responsive
+        await asyncio.sleep(0)
+
         progress = int(((stage_index) / total_stages) * 100)
         status["stages"][stage_name] = "running"
         status["progress"] = progress

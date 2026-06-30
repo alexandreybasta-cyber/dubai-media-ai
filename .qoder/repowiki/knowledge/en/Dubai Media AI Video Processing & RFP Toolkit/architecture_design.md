@@ -1,0 +1,4 @@
+- **Backend (FastAPI)**: Organized into `routers` (API entry points), `services` (business logic for RFPs), and `pipeline` (multi-stage video processing orchestrator). It uses a file-based persistence model in `uploads/` for status tracking and results.
+- **Frontend (Next.js)**: A component-based React application using the App Router. It features dedicated pages for the media archive, RFP creator, and evaluator, with shared UI components in `src/components`.
+- **Integration**: The frontend communicates with the backend via a typed API client (`api.ts`) and utilizes WebSockets for real-time pipeline progress updates.
+- **Orchestration**: Docker Compose manages the backend, frontend, and an Nginx reverse proxy, with shared volumes for persistent storage of processed media and documents.

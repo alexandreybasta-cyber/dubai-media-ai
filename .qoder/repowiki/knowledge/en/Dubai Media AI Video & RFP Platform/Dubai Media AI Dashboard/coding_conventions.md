@@ -1,3 +1,0 @@
-- Page components are implemented as Client Components ("use client") when they require interactive state or hooks.
-- API calls are centralized in a single `api` object in `src/lib/api.ts` with typed interfaces for requests and responses.
-- Complex feature pages delegate UI rendering to specialized sub-components while keeping orchestration logic in the page or a custom hook.

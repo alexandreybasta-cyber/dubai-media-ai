@@ -1,1 +1,0 @@
-Orchestrates a unified AI-powered video metadata extraction and RFP generation platform by integrating backend processing services with a Next.js dashboard through Docker Compose and Nginx reverse proxying.

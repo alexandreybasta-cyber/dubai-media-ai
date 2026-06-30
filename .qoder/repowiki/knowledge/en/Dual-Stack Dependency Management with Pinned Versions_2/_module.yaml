@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: dependency_management
+title: Dual-Stack Dependency Management with Pinned Versions
+scope: []
+source_files:
+    - backend/requirements.txt
+    - frontend/package.json
+    - frontend/package-lock.json
+    - docker-compose.yml
+depends_on: []
+related_to: []

@@ -2,6 +2,7 @@
 
 <cite>
 **Referenced Files in This Document**
+- [globals.css](file://frontend/src/app/globals.css)
 - [Button.tsx](file://frontend/src/components/Button.tsx)
 - [Card.tsx](file://frontend/src/components/Card.tsx)
 - [VideoUpload.tsx](file://frontend/src/components/archive/VideoUpload.tsx)
@@ -21,16 +22,24 @@
 - [useVideoProcessing.ts](file://frontend/src/lib/useVideoProcessing.ts)
 </cite>
 
+## Update Summary
+**Changes Made**
+- Updated accessibility section to reflect comprehensive CSS improvements for text visibility on dark backgrounds
+- Added documentation for consistent text colors (#1f2937 for inputs/textareas/selects, #6b7280 for placeholders)
+- Enhanced form component accessibility guidelines
+- Removed duplicate Tailwind CSS imports and conflicting dark mode media queries
+
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
 4. [Architecture Overview](#architecture-overview)
 5. [Detailed Component Analysis](#detailed-component-analysis)
-6. [Dependency Analysis](#dependency-analysis)
-7. [Performance Considerations](#performance-considerations)
-8. [Troubleshooting Guide](#troubleshooting-guide)
-9. [Conclusion](#conclusion)
+6. [Accessibility Improvements](#accessibility-improvements)
+7. [Dependency Analysis](#dependency-analysis)
+8. [Performance Considerations](#performance-considerations)
+9. [Troubleshooting Guide](#troubleshooting-guide)
+10. [Conclusion](#conclusion)
 
 ## Introduction
 This document describes the reusable UI component library used across the Dubai Media application. It covers foundational components (Button, Card) and specialized components grouped by feature areas: Archive, RFP Creator, and RFP Evaluator. For each component, we document props, events, styling patterns, composition guidelines, state management integration, accessibility, responsiveness, and performance characteristics. The goal is to enable consistent development and easy reuse across pages such as Archive Metadata, RFP Creator, and RFP Evaluator.
@@ -356,7 +365,7 @@ UV-->>VU : metadata, transcript when ready
 - [EvaluationSetup.tsx:26-189](file://frontend/src/components/evaluator/EvaluationSetup.tsx#L26-L189)
 
 #### VendorScorecard
-- Purpose: Displays a vendor’s overall score and detailed criterion breakdown with expandable justifications and evidence.
+- Purpose: Displays a vendor's overall score and detailed criterion breakdown with expandable justifications and evidence.
 - Props:
   - vendors: VendorResult[]
 - Features:
@@ -393,6 +402,60 @@ UV-->>VU : metadata, transcript when ready
 
 **Section sources**
 - [Sidebar.tsx:17-66](file://frontend/src/components/Sidebar.tsx#L17-L66)
+
+## Accessibility Improvements
+
+**Updated** Comprehensive CSS improvements have been implemented to address text visibility issues on dark backgrounds and improve overall accessibility across form components.
+
+### Text Color Standards
+The global stylesheet now enforces consistent text colors for optimal readability:
+
+- **Primary text color**: `#1f2937` for all input elements (inputs, textareas, selects)
+- **Placeholder text color**: `#6b7280` with full opacity for better contrast
+- **Dark mode compatibility**: Automatic color adaptation through CSS variables
+
+### CSS Structure Enhancements
+The global stylesheet has been optimized to eliminate conflicts:
+
+- **Removed duplicate imports**: Consolidated multiple `@import "tailwindcss"` statements
+- **Eliminated conflicting dark mode queries**: Streamlined media query handling
+- **Added systematic form styling**: Universal text color rules applied to all form controls
+
+### Form Component Accessibility Improvements
+All form components now benefit from improved text visibility:
+
+- **Input fields**: Consistent dark gray text (`#1f2937`) ensures readability regardless of background
+- **Placeholders**: Medium gray text (`#6b7280`) with opacity 1 prevents fading issues
+- **Focus states**: Maintained high contrast for keyboard navigation
+- **Error states**: Red text colors maintain sufficient contrast against light backgrounds
+
+### Implementation Details
+The accessibility improvements are implemented through:
+
+```css
+/* Ensure form inputs always have readable text and placeholder colors */
+input,
+textarea,
+select {
+  color: #1f2937;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #6b7280;
+  opacity: 1;
+}
+```
+
+These changes ensure consistent text visibility across:
+- Light and dark themes
+- All form input types (text, textarea, select, checkbox, radio)
+- Interactive states (hover, focus, disabled)
+- High contrast scenarios
+
+**Section sources**
+- [globals.css:31-42](file://frontend/src/app/globals.css#L31-L42)
+- [globals.css:86-91](file://frontend/src/app/globals.css#L86-L91)
 
 ## Dependency Analysis
 - Component coupling:
@@ -474,4 +537,4 @@ API --> CM["ComparisonMatrix.tsx"]
 - [EvaluationSetup.tsx:156-189](file://frontend/src/components/evaluator/EvaluationSetup.tsx#L156-L189)
 
 ## Conclusion
-The component library provides a cohesive, accessible, and extensible foundation for the Dubai Media application. Base components (Button, Card) standardize UI patterns; feature-specific components encapsulate complex workflows while integrating with shared state and APIs. By adhering to the documented props, composition patterns, and accessibility guidelines, teams can build consistent experiences across Archive, RFP, and Evaluator features.
+The component library provides a cohesive, accessible, and extensible foundation for the Dubai Media application. Base components (Button, Card) standardize UI patterns; feature-specific components encapsulate complex workflows while integrating with shared state and APIs. The recent accessibility improvements ensure consistent text visibility across all form components, with systematic color standards and optimized CSS structure. By adhering to the documented props, composition patterns, and accessibility guidelines, teams can build consistent experiences across Archive, RFP, and Evaluator features.
