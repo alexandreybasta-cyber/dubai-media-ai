@@ -2,6 +2,7 @@
 
 <cite>
 **Referenced Files in This Document**
+- [backend/run_pipeline.py](file://backend/run_pipeline.py)
 - [backend/pipeline/orchestrator.py](file://backend/pipeline/orchestrator.py)
 - [backend/pipeline/ingestion.py](file://backend/pipeline/ingestion.py)
 - [backend/pipeline/visual_analysis.py](file://backend/pipeline/visual_analysis.py)
@@ -21,12 +22,12 @@
 
 ## Update Summary
 **Changes Made**
-- Updated Core Components section to reflect simplified background task approach
-- Removed WebSocket callback mechanism documentation
-- Updated Architecture Overview to show background task execution flow
-- Revised Real-time Progress Tracking section to reflect polling-based approach
-- Enhanced Troubleshooting Guide for polling-based status monitoring
-- Updated Performance Considerations to reflect non-WebSocket implementation
+- Updated Core Components section to reflect subprocess-based architecture with enhanced process isolation
+- Added documentation for the new backend/run_pipeline.py dedicated execution environment
+- Enhanced Architecture Overview to show subprocess execution flow with improved system stability
+- Updated Real-time Progress Tracking section to reflect dual WebSocket and REST polling approaches
+- Revised Troubleshooting Guide for subprocess-based status monitoring
+- Enhanced Performance Considerations to reflect improved process isolation benefits
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -43,11 +44,11 @@
 ## Introduction
 This document explains the 6-stage AI-powered media processing pipeline designed for automated metadata extraction and indexing of video archives. It covers the orchestration layer, each processing stage, AI model integrations, and operational guidance for performance and reliability.
 
-The pipeline transforms raw video into structured metadata, transcripts, face identifications, and a semantic search index, enabling efficient discovery and archival workflows. **The pipeline now uses a simplified background task approach** instead of WebSocket callbacks, maintaining system responsiveness while reducing complexity.
+The pipeline transforms raw video into structured metadata, transcripts, face identifications, and a semantic search index, enabling efficient discovery and archival workflows. **The pipeline now uses a subprocess-based architecture with enhanced process isolation**, providing improved system stability and non-blocking operation while maintaining real-time progress tracking capabilities.
 
 ## Project Structure
 The system is organized into:
-- Backend: Orchestration, stage implementations, API routes, configuration, and data assets
+- Backend: Orchestration, stage implementations, API routes, configuration, data assets, and dedicated pipeline runner
 - Frontend: Real-time UI for upload, progress visualization, and search
 
 ```mermaid
@@ -63,6 +64,7 @@ ST5["Metadata Structuring"]
 ST6["Search Index"]
 ROUTER["Video Router"]
 MAIN["FastAPI App"]
+RUNPIPE["run_pipeline.py (subprocess)"]
 ENDTASK["_run_pipeline (background task)"]
 end
 subgraph "Data Assets"
@@ -73,11 +75,13 @@ subgraph "Frontend"
 HOOK["useVideoProcessing hook"]
 VIS["PipelineVisualizer"]
 UP["VideoUpload"]
+WS["WebSocket Progress"]
 POLL["REST Polling"]
 end
 MAIN --> ROUTER
 ROUTER --> ENDTASK
-ENDTASK --> ORCH
+ENDTASK --> RUNPIPE
+RUNPIPE --> ORCH
 ORCH --> ST1
 ORCH --> ST2
 ORCH --> ST3
@@ -89,12 +93,14 @@ ST5 --> IPTC
 HOOK --> ROUTER
 VIS --> HOOK
 UP --> HOOK
+WS --> ROUTER
 POLL --> ROUTER
 ```
 
 **Diagram sources**
 - [backend/main.py:1-44](file://backend/main.py#L1-L44)
-- [backend/routers/video.py:1-311](file://backend/routers/video.py#L1-L311)
+- [backend/routers/video.py:1-313](file://backend/routers/video.py#L1-L313)
+- [backend/run_pipeline.py:1-29](file://backend/run_pipeline.py#L1-L29)
 - [backend/pipeline/orchestrator.py:1-382](file://backend/pipeline/orchestrator.py#L1-L382)
 - [backend/pipeline/ingestion.py:1-146](file://backend/pipeline/ingestion.py#L1-L146)
 - [backend/pipeline/visual_analysis.py:1-344](file://backend/pipeline/visual_analysis.py#L1-L344)
@@ -110,7 +116,8 @@ POLL --> ROUTER
 
 **Section sources**
 - [backend/main.py:1-44](file://backend/main.py#L1-L44)
-- [backend/routers/video.py:1-311](file://backend/routers/video.py#L1-L311)
+- [backend/routers/video.py:1-313](file://backend/routers/video.py#L1-L313)
+- [backend/run_pipeline.py:1-29](file://backend/run_pipeline.py#L1-L29)
 
 ## Core Components
 - PipelineOrchestrator: Manages sequential stages, progress tracking, status persistence, and background task execution.
@@ -118,28 +125,31 @@ POLL --> ROUTER
 - Router: Upload, status, metadata, transcript, search, and WebSocket endpoints.
 - Config: Centralized settings for API keys, models, and base URLs.
 - Frontend hook and components: Real-time progress, upload UX, and visualization.
+- **New**: run_pipeline.py: Dedicated subprocess runner that provides process isolation and enhanced system stability.
 
 Key orchestration responsibilities:
 - Sequential stage execution with cooperative yielding for server responsiveness
 - Persistent status and intermediate results
-- Background task execution without WebSocket callbacks
+- **Enhanced**: Subprocess-based execution with complete process isolation
 - Building searchable segments for embedding
+- **Maintained**: WebSocket progress streaming alongside REST polling
 
-**Updated** The pipeline now uses a simplified background task approach where the orchestrator runs sequentially without WebSocket callbacks. The `_run_pipeline` function creates a background task that processes videos asynchronously, eliminating the complexity of WebSocket connections while maintaining system responsiveness.
+**Updated** The pipeline now uses a subprocess-based architecture where the orchestrator runs in a completely separate process, ensuring it can NEVER block the main server regardless of pipeline duration or resource usage. The `run_pipeline.py` script provides a dedicated execution environment that maintains system stability while preserving all real-time progress tracking capabilities.
 
 **Section sources**
 - [backend/pipeline/orchestrator.py:44-382](file://backend/pipeline/orchestrator.py#L44-L382)
-- [backend/routers/video.py:95-101](file://backend/routers/video.py#L95-L101)
+- [backend/routers/video.py:85-94](file://backend/routers/video.py#L85-L94)
+- [backend/run_pipeline.py:1-29](file://backend/run_pipeline.py#L1-L29)
 - [backend/config.py:4-30](file://backend/config.py#L4-L30)
 
 ## Architecture Overview
-The pipeline is a server-side orchestration backed by external AI APIs and local file storage. The frontend connects via REST endpoints to observe progress and retrieve results. **The simplified background task approach** eliminates WebSocket complexity while maintaining real-time status updates through REST polling.
+The pipeline is a server-side orchestration backed by external AI APIs and local file storage. The frontend connects via REST endpoints to observe progress and retrieve results. **The subprocess-based architecture** provides enhanced process isolation and system stability while maintaining real-time status updates through both WebSocket streaming and REST polling.
 
 ```mermaid
 sequenceDiagram
 participant FE as "Frontend"
 participant API as "FastAPI Router"
-participant TASK as "_run_pipeline (background)"
+participant SUBPROC as "run_pipeline.py (subprocess)"
 participant ORCH as "PipelineOrchestrator"
 participant ST1 as "Ingestion"
 participant ST2 as "Visual Analysis"
@@ -148,8 +158,8 @@ participant ST4 as "Face Recognition"
 participant ST5 as "Metadata Structuring"
 participant ST6 as "Search Index"
 FE->>API : POST /api/video/upload
-API->>TASK : create_task(_run_pipeline(video_id, video_path))
-TASK->>ORCH : process_video(video_id, video_path)
+API->>SUBPROC : subprocess.Popen(run_pipeline.py, video_id, video_path)
+SUBPROC->>ORCH : process_video(video_id, video_path)
 ORCH->>ST1 : ingest_video(video_path, output_dir)
 ST1-->>ORCH : ingestion.json
 ORCH->>ST2 : analyze_video_visually(video_url, api_key, model)
@@ -162,7 +172,7 @@ ORCH->>ST5 : structure_metadata(analysis_results, api_key, model)
 ST5-->>ORCH : metadata.json
 ORCH->>ST6 : SearchIndex.add_video(video_id, segments)
 ST6-->>ORCH : index persisted
-ORCH-->>TASK : Complete processing
+ORCH-->>SUBPROC : Complete processing
 FE->>API : GET /api/video/{video_id}/status (polling)
 API-->>FE : status.json
 FE->>API : GET /api/video/{video_id}/metadata
@@ -170,8 +180,8 @@ API-->>FE : metadata.json + transcript.json
 ```
 
 **Diagram sources**
-- [backend/routers/video.py:40-92](file://backend/routers/video.py#L40-L92)
-- [backend/routers/video.py:95-101](file://backend/routers/video.py#L95-L101)
+- [backend/routers/video.py:40-102](file://backend/routers/video.py#L40-L102)
+- [backend/run_pipeline.py:15-28](file://backend/run_pipeline.py#L15-L28)
 - [backend/pipeline/orchestrator.py:44-209](file://backend/pipeline/orchestrator.py#L44-L209)
 - [backend/pipeline/ingestion.py:16-51](file://backend/pipeline/ingestion.py#L16-L51)
 - [backend/pipeline/visual_analysis.py:57-188](file://backend/pipeline/visual_analysis.py#L57-L188)
@@ -187,10 +197,10 @@ Responsibilities:
 - Sequentially executes six stages with cooperative yielding for server responsiveness
 - Tracks progress and status per stage
 - Persists status.json and intermediate results
-- **Eliminates WebSocket callback mechanism** in favor of background task execution
+- **Enhanced**: Operates within subprocess isolation for improved system stability
 - Builds searchable segments for embedding
 
-**Updated** The orchestrator now operates without WebSocket callbacks. The `process_video` method accepts an optional `ws_callback` parameter but ignores it, focusing solely on sequential stage execution and status persistence. This simplification maintains system responsiveness while reducing implementation complexity.
+**Updated** The orchestrator now operates within a subprocess environment, providing complete process isolation from the main server. The `process_video` method accepts an optional `ws_callback` parameter but ignores it, focusing solely on sequential stage execution and status persistence. This subprocess isolation ensures that long-running pipeline operations cannot interfere with server responsiveness.
 
 Inputs:
 - video_id, video_path
@@ -349,39 +359,42 @@ Error handling:
 - [backend/pipeline/search_index.py:59-306](file://backend/pipeline/search_index.py#L59-L306)
 
 ### Real-time Progress Tracking and Status Reporting
-**Updated** The pipeline now uses a polling-based approach instead of WebSocket callbacks. The frontend connects via REST endpoints to observe progress and retrieve results.
+**Updated** The pipeline now uses a dual approach combining WebSocket streaming and REST polling for progress tracking. The frontend connects via REST endpoints to observe progress and retrieve results, while maintaining WebSocket support for real-time updates.
 
-- Router exposes REST endpoints for status polling
-- Background task `_run_pipeline` executes the full pipeline asynchronously
-- Frontend hook polls `/api/video/{video_id}/status` every 3 seconds
-- REST fallback polling replaces WebSocket progress updates
+- Router exposes REST endpoints for status polling and WebSocket endpoints for live updates
+- **Enhanced**: Subprocess execution via run_pipeline.py provides process isolation
+- Frontend hook polls `/api/video/{video_id}/status` every 3 seconds as fallback
+- WebSocket streaming provides real-time progress updates when available
 - Results are fetched via separate endpoints when processing completes
 
 ```mermaid
 sequenceDiagram
 participant FE as "Frontend"
 participant API as "FastAPI Router"
-participant TASK as "_run_pipeline (background)"
+participant SUBPROC as "run_pipeline.py (subprocess)"
 participant ORCH as "PipelineOrchestrator"
 FE->>API : POST /api/video/upload
-API->>TASK : create_task(_run_pipeline(video_id, video_path))
-TASK->>ORCH : process_video(video_id, video_path)
+API->>SUBPROC : subprocess.Popen(run_pipeline.py, video_id, video_path)
+SUBPROC->>ORCH : process_video(video_id, video_path)
 ORCH->>ORCH : Update status.json per stage
 FE->>API : GET /api/video/{video_id}/status (polling)
 API-->>FE : status.json
+FE->>API : WebSocket /ws/pipeline/{video_id} (optional)
+API-->>FE : Real-time progress updates
 FE->>API : GET /api/video/{video_id}/metadata (when done)
 API-->>FE : metadata.json + transcript.json
 ```
 
 **Diagram sources**
-- [backend/routers/video.py:40-92](file://backend/routers/video.py#L40-L92)
-- [backend/routers/video.py:95-101](file://backend/routers/video.py#L95-L101)
-- [backend/routers/video.py:105-121](file://backend/routers/video.py#L105-L121)
+- [backend/routers/video.py:40-102](file://backend/routers/video.py#L40-L102)
+- [backend/run_pipeline.py:15-28](file://backend/run_pipeline.py#L15-L28)
+- [backend/routers/video.py:266-313](file://backend/routers/video.py#L266-L313)
 - [backend/pipeline/orchestrator.py:44-209](file://backend/pipeline/orchestrator.py#L44-L209)
 - [frontend/src/lib/useVideoProcessing.ts:399-443](file://frontend/src/lib/useVideoProcessing.ts#L399-L443)
 
 **Section sources**
-- [backend/routers/video.py:95-121](file://backend/routers/video.py#L95-L121)
+- [backend/routers/video.py:85-121](file://backend/routers/video.py#L85-L121)
+- [backend/run_pipeline.py:15-28](file://backend/run_pipeline.py#L15-L28)
 - [frontend/src/lib/useVideoProcessing.ts:399-443](file://frontend/src/lib/useVideoProcessing.ts#L399-L443)
 - [frontend/src/components/archive/PipelineVisualizer.tsx:88-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L88-L181)
 
@@ -390,6 +403,7 @@ API-->>FE : metadata.json + transcript.json
 - Stages depend on external AI APIs and local data assets
 - Router depends on Orchestrator and SearchIndex
 - Frontend depends on Router and REST polling
+- **New**: run_pipeline.py depends on PipelineOrchestrator for isolated execution
 
 ```mermaid
 graph LR
@@ -403,7 +417,8 @@ ST4 --> REF["reference_faces.json"]
 ST5 --> IPTC["iptc_taxonomy.json"]
 ROUTER["Video Router"] --> ORCH
 FEHOOK["useVideoProcessing"] --> ROUTER
-TASK["_run_pipeline"] --> ORCH
+SUBPROC["run_pipeline.py"] --> ORCH
+TASK["_run_pipeline"] --> SUBPROC
 ```
 
 **Diagram sources**
@@ -411,11 +426,13 @@ TASK["_run_pipeline"] --> ORCH
 - [backend/pipeline/face_recognition.py:21-32](file://backend/pipeline/face_recognition.py#L21-L32)
 - [backend/pipeline/metadata_structuring.py:22-32](file://backend/pipeline/metadata_structuring.py#L22-L32)
 - [backend/routers/video.py:17-26](file://backend/routers/video.py#L17-L26)
+- [backend/run_pipeline.py:12](file://backend/run_pipeline.py#L12)
 - [frontend/src/lib/useVideoProcessing.ts:1-10](file://frontend/src/lib/useVideoProcessing.ts#L1-L10)
 
 **Section sources**
 - [backend/pipeline/orchestrator.py:14-42](file://backend/pipeline/orchestrator.py#L14-L42)
 - [backend/routers/video.py:17-26](file://backend/routers/video.py#L17-L26)
+- [backend/run_pipeline.py:12](file://backend/run_pipeline.py#L12)
 
 ## Performance Considerations
 - Stage durations:
@@ -430,18 +447,20 @@ TASK["_run_pipeline"] --> ORCH
   - Embeddings normalized to unit vectors; index persists to disk
 - Scalability:
   - Parallelize independent videos; current orchestration is sequential per video
+  - **Enhanced**: Subprocess isolation prevents resource contention between videos
   - Consider batching embedding calls and increasing batch size cautiously
   - Ensure adequate disk space for FAISS index and intermediate artifacts
 - Network:
   - External APIs introduce latency and rate limits; implement retries and backoff
   - Mount uploads via static files for reliable video/audio access
 - **Server Responsiveness**:
+  - **Enhanced**: Subprocess isolation ensures complete separation from main server
   - **Cooperative yielding**: The orchestrator uses `await asyncio.sleep(0)` to yield control back to the event loop, preventing long-running stages from blocking other requests
   - **Event loop fairness**: This ensures the server can handle incoming requests, background tasks, and file operations even during extended processing operations
-  - **Background task execution**: Simplified approach eliminates WebSocket complexity while maintaining responsiveness
+  - **Process isolation**: Subprocess execution prevents pipeline failures from affecting server stability
   - **Non-blocking operations**: All stage functions are async and use cooperative yielding points
 
-**Updated** The simplified background task approach enhances server responsiveness by eliminating WebSocket callback complexity. The cooperative yielding mechanism ensures that long-running operations don't block the event loop, enabling multiple videos to be processed simultaneously without impacting system performance.
+**Updated** The subprocess-based architecture significantly enhances server responsiveness by providing complete process isolation. The `run_pipeline.py` script ensures that pipeline operations run in a completely separate process, so they can NEVER block the server regardless of pipeline duration or resource usage. The cooperative yielding mechanism ensures that long-running operations don't block the event loop, enabling multiple videos to be processed simultaneously without impacting system performance.
 
 [No sources needed since this section provides general guidance]
 
@@ -468,20 +487,23 @@ Common issues and recovery strategies:
 - Search index unavailable:
   - Symptom: FAISS not installed or index load failures
   - Action: Install faiss-cpu; ensure permissions for index_dir; rebuild index
-- **Background task failures**:
+- **Subprocess execution failures**:
   - Symptom: Videos appear stuck in queued status
-  - Action: Check server logs for `_run_pipeline` errors; verify upload directory permissions
-- **Polling-based status monitoring**:
+  - Action: Check server logs for subprocess execution errors; verify Python path and dependencies
+- **WebSocket progress streaming issues**:
+  - Symptom: Real-time updates not received
+  - Action: Verify WebSocket connectivity; check CORS configuration; fallback to REST polling
+- **REST polling-based status monitoring**:
   - Symptom: UI shows "Processing" indefinitely
   - Action: Verify REST status endpoint accessibility; check network connectivity; ensure proper CORS configuration
 - **Server responsiveness issues**:
   - Symptom: Slow response to new upload requests during long processing
-  - Action: The cooperative yielding mechanism automatically addresses this; monitor event loop utilization
+  - Action: The subprocess isolation automatically addresses this; monitor event loop utilization
 - **Concurrent processing conflicts**:
   - Symptom: Multiple videos causing resource contention
   - Action: Monitor system resources; consider rate limiting; ensure adequate CPU and memory allocation
 
-**Updated** Added troubleshooting guidance for the simplified background task approach, including background task failures and polling-based status monitoring. The WebSocket callback mechanism has been removed, so troubleshooting now focuses on REST polling and background task execution.
+**Updated** Added troubleshooting guidance for the subprocess-based architecture, including subprocess execution failures and dual WebSocket/REST polling approaches. The WebSocket callback mechanism remains available as a fallback, while the new subprocess approach provides enhanced system stability and non-blocking operation.
 
 **Section sources**
 - [backend/pipeline/visual_analysis.py:135-188](file://backend/pipeline/visual_analysis.py#L135-L188)
@@ -489,24 +511,24 @@ Common issues and recovery strategies:
 - [backend/pipeline/face_recognition.py:241-299](file://backend/pipeline/face_recognition.py#L241-L299)
 - [backend/pipeline/metadata_structuring.py:125-163](file://backend/pipeline/metadata_structuring.py#L125-L163)
 - [backend/pipeline/search_index.py:259-305](file://backend/pipeline/search_index.py#L259-L305)
-- [backend/routers/video.py:95-101](file://backend/routers/video.py#L95-L101)
+- [backend/routers/video.py:85-94](file://backend/routers/video.py#L85-L94)
 
 ## Conclusion
-The pipeline provides a robust, modular, and observable framework for AI-driven media processing. Its sequential orchestration, persistent state, and REST-based status polling enable reliable archival workflows. **The simplified background task approach** eliminates WebSocket complexity while maintaining system responsiveness for all endpoints. The cooperative yielding mechanism ensures that long-running operations don't block the event loop, enabling multiple videos to be processed simultaneously without impacting system performance. By tuning stage parameters, ensuring adequate infrastructure, and leveraging retries and fallbacks, operators can achieve scalable and resilient media processing in production environments.
+The pipeline provides a robust, modular, and observable framework for AI-driven media processing. Its sequential orchestration, persistent state, and dual progress tracking mechanisms (WebSocket streaming and REST polling) enable reliable archival workflows. **The subprocess-based architecture** provides enhanced process isolation and system stability, ensuring that pipeline operations never interfere with server responsiveness. The cooperative yielding mechanism ensures that long-running operations don't block the event loop, enabling multiple videos to be processed simultaneously without impacting system performance. By tuning stage parameters, ensuring adequate infrastructure, leveraging retries and fallbacks, and utilizing the new subprocess isolation, operators can achieve scalable and resilient media processing in production environments.
 
-**Updated** The pipeline now includes enhanced server responsiveness through cooperative yielding and simplified background task execution. The removal of WebSocket callback mechanism makes the system more maintainable while preserving all essential functionality for real-time status monitoring through REST polling.
+**Updated** The pipeline now includes enhanced subprocess-based architecture with improved process isolation and system stability. The `run_pipeline.py` script provides a dedicated execution environment that ensures pipeline operations run independently from the main server, preventing resource contention and improving overall system reliability. The removal of WebSocket callback mechanism in favor of REST polling simplifies the architecture while maintaining all essential functionality for real-time status monitoring.
 
 [No sources needed since this section summarizes without analyzing specific files]
 
 ## Appendices
 
 ### API Endpoints Overview
-- POST /api/video/upload: Upload video and enqueue processing via background task
+- POST /api/video/upload: Upload video and enqueue processing via subprocess execution
 - GET /api/video/{video_id}/status: Retrieve current pipeline status (REST polling)
 - GET /api/video/{video_id}/metadata: Retrieve structured metadata
 - GET /api/video/{video_id}/transcript: Retrieve speech transcript
 - POST /api/search: Semantic search across indexed videos
-- **Removed**: WebSocket /ws/pipeline/{video_id}: Real-time progress updates (no longer available)
+- **Maintained**: WebSocket /ws/pipeline/{video_id}: Real-time progress updates (fallback option)
 
 **Section sources**
 - [backend/routers/video.py:40-216](file://backend/routers/video.py#L40-L216)
@@ -526,7 +548,8 @@ The pipeline provides a robust, modular, and observable framework for AI-driven 
 - Large clip (> 30 minutes):
   - Consider chunking or reducing fps sampling
   - Total time can exceed 30min depending on stage throughput
+- **Enhanced**: Subprocess isolation ensures consistent performance even with extended processing times for large video files
 
-**Updated** Server responsiveness improvements ensure consistent performance even with extended processing times for large video files. The simplified background task approach allows multiple videos to be processed concurrently without impacting system responsiveness.
+**Updated** Server responsiveness improvements through subprocess isolation ensure consistent performance even with extended processing times for large video files. The subprocess architecture allows multiple videos to be processed concurrently without impacting system responsiveness, while the dual progress tracking approach (WebSocket streaming and REST polling) provides flexible monitoring options.
 
 [No sources needed since this section provides general guidance]

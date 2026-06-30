@@ -88,6 +88,7 @@ async def upload_video(
     subprocess.Popen(
         [sys.executable, "run_pipeline.py", video_id, video_path],
         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        stdin=subprocess.DEVNULL,   # Prevent SIGTTIN from terminal
         stdout=open(pipeline_log_path, "w"),
         stderr=subprocess.STDOUT,
         start_new_session=True,  # Fully detach from parent process
