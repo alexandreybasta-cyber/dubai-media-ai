@@ -200,7 +200,7 @@ async def get_video_transcript(video_id: str):
 
 @router.post("/search")
 async def semantic_search(request: SearchRequest):
-    """Search across all indexed videos using natural language."""
+    """Search across all indexed videos using natural language (POST)."""
     try:
         results = await _orchestrator.search_index.search(
             query=request.query,
@@ -216,9 +216,27 @@ async def semantic_search(request: SearchRequest):
         raise HTTPException(status_code=500, detail=f"Search failed: {e}")
 
 
+@router.get("/search")
+async def semantic_search_get(query: str, top_k: int = 5):
+    """Search across all indexed videos using natural language (GET)."""
+    try:
+        results = await _orchestrator.search_index.search(
+            query=query,
+            top_k=top_k,
+        )
+        return {
+            "query": query,
+            "results": results,
+            "total": len(results),
+        }
+    except Exception as e:
+        logger.error("Search failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Search failed: {e}")
+
+
 # ── Reindex ────────────────────────────────────────────────────────────
 
-@router.post("/reindex")
+@router.api_route("/reindex", methods=["GET", "POST"])
 async def reindex_all():
     """Rebuild the search index from all existing processed video results."""
     import pickle
