@@ -30,6 +30,7 @@ export interface TranscriptSegment {
 export interface SceneBoundary {
   timestamp: number;
   description: string;
+  scene_type?: string;
   thumbnail?: string;
 }
 
@@ -341,7 +342,27 @@ export function useVideoProcessing() {
         topic: (metaBlock.topic as string) || undefined,
         sentiment: ((metaBlock.sentiment_tags as string[]) || []).join(", ") || undefined,
         era: ((visualAnalysis.era_estimate as Record<string, unknown>)?.decade as string) || undefined,
-        scenes: (visualAnalysis.scenes || []) as SceneBoundary[],
+        scenes: ((visualAnalysis.scenes || []) as Array<Record<string, unknown>>).map((s) => {
+          // Convert "MM:SS" or "HH:MM:SS" timestamp string to seconds
+          let ts = 0;
+          const rawTs = s.timestamp;
+          if (typeof rawTs === "number") {
+            ts = rawTs;
+          } else if (typeof rawTs === "string") {
+            const parts = rawTs.split(":").map(Number);
+            if (parts.length === 3 && parts.every((p) => !isNaN(p))) {
+              ts = parts[0] * 3600 + parts[1] * 60 + parts[2];
+            } else if (parts.length === 2 && parts.every((p) => !isNaN(p))) {
+              ts = parts[0] * 60 + parts[1];
+            }
+          }
+          return {
+            timestamp: ts,
+            description: (s.description_en as string) || (s.description as string) || "",
+            scene_type: (s.scene_type as string) || "other",
+            thumbnail: (s.thumbnail as string) || undefined,
+          } as SceneBoundary;
+        }),
         faces: mappedFaces,
         objects: (visualAnalysis.objects || []) as DetectedObject[],
         landmarks: (visualAnalysis.landmarks || []) as { name: string; timestamp: number }[],

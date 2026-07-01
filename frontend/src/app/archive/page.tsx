@@ -10,6 +10,7 @@ import TranscriptPanel from "@/components/archive/TranscriptPanel";
 import MetadataPanel from "@/components/archive/MetadataPanel";
 import SearchDemo from "@/components/archive/SearchDemo";
 import APITransparencyPanel from "@/components/archive/APITransparencyPanel";
+import SceneDetection from "@/components/archive/SceneDetection";
 
 /** Convert a timestamp (number of seconds, or "MM:SS" / "HH:MM:SS" string) to seconds */
 function parseTimestamp(value: unknown): number {
@@ -121,6 +122,12 @@ function ArchivePageInner() {
                 metadata={state.metadata}
                 currentTime={state.currentTime}
                 onTimeUpdate={setCurrentTime}
+                onSeek={seekTo}
+              />
+              <SceneDetection
+                scenes={state.metadata?.scenes || []}
+                duration={state.metadata?.duration || 0}
+                currentTime={state.currentTime}
                 onSeek={seekTo}
               />
               <TranscriptPanel
