@@ -15,9 +15,18 @@
 - [RFPPreview.tsx](file://frontend/src/components/rfp/RFPPreview.tsx)
 - [EvaluationSetup.tsx](file://frontend/src/components/evaluator/EvaluationSetup.tsx)
 - [SearchDemo.tsx](file://frontend/src/components/archive/SearchDemo.tsx)
+- [SceneDetection.tsx](file://frontend/src/components/archive/SceneDetection.tsx)
+- [VideoTimeline.tsx](file://frontend/src/components/archive/VideoTimeline.tsx)
 - [package.json](file://frontend/package.json)
 - [next.config.ts](file://frontend/next.config.ts)
 </cite>
+
+## Update Summary
+**Changes Made**
+- Updated Archive Page section to reflect the replacement of VideoTimeline with SceneDetection component
+- Added new SceneDetection component documentation with enhanced scene detection capabilities
+- Updated component architecture diagrams to show the new SceneDetection integration
+- Enhanced archive page layout documentation to include the new scene detection timeline
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -73,7 +82,7 @@ LAYOUT --> SIDEBAR
 **Section sources**
 - [layout.tsx:1-41](file://frontend/src/app/layout.tsx#L1-L41)
 - [page.tsx:1-199](file://frontend/src/app/page.tsx#L1-L199)
-- [archive/page.tsx:1-129](file://frontend/src/app/archive/page.tsx#L1-L129)
+- [archive/page.tsx:1-174](file://frontend/src/app/archive/page.tsx#L1-L174)
 - [rfp-creator/page.tsx:1-159](file://frontend/src/app/rfp-creator/page.tsx#L1-L159)
 - [rfp-evaluator/page.tsx:1-178](file://frontend/src/app/rfp-evaluator/page.tsx#L1-L178)
 
@@ -86,14 +95,14 @@ LAYOUT --> SIDEBAR
 Key responsibilities:
 - Root layout: global fonts, theme classes, sidebar, and main content container.
 - Sidebar: route-aware highlighting and navigation.
-- Archive page: video upload, pipeline visualization, timeline, transcript, metadata, and search demo.
+- Archive page: video upload, pipeline visualization, scene detection timeline, transcript, metadata, and search demo.
 - RFP creator page: form collection, generation, regeneration, and export.
 - RFP evaluator page: setup, polling, and results presentation.
 
 **Section sources**
 - [layout.tsx:22-40](file://frontend/src/app/layout.tsx#L22-L40)
 - [Sidebar.tsx:17-67](file://frontend/src/components/Sidebar.tsx#L17-L67)
-- [archive/page.tsx:12-129](file://frontend/src/app/archive/page.tsx#L12-L129)
+- [archive/page.tsx:12-174](file://frontend/src/app/archive/page.tsx#L12-L174)
 - [rfp-creator/page.tsx:8-159](file://frontend/src/app/rfp-creator/page.tsx#L8-L159)
 - [rfp-evaluator/page.tsx:18-178](file://frontend/src/app/rfp-evaluator/page.tsx#L18-L178)
 
@@ -119,6 +128,8 @@ COMP_FORM["RFPForm"]
 COMP_PREVIEW["RFPPreview"]
 COMP_SETUP["EvaluationSetup"]
 COMP_SEARCH["SearchDemo"]
+COMP_SCENE["SceneDetection"]
+COMP_TIMELINE["VideoTimeline"]
 HOOK_USE["useVideoProcessing"]
 API["api.ts"]
 end
@@ -128,6 +139,8 @@ P_RFP_C --> COMP_SIDEBAR
 P_RFP_E --> COMP_SIDEBAR
 P_ARCH --> COMP_UPLOAD
 P_ARCH --> COMP_SEARCH
+P_ARCH --> COMP_SCENE
+P_ARCH --> COMP_TIMELINE
 P_ARCH --> HOOK_USE
 HOOK_USE --> API
 P_RFP_C --> COMP_FORM
@@ -140,9 +153,11 @@ P_RFP_E --> API
 **Diagram sources**
 - [layout.tsx:22-40](file://frontend/src/app/layout.tsx#L22-L40)
 - [Sidebar.tsx:17-67](file://frontend/src/components/Sidebar.tsx#L17-L67)
-- [archive/page.tsx:3-11](file://frontend/src/app/archive/page.tsx#L3-L11)
+- [archive/page.tsx:3-13](file://frontend/src/app/archive/page.tsx#L3-L13)
 - [VideoUpload.tsx:26-33](file://frontend/src/components/archive/VideoUpload.tsx#L26-L33)
 - [SearchDemo.tsx:21-27](file://frontend/src/components/archive/SearchDemo.tsx#L21-L27)
+- [SceneDetection.tsx:35-40](file://frontend/src/components/archive/SceneDetection.tsx#L35-L40)
+- [VideoTimeline.tsx:26-33](file://frontend/src/components/archive/VideoTimeline.tsx#L26-L33)
 - [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
 - [RFPForm.tsx:31-104](file://frontend/src/components/rfp/RFPForm.tsx#L31-L104)
 - [RFPPreview.tsx:18-46](file://frontend/src/components/rfp/RFPPreview.tsx#L18-L46)
@@ -156,8 +171,10 @@ Purpose: Process uploaded videos through a six-stage AI pipeline, visualize prog
 
 Key behaviors:
 - Uses a custom hook to manage upload, pipeline WebSocket updates, and results retrieval.
-- Renders upload UI, pipeline stages, video timeline, transcript panel, metadata panel, and search demo.
+- Renders upload UI, pipeline stages, scene detection timeline, transcript panel, metadata panel, and search demo.
 - Supports resetting to initial state and seeking within the video.
+
+**Updated** The archive page now features an enhanced scene detection timeline component that provides detailed scene segmentation with color-coded scene types and interactive scene browsing.
 
 State management:
 - Centralized in a hook returning state and actions for upload, search, time sync, and reset.
@@ -180,23 +197,47 @@ API-->>H : "{video_id}"
 H->>WS : "connect /ws/pipeline/{video_id}"
 WS-->>H : "stage progress messages"
 H->>API : "GET /api/video/{video_id}/metadata"
-API-->>H : "metadata"
+API-->>H : "metadata with scenes"
 H->>API : "GET /api/video/{video_id}/transcript"
 API-->>H : "transcript"
 H-->>P : "state : view=results"
-P-->>U : "render timeline, transcript, metadata"
+P-->>U : "render scene detection timeline, transcript, metadata"
 ```
 
 **Diagram sources**
-- [archive/page.tsx:12-129](file://frontend/src/app/archive/page.tsx#L12-L129)
+- [archive/page.tsx:12-174](file://frontend/src/app/archive/page.tsx#L12-L174)
 - [useVideoProcessing.ts:162-309](file://frontend/src/lib/useVideoProcessing.ts#L162-L309)
 - [api.ts:166-183](file://frontend/src/lib/api.ts#L166-L183)
 
 **Section sources**
-- [archive/page.tsx:12-129](file://frontend/src/app/archive/page.tsx#L12-L129)
+- [archive/page.tsx:12-174](file://frontend/src/app/archive/page.tsx#L12-L174)
 - [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
 - [VideoUpload.tsx:26-221](file://frontend/src/components/archive/VideoUpload.tsx#L26-L221)
 - [SearchDemo.tsx:21-189](file://frontend/src/components/archive/SearchDemo.tsx#L21-L189)
+
+### Scene Detection Component
+Purpose: Provide an enhanced scene detection timeline with color-coded scene types, interactive scene browsing, and detailed scene information.
+
+Key behaviors:
+- Displays a color-coded timeline bar representing different scene types (interview, b-roll, aerial, ceremony, documentary, news-anchor, sport, other).
+- Shows scene list with expandable descriptions and timestamp navigation.
+- Provides playback position indicator synchronized with current video time.
+- Supports clicking on scene segments to jump to specific timestamps.
+- Includes scene type legend and color coding for visual distinction.
+
+Scene types and colors:
+- Interview: Blue (#3B82F6)
+- B-roll: Orange (#F97316)
+- Aerial: Teal (#14B8A6)
+- Ceremony: Purple (#8B5CF6)
+- Documentary: Amber (#F59E0B)
+- News anchor: Red (#EF4444)
+- Sport: Green (#22C55E)
+- Other: Gray (#9CA3AF)
+
+**Section sources**
+- [SceneDetection.tsx:1-181](file://frontend/src/components/archive/SceneDetection.tsx#L1-L181)
+- [useVideoProcessing.ts:30-35](file://frontend/src/lib/useVideoProcessing.ts#L30-L35)
 
 ### RFP Creator Page
 Purpose: Collect project details, generate an RFP, preview sections, regenerate individual sections, and export to DOCX/PDF.
@@ -338,6 +379,8 @@ PAGE_RFP_E["RFP Evaluator Page"] --> LYT
 PAGE_ARCH --> HOOK["useVideoProcessing"]
 PAGE_ARCH --> COMP_UPLOAD["VideoUpload"]
 PAGE_ARCH --> COMP_SEARCH["SearchDemo"]
+PAGE_ARCH --> COMP_SCENE["SceneDetection"]
+PAGE_ARCH --> COMP_TIMELINE["VideoTimeline"]
 PAGE_RFP_C --> COMP_FORM["RFPForm"]
 PAGE_RFP_C --> COMP_PREVIEW["RFPPreview"]
 PAGE_RFP_E --> COMP_SETUP["EvaluationSetup"]
@@ -352,7 +395,7 @@ PAGE_RFP_E --> API
 
 **Diagram sources**
 - [layout.tsx:22-40](file://frontend/src/app/layout.tsx#L22-L40)
-- [archive/page.tsx:3-11](file://frontend/src/app/archive/page.tsx#L3-L11)
+- [archive/page.tsx:3-13](file://frontend/src/app/archive/page.tsx#L3-L13)
 - [rfp-creator/page.tsx:3-6](file://frontend/src/app/rfp-creator/page.tsx#L3-L6)
 - [rfp-evaluator/page.tsx:4-14](file://frontend/src/app/rfp-evaluator/page.tsx#L4-L14)
 - [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
@@ -368,6 +411,7 @@ PAGE_RFP_E --> API
 - RFP Evaluator uses polling with a fixed interval; consider adaptive intervals or SSE if supported by backend.
 - Video upload simulates progress; real progress requires XMLHttpRequest for accurate reporting.
 - Debounce search queries to avoid excessive API calls.
+- Scene detection component efficiently renders large numbers of scenes with virtualization and lazy loading.
 
 ## Troubleshooting Guide
 Common issues and resolutions:
@@ -376,6 +420,7 @@ Common issues and resolutions:
 - Generation errors: Surface API error messages and allow retry.
 - Evaluation failures: Clear polling interval and reset to setup; surface error messages.
 - Navigation highlights: Ensure Sidebar path matching logic aligns with route prefixes.
+- Scene detection issues: Verify scene data availability in metadata; check for empty scene arrays.
 
 **Section sources**
 - [VideoUpload.tsx:200-217](file://frontend/src/components/archive/VideoUpload.tsx#L200-L217)
@@ -385,4 +430,4 @@ Common issues and resolutions:
 - [Sidebar.tsx:35-45](file://frontend/src/components/Sidebar.tsx#L35-L45)
 
 ## Conclusion
-The application leverages Next.js App Router for clean route-based rendering, with client components managing interactive state and shared utilities handling API integrations. The Archive, RFP Creator, and RFP Evaluator pages each encapsulate domain-specific flows while sharing common UI and data-layer abstractions. The design supports robust error handling, loading states, and responsive interactions across pages.
+The application leverages Next.js App Router for clean route-based rendering, with client components managing interactive state and shared utilities handling API integrations. The Archive, RFP Creator, and RFP Evaluator pages each encapsulate domain-specific flows while sharing common UI and data-layer abstractions. The design supports robust error handling, loading states, and responsive interactions across pages. The integration of the enhanced SceneDetection component provides users with powerful scene analysis capabilities, replacing the previous VideoTimeline component with more sophisticated scene segmentation and visualization features.

@@ -11,6 +11,7 @@
 - [MetadataPanel.tsx](file://frontend/src/components/archive/MetadataPanel.tsx)
 - [SearchDemo.tsx](file://frontend/src/components/archive/SearchDemo.tsx)
 - [PipelineVisualizer.tsx](file://frontend/src/components/archive/PipelineVisualizer.tsx)
+- [SceneDetection.tsx](file://frontend/src/components/archive/SceneDetection.tsx)
 - [RFPForm.tsx](file://frontend/src/components/rfp/RFPForm.tsx)
 - [RFPPreview.tsx](file://frontend/src/components/rfp/RFPPreview.tsx)
 - [TimelineEditor.tsx](file://frontend/src/components/rfp/TimelineEditor.tsx)
@@ -20,14 +21,16 @@
 - [Sidebar.tsx](file://frontend/src/components/Sidebar.tsx)
 - [api.ts](file://frontend/src/lib/api.ts)
 - [useVideoProcessing.ts](file://frontend/src/lib/useVideoProcessing.ts)
+- [archive/page.tsx](file://frontend/src/app/archive/page.tsx)
 </cite>
 
 ## Update Summary
 **Changes Made**
-- Enhanced SearchDemo component with improved thumbnail URL resolution using resolveThumbnailUrl function
-- Enhanced MetadataPanel component with structured flag objects support for sensitive_content field
-- Improved TranscriptPanel with robust timestamp formatting using formatTimestamp function
-- Updated defensive programming practices section with specific examples from enhanced components
+- Added comprehensive documentation for the new SceneDetection component
+- Integrated SceneDetection into the Archive Components section with detailed analysis
+- Updated component architecture diagrams to include SceneDetection
+- Enhanced defensive programming practices section with SceneDetection examples
+- Updated troubleshooting guide with SceneDetection-specific guidance
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -48,7 +51,7 @@ This document describes the reusable UI component library used across the Dubai 
 ## Project Structure
 The component library is organized by feature folders under frontend/src/components:
 - Base primitives: Button, Card
-- Archive feature: VideoUpload, VideoTimeline, TranscriptPanel, MetadataPanel, SearchDemo, PipelineVisualizer
+- Archive feature: VideoUpload, VideoTimeline, TranscriptPanel, MetadataPanel, SearchDemo, PipelineVisualizer, SceneDetection
 - RFP feature: RFPForm, RFPPreview, TimelineEditor
 - Evaluator feature: EvaluationSetup, VendorScorecard, ComparisonMatrix
 - Shared layout: Sidebar
@@ -67,6 +70,7 @@ TP["TranscriptPanel.tsx"]
 MP["MetadataPanel.tsx"]
 SD["SearchDemo.tsx"]
 PV["PipelineVisualizer.tsx"]
+SC["SceneDetection.tsx"]
 end
 subgraph "RFP"
 RF["RFPForm.tsx"]
@@ -84,8 +88,10 @@ C --> ES
 VU --> VT
 VT --> TP
 VT --> MP
+VT --> SC
 MP --> SD
 PV --> SD
+SC --> SD
 RF --> RP
 TE --> RF
 ES --> VS
@@ -104,6 +110,7 @@ SB --> ES
 - [MetadataPanel.tsx:1-380](file://frontend/src/components/archive/MetadataPanel.tsx#L1-L380)
 - [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
+- [SceneDetection.tsx:1-181](file://frontend/src/components/archive/SceneDetection.tsx#L1-L181)
 - [RFPForm.tsx:1-411](file://frontend/src/components/rfp/RFPForm.tsx#L1-L411)
 - [RFPPreview.tsx:1-200](file://frontend/src/components/rfp/RFPPreview.tsx#L1-L200)
 - [TimelineEditor.tsx:1-111](file://frontend/src/components/rfp/TimelineEditor.tsx#L1-L111)
@@ -121,6 +128,7 @@ SB --> ES
 - [MetadataPanel.tsx:1-380](file://frontend/src/components/archive/MetadataPanel.tsx#L1-L380)
 - [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
+- [SceneDetection.tsx:1-181](file://frontend/src/components/archive/SceneDetection.tsx#L1-L181)
 - [RFPForm.tsx:1-411](file://frontend/src/components/rfp/RFPForm.tsx#L1-L411)
 - [RFPPreview.tsx:1-200](file://frontend/src/components/rfp/RFPPreview.tsx#L1-L200)
 - [TimelineEditor.tsx:1-111](file://frontend/src/components/rfp/TimelineEditor.tsx#L1-L111)
@@ -322,6 +330,45 @@ UV-->>VU : metadata, transcript when ready
 **Section sources**
 - [PipelineVisualizer.tsx:6-91](file://frontend/src/components/archive/PipelineVisualizer.tsx#L6-L91)
 
+#### SceneDetection
+- Purpose: Provides sophisticated video scene analysis with timeline visualization, scene type categorization, and interactive navigation features.
+- Props:
+  - scenes: SceneBoundary[] - Array of scene boundary objects containing timestamp, description, and optional scene_type
+  - duration: number - Total video duration in seconds
+  - currentTime: number - Current playback position in seconds
+  - onSeek: (time: number) => void - Callback function to seek to a specific timestamp
+- Features:
+  - Timeline visualization with color-coded scene segments based on scene_type
+  - Active scene highlighting with orange ring indicator
+  - Scene type legend with color mapping
+  - Interactive scene list with expandable descriptions
+  - Timestamp navigation from both timeline and list views
+  - Responsive design with hover effects and smooth transitions
+- Interactions:
+  - Click timeline segments to navigate to scene start time
+  - Click scene list items to seek to specific timestamps
+  - Expand/collapse scene descriptions for detailed information
+  - Hover over timeline segments for scene type and timestamp tooltips
+- Styling: White card container with rounded corners, shadow, and responsive layout; color-coded scene segments with hover effects; active scene highlighting; scrollable scene list with expandable descriptions.
+- Accessibility: Keyboard navigable timeline segments; clear visual hierarchy; color-coded legend; descriptive tooltips; expand/collapse controls with proper ARIA attributes.
+- **Enhanced Scene Type Categorization**: Implements comprehensive color mapping for 8 different scene types including interview, b-roll, aerial, ceremony, documentary, news-anchor, sport, and other. Each scene type has associated background, text, border, and bar colors for consistent visual representation.
+- **Interactive Timeline Visualization**: Provides precise timeline segmentation with calculated width percentages based on scene durations, creating an intuitive visual representation of scene distribution throughout the video.
+- **Responsive Scene List**: Features expandable scene descriptions with show more/show less functionality, preventing clutter while providing detailed information access.
+
+**New** Comprehensive documentation for the SceneDetection component, including:
+- Scene type color mapping system with 8 predefined categories
+- Timeline visualization with interactive segments and playback indicator
+- Detailed scene list with expandable descriptions and timestamp navigation
+- Integration with useVideoProcessing SceneBoundary interface
+- Responsive design patterns and accessibility features
+
+**Section sources**
+- [SceneDetection.tsx:6-40](file://frontend/src/components/archive/SceneDetection.tsx#L6-L40)
+- [SceneDetection.tsx:14-27](file://frontend/src/components/archive/SceneDetection.tsx#L14-L27)
+- [SceneDetection.tsx:74-101](file://frontend/src/components/archive/SceneDetection.tsx#L74-L101)
+- [SceneDetection.tsx:119-176](file://frontend/src/components/archive/SceneDetection.tsx#L119-L176)
+- [useVideoProcessing.ts:30-35](file://frontend/src/lib/useVideoProcessing.ts#L30-L35)
+
 ### RFP Components
 
 #### RFPForm
@@ -512,6 +559,15 @@ The VideoTimeline component demonstrates key defensive programming practices:
 - **Metadata fallbacks**: Provides default empty arrays for scenes, faces, and objects when metadata is unavailable
 - **Individual appearance click handlers**: Each face appearance now has its own click handler that seeks to the specific start time of the appearance range
 
+#### SceneDetection Component
+The SceneDetection component implements comprehensive defensive programming patterns:
+
+- **Empty scenes handling**: Returns null when scenes array is empty or undefined to prevent rendering issues
+- **Scene boundary calculation**: Safely computes scene segments with fallback duration for the final scene
+- **Active scene detection**: Uses findIndex with proper boundary checking to determine current scene
+- **Scene type color mapping**: Provides fallback color mapping for unknown scene types
+- **Expandable description handling**: Uses conditional rendering for truncated descriptions with proper state management
+
 #### SearchDemo Component
 The SearchDemo component includes enhanced defensive programming for thumbnail handling:
 
@@ -550,6 +606,9 @@ The MetadataPanel component includes enhanced multilingual support with defensiv
 - [VideoTimeline.tsx:200-201](file://frontend/src/components/archive/VideoTimeline.tsx#L200-L201)
 - [VideoTimeline.tsx:216-219](file://frontend/src/components/archive/VideoTimeline.tsx#L216-L219)
 - [VideoTimeline.tsx:229-239](file://frontend/src/components/archive/VideoTimeline.tsx#L229-L239)
+- [SceneDetection.tsx:43](file://frontend/src/components/archive/SceneDetection.tsx#L43)
+- [SceneDetection.tsx:52-55](file://frontend/src/components/archive/SceneDetection.tsx#L52-L55)
+- [SceneDetection.tsx:25-27](file://frontend/src/components/archive/SceneDetection.tsx#L25-L27)
 - [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-L21)
 - [TranscriptPanel.tsx:30-48](file://frontend/src/components/archive/TranscriptPanel.tsx#L30-L48)
 - [MetadataPanel.tsx:193-198](file://frontend/src/components/archive/MetadataPanel.tsx#L193-L198)
@@ -573,6 +632,7 @@ UV --> TP["TranscriptPanel.tsx"]
 UV --> MP["MetadataPanel.tsx"]
 UV --> SD["SearchDemo.tsx"]
 UV --> PV["PipelineVisualizer.tsx"]
+UV --> SC["SceneDetection.tsx"]
 API["api.ts"] --> VU
 API --> VT
 API --> MP
@@ -593,6 +653,7 @@ API --> CM["ComparisonMatrix.tsx"]
 - [MetadataPanel.tsx:1-380](file://frontend/src/components/archive/MetadataPanel.tsx#L1-L380)
 - [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
+- [SceneDetection.tsx:1-181](file://frontend/src/components/archive/SceneDetection.tsx#L1-L181)
 - [RFPForm.tsx:1-411](file://frontend/src/components/rfp/RFPForm.tsx#L1-L411)
 - [RFPPreview.tsx:1-200](file://frontend/src/components/rfp/RFPPreview.tsx#L1-L200)
 - [EvaluationSetup.tsx:1-429](file://frontend/src/components/evaluator/EvaluationSetup.tsx#L1-L429)
@@ -607,12 +668,14 @@ API --> CM["ComparisonMatrix.tsx"]
 - Virtualization: Not implemented; transcripts and metadata panels render lists. Consider virtualizing long lists if performance becomes an issue.
 - Rendering frequency:
   - VideoTimeline updates on timeupdate; throttle if needed.
+  - SceneDetection renders scene lists with expandable descriptions; consider virtualization for videos with many scenes.
   - MetadataPanel JSON tree renders deeply nested structures; keep expansion defaults minimal.
 - Network:
   - useVideoProcessing simulates upload progress; real progress requires XHR with onprogress. Consider upgrading upload flow for accurate progress.
 - Memory:
   - VideoUpload creates object URLs; revoke on reset to prevent leaks.
   - PipelineVisualizer and ComparisonMatrix render charts; unmount components to dispose resources.
+  - SceneDetection maintains expanded state for individual scenes; consider limiting expanded scenes to improve performance.
 
 ## Troubleshooting Guide
 - Upload fails:
@@ -632,6 +695,12 @@ API --> CM["ComparisonMatrix.tsx"]
   - Verify that duration is properly calculated before rendering appearance bars.
   - Ensure metadata is fully loaded before attempting to render timeline components.
   - **Updated**: Individual face appearance click handlers should now work correctly even when some faces lack appearance data.
+- **SceneDetection rendering issues**:
+  - **New**: Verify that scenes array contains valid SceneBoundary objects with timestamp and description properties.
+  - Check that scene_type values match the predefined color mapping keys (interview, b-roll, aerial, ceremony, documentary, news-anchor, sport, other).
+  - Ensure duration is greater than 0 to prevent timeline calculation errors.
+  - Verify that onSeek callback properly handles timestamp values.
+  - **Updated**: Scene detection now includes comprehensive defensive programming to handle missing or incomplete scene data gracefully.
 - **MetadataPanel display issues**:
   - **Updated**: Arabic names should now display properly alongside English names with proper RTL directionality.
   - Check if face.name_ar property exists in the metadata structure.
@@ -651,9 +720,22 @@ API --> CM["ComparisonMatrix.tsx"]
 - [useVideoProcessing.ts:215-276](file://frontend/src/lib/useVideoProcessing.ts#L215-L276)
 - [EvaluationSetup.tsx:156-189](file://frontend/src/components/evaluator/EvaluationSetup.tsx#L156-L189)
 - [VideoTimeline.tsx:200-201](file://frontend/src/components/archive/VideoTimeline.tsx#L200-L201)
+- [SceneDetection.tsx:43](file://frontend/src/components/archive/SceneDetection.tsx#L43)
+- [SceneDetection.tsx:52-55](file://frontend/src/components/archive/SceneDetection.tsx#L52-L55)
 - [MetadataPanel.tsx:193-198](file://frontend/src/components/archive/MetadataPanel.tsx#L193-L198)
 - [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-L21)
 - [TranscriptPanel.tsx:30-48](file://frontend/src/components/archive/TranscriptPanel.tsx#L30-L48)
 
 ## Conclusion
-The component library provides a cohesive, accessible, and extensible foundation for the Dubai Media application. Base components (Button, Card) standardize UI patterns; feature-specific components encapsulate complex workflows while integrating with shared state and APIs. The recent defensive programming improvements ensure reliable operation even with incomplete data, while the accessibility enhancements guarantee consistent text visibility across all form components. The enhanced VideoTimeline component now provides granular face detection navigation with improved tooltip information, and the MetadataPanel component offers comprehensive multilingual support with proper RTL handling. The SearchDemo component now features robust thumbnail URL resolution that handles various path formats, and the TranscriptPanel provides reliable timestamp formatting across multiple input types. By adhering to the documented props, composition patterns, defensive programming practices, and accessibility guidelines, teams can build consistent experiences across Archive, RFP, and Evaluator features.
+The component library provides a cohesive, accessible, and extensible foundation for the Dubai Media application. Base components (Button, Card) standardize UI patterns; feature-specific components encapsulate complex workflows while integrating with shared state and APIs. The recent defensive programming improvements ensure reliable operation even with incomplete data, while the accessibility enhancements guarantee consistent text visibility across all form components. 
+
+The new SceneDetection component significantly enhances the Archive feature by providing sophisticated video scene analysis capabilities. It offers both timeline visualization and detailed scene listing with interactive navigation, making video content exploration more intuitive and efficient. The component integrates seamlessly with the existing VideoTimeline component and shares the same SceneBoundary interface from useVideoProcessing, ensuring consistency across the video analysis ecosystem.
+
+Key improvements include:
+- **Comprehensive Scene Type Categorization**: Eight predefined scene types with consistent color mapping for visual differentiation
+- **Interactive Timeline Visualization**: Precise scene segmentation with hover effects and active scene highlighting
+- **Responsive Design**: Expandable scene descriptions with show more/show less functionality
+- **Robust Error Handling**: Defensive programming patterns to handle incomplete or missing scene data gracefully
+- **Accessibility Features**: Keyboard navigation, descriptive tooltips, and clear visual hierarchy
+
+The enhanced VideoTimeline component now provides granular face detection navigation with improved tooltip information, and the MetadataPanel component offers comprehensive multilingual support with proper RTL handling. The SearchDemo component now features robust thumbnail URL resolution that handles various path formats, and the TranscriptPanel provides reliable timestamp formatting across multiple input types. By adhering to the documented props, composition patterns, defensive programming practices, and accessibility guidelines, teams can build consistent experiences across Archive, RFP, and Evaluator features.

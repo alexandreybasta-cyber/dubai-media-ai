@@ -143,6 +143,8 @@ export function useVideoProcessing() {
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pollFailCountRef = useRef<number>(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const startPollingFallbackRef = useRef<((videoId: string) => void) | null>(null);
+  const fetchResultsRef = useRef<((videoId: string) => Promise<void>) | null>(null);
 
   // Clean up WebSocket and polling on unmount
   useEffect(() => {
@@ -207,7 +209,7 @@ export function useVideoProcessing() {
 
         // Start polling for pipeline status updates
         // Pipeline runs as a subprocess, so we poll the status endpoint directly
-        startPollingFallback(result.video_id);
+        startPollingFallbackRef.current?.(result.video_id);
       } catch (err) {
         updateState({
           uploadState: "error",
@@ -266,16 +268,16 @@ export function useVideoProcessing() {
 
           // If pipeline is complete, fetch metadata and transcript
           if (data.status === "completed" && data.stage === "search_index") {
-            fetchResults(videoId);
+            fetchResultsRef.current?.(videoId);
           }
         },
         () => {
           // On error, start polling fallback
-          startPollingFallback(videoId);
+          startPollingFallbackRef.current?.(videoId);
         },
         () => {
           // On close, start polling fallback
-          startPollingFallback(videoId);
+          startPollingFallbackRef.current?.(videoId);
         }
       );
 
@@ -491,6 +493,12 @@ export function useVideoProcessing() {
     },
     [fetchResults]
   );
+
+  // Keep refs in sync so earlier-defined callbacks can call these
+  useEffect(() => {
+    startPollingFallbackRef.current = startPollingFallback;
+    fetchResultsRef.current = fetchResults;
+  });
 
   // ─── Search ─────────────────────────────────────────────────────────
 

@@ -6,14 +6,9 @@
 - [Sidebar.tsx](file://frontend/src/components/Sidebar.tsx)
 - [globals.css](file://frontend/src/app/globals.css)
 - [page.tsx](file://frontend/src/app/page.tsx)
-- [archive/page.tsx](file://frontend/src/app/archive/page.tsx)
 - [rfp-creator/page.tsx](file://frontend/src/app/rfp-creator/page.tsx)
-- [rfp-evaluator/page.tsx](file://frontend/src/app/rfp-evaluator/page.tsx)
-- [SearchDemo.tsx](file://frontend/src/components/archive/SearchDemo.tsx)
-- [TranscriptPanel.tsx](file://frontend/src/components/archive/TranscriptPanel.tsx)
-- [VideoTimeline.tsx](file://frontend/src/components/archive/VideoTimeline.tsx)
-- [useVideoProcessing.ts](file://frontend/src/lib/useVideoProcessing.ts)
-- [api.ts](file://frontend/src/lib/api.ts)
+- [Button.tsx](file://frontend/src/components/Button.tsx)
+- [Card.tsx](file://frontend/src/components/Card.tsx)
 - [package.json](file://frontend/package.json)
 - [postcss.config.mjs](file://frontend/postcss.config.mjs)
 - [next.config.ts](file://frontend/next.config.ts)
@@ -22,12 +17,11 @@
 
 ## Update Summary
 **Changes Made**
-- Enhanced transcript processing logic with improved speaker identification and timestamp handling
-- Added robust timestamp parsing supporting multiple formats (seconds, MM:SS, HH:MM:SS)
-- Implemented intelligent speaker name mapping with automatic numbering
-- Enhanced person identification system with fallback handling for unknown individuals
-- Improved timestamp formatting functions across multiple components
-- Added comprehensive error handling and validation for video processing data
+- Documented comprehensive new color palette system with primary color variations from 50 to 900 shades
+- Added enhanced form input accessibility styling with readable text and placeholder colors
+- Updated typography consistency with font variable integration
+- Enhanced Tailwind CSS theme customization with comprehensive color token system
+- Added new component examples demonstrating the improved styling system
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -35,65 +29,63 @@
 3. [Core Components](#core-components)
 4. [Architecture Overview](#architecture-overview)
 5. [Detailed Component Analysis](#detailed-component-analysis)
-6. [Enhanced Transcript Processing System](#enhanced-transcript-processing-system)
-7. [Advanced Timestamp Handling](#advanced-timestamp-handling)
-8. [Intelligent Speaker Identification](#intelligent-speaker-identification)
-9. [Enhanced Person Name Display](#enhanced-person-name-display)
-10. [Dependency Analysis](#dependency-analysis)
-11. [Performance Considerations](#performance-considerations)
-12. [Troubleshooting Guide](#troubleshooting-guide)
-13. [Conclusion](#conclusion)
+6. [Enhanced Styling System](#enhanced-styling-system)
+7. [Color Palette Management](#color-palette-management)
+8. [Form Input Accessibility](#form-input-accessibility)
+9. [Typography Consistency](#typography-consistency)
+10. [Component Styling Examples](#component-styling-examples)
+11. [Theme Integration](#theme-integration)
+12. [Performance Considerations](#performance-considerations)
+13. [Troubleshooting Guide](#troubleshooting-guide)
+14. [Conclusion](#conclusion)
 
 ## Introduction
 This document explains the Next.js application layout and navigation system used in the frontend. It covers the RootLayout component structure, font configuration with Geist and Geist Mono, responsive design implementation, the sidebar navigation component (menu items, active state management, and mobile responsiveness), the main content area layout, padding, and background styling. It also provides examples of layout customization, theme integration, navigation patterns, and how layout components relate to page rendering, including SSR/SSG considerations and performance optimizations.
 
-**Updated** Enhanced with advanced transcript processing capabilities featuring intelligent speaker identification, robust timestamp handling, and improved person name display systems.
+**Updated** Enhanced with comprehensive styling improvements including new color palette system, enhanced form input accessibility, typography consistency, and Tailwind CSS theme customization with primary color variations from 50 to 900 shades.
 
 ## Project Structure
-The layout system centers around a single RootLayout that wraps all pages and a fixed sidebar navigation. Pages render inside the main content area with consistent padding and background styling. Fonts are configured via Next.js font optimization, and Tailwind CSS provides responsive utilities and theme tokens.
+The layout system centers around a single RootLayout that wraps all pages and a fixed sidebar navigation. Pages render inside the main content area with consistent padding and background styling. Fonts are configured via Next.js font optimization, and Tailwind CSS provides responsive utilities and theme tokens with comprehensive color palette support.
 
 ```mermaid
 graph TB
 RootLayout["RootLayout<br/>(layout.tsx)"] --> Sidebar["Sidebar<br/>(components/Sidebar.tsx)"]
 RootLayout --> Main["Main Content<br/>(<main>)"]
 Main --> PageHome["Home Page<br/>(app/page.tsx)"]
-Main --> PageArchive["Archive Page<br/>(app/archive/page.tsx)"]
 Main --> PageCreator["RFP Creator Page<br/>(app/rfp-creator/page.tsx)"]
-Main --> PageEvaluator["RFP Evaluator Page<br/>(app/rfp-evaluator/page.tsx)"]
 RootLayout --> Fonts["Geist Sans & Mono<br/>(layout.tsx)"]
 RootLayout --> Theme["Tailwind Theme Tokens<br/>(app/globals.css)"]
+RootLayout --> Colors["Primary Color Palette<br/>(50-900 shades)"]
 ```
 
 **Diagram sources**
 - [layout.tsx:22-40](file://frontend/src/app/layout.tsx#L22-L40)
 - [Sidebar.tsx:17-66](file://frontend/src/components/Sidebar.tsx#L17-L66)
-- [globals.css:1-56](file://frontend/src/app/globals.css#L1-L56)
+- [globals.css:8-23](file://frontend/src/app/globals.css#L8-L23)
 - [page.tsx:69-198](file://frontend/src/app/page.tsx#L69-L198)
-- [archive/page.tsx:12-128](file://frontend/src/app/archive/page.tsx#L12-L128)
 - [rfp-creator/page.tsx:8-158](file://frontend/src/app/rfp-creator/page.tsx#L8-L158)
-- [rfp-evaluator/page.tsx:18-177](file://frontend/src/app/rfp-evaluator/page.tsx#L18-L177)
 
 **Section sources**
 - [layout.tsx:1-41](file://frontend/src/app/layout.tsx#L1-L41)
 - [Sidebar.tsx:1-67](file://frontend/src/components/Sidebar.tsx#L1-L67)
-- [globals.css:1-56](file://frontend/src/app/globals.css#L1-L56)
+- [globals.css:1-140](file://frontend/src/app/globals.css#L1-L140)
 
 ## Core Components
 - RootLayout: Provides the HTML skeleton, font variables, global styles, fixed sidebar, and main content container with padding.
 - Sidebar: Fixed left navigation with active-state highlighting based on current route.
-- Global Styles: Tailwind-based theme tokens and color palette, plus font family variables.
+- Global Styles: Tailwind-based theme tokens and comprehensive color palette, plus font family variables.
 - Pages: Home, Archive, RFP Creator, and RFP Evaluator pages render within the main content area.
 
 Key responsibilities:
 - RootLayout sets up the base HTML element with font variables and ensures the body is a flex container.
 - Sidebar handles navigation links, active state detection, and branding.
-- Global styles define theme tokens and color scheme for light/dark modes.
+- Global styles define theme tokens and comprehensive color scheme for light/dark modes.
 - Pages define their own content and responsive layouts within the main content area.
 
 **Section sources**
 - [layout.tsx:22-40](file://frontend/src/app/layout.tsx#L22-L40)
 - [Sidebar.tsx:17-66](file://frontend/src/components/Sidebar.tsx#L17-L66)
-- [globals.css:8-49](file://frontend/src/app/globals.css#L8-L49)
+- [globals.css:8-23](file://frontend/src/app/globals.css#L8-L23)
 
 ## Architecture Overview
 The layout architecture follows a strict hierarchy: RootLayout wraps all pages, hosts the Sidebar, and defines the main content container. Pages render inside the main content area with their own responsive grids and components.
@@ -104,7 +96,7 @@ html["<html> with font variables<br/>(layout.tsx)"] --> body["<body> flex contai
 body --> aside["<aside> Fixed Sidebar<br/>(Sidebar.tsx)"]
 body --> main["<main> Main Content<br/>(layout.tsx)"]
 main --> divPadding["<div> Padding Container<br/>(layout.tsx)"]
-divPadding --> page["Page Component<br/>(page.tsx, archive, rfp-creator, rfp-evaluator)"]
+divPadding --> page["Page Component<br/>(page.tsx, rfp-creator)"]
 ```
 
 **Diagram sources**
@@ -210,21 +202,17 @@ Customization examples:
 
 **Section sources**
 - [globals.css:3-23](file://frontend/src/app/globals.css#L3-L23)
-- [globals.css:37-49](file://frontend/src/app/globals.css#L37-L49)
+- [globals.css:128-133](file://frontend/src/app/globals.css#L128-L133)
 
 ### Page Rendering and Layout Relationship
 Home page:
 - Demonstrates responsive grid layouts and card-based content.
 - Uses Tailwind utilities for spacing, typography, and responsive breakpoints.
 
-Archive page:
-- Responsive two-column layout on larger screens and stacked layout on smaller screens.
-- Uses grid utilities to split content areas.
-- Implements enhanced timestamp parsing for video seeking functionality.
-
-RFP Creator and RFP Evaluator pages:
-- Both use responsive grid layouts for forms and previews.
-- Implement loading states and conditional rendering based on application state.
+RFP Creator page:
+- Uses responsive grid layouts for forms and previews.
+- Implements loading states and conditional rendering based on application state.
+- Leverages the enhanced color palette system for visual consistency.
 
 Layout relationship:
 - All pages render inside the main content area defined by RootLayout.
@@ -232,411 +220,411 @@ Layout relationship:
 
 **Section sources**
 - [page.tsx:89-150](file://frontend/src/app/page.tsx#L89-L150)
-- [archive/page.tsx:84-110](file://frontend/src/app/archive/page.tsx#L84-L110)
 - [rfp-creator/page.tsx:96-155](file://frontend/src/app/rfp-creator/page.tsx#L96-L155)
-- [rfp-evaluator/page.tsx:133-174](file://frontend/src/app/rfp-evaluator/page.tsx#L133-L174)
 
-## Enhanced Transcript Processing System
+## Enhanced Styling System
 
-**Updated** The application now features a comprehensive transcript processing system with intelligent speaker identification and robust timestamp handling.
+**Updated** The application now features a comprehensive styling system with enhanced color palette management, form input accessibility, and typography consistency.
 
-### Transcript Data Structure Enhancement
-The TranscriptSegment interface now supports enhanced metadata:
+### Comprehensive Color Palette System
+The new color palette system provides extensive primary color variations from 50 to 900 shades:
 
-```typescript
-export interface TranscriptSegment {
-  speaker: string;
-  start: number;
-  end: number;
-  text: string;
-  language?: string;
+```css
+--color-primary-50: #fff7ed;
+--color-primary-100: #ffedd5;
+--color-primary-200: #fed7aa;
+--color-primary-300: #fdba74;
+--color-primary-400: #fb923c;
+--color-primary-500: #f97316;
+--color-primary-600: #ea580c;
+--color-primary-700: #c2410c;
+--color-primary-800: #9a3412;
+--color-primary-900: #7c2d12;
+```
+
+Color variations enable:
+- **Light to dark progression**: From subtle light tints (50) to deep dark tones (900)
+- **Accessibility compliance**: Sufficient contrast ratios for text and backgrounds
+- **Design flexibility**: Multiple intensity levels for different UI contexts
+- **Brand consistency**: Cohesive color system across all components
+
+### Enhanced Form Input Accessibility
+The styling system includes dedicated accessibility features for form inputs:
+
+```css
+/* Ensure form inputs always have readable text and placeholder colors */
+input,
+textarea,
+select {
+  color: #1f2937;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #6b7280;
+  opacity: 1;
 }
 ```
 
-Key improvements:
-- **Speaker identification**: Enhanced mapping from raw speaker IDs to friendly labels
-- **Timestamp precision**: Support for both start_time and end_time fields
-- **Language metadata**: Optional language field for multilingual transcripts
-- **Text content**: Full transcript text with proper direction support
+Accessibility benefits:
+- **High contrast text**: Dark gray (#1f2937) for improved readability
+- **Clear placeholder visibility**: Medium gray (#6b7280) with full opacity
+- **Cross-browser compatibility**: Explicit opacity setting for placeholder visibility
+- **Consistent styling**: Applied globally to all form input elements
 
-### Intelligent Speaker Identification System
-The transcript processing logic implements sophisticated speaker mapping:
+### Typography Consistency
+Font integration ensures consistent typography across the application:
 
-```typescript
-let speakerCounter = 0;
-const speakerMap: Record<string, string> = {};
-const transcript: TranscriptSegment[] = rawSegments.map((seg) => {
-  // Map speaker_id to friendly label
-  const rawSpeaker = (seg.speaker_id as string) || (seg.speaker as string) || "unknown";
-  let speaker: string;
-  if (rawSpeaker === "unknown" || rawSpeaker === "UNKNOWN" || !rawSpeaker) {
-    if (!speakerMap["unknown"]) {
-      speakerCounter++;
-      speakerMap["unknown"] = `Speaker ${speakerCounter}`;
-    }
-    speaker = speakerMap["unknown"];
-  } else {
-    if (!speakerMap[rawSpeaker]) {
-      speakerCounter++;
-      speakerMap[rawSpeaker] = `Speaker ${speakerCounter}`;
-    }
-    speaker = speakerMap[rawSpeaker];
-  }
-
-  return {
-    speaker,
-    start: (seg.start_time as number) ?? (seg.start as number) ?? 0,
-    end: (seg.end_time as number) ?? (seg.end as number) ?? 0,
-    text: (seg.text as string) || "",
-    language: ((seg.language as string) !== "unknown" ? (seg.language as string) : undefined),
-  };
-});
-```
-
-Speaker mapping logic:
-1. **Raw speaker extraction**: Tries `speaker_id` then `speaker` fields
-2. **Unknown handling**: Automatically assigns `Speaker 1`, `Speaker 2`, etc.
-3. **Duplicate detection**: Maintains consistent mapping across segments
-4. **Timestamp handling**: Supports both `start_time`/`end_time` and `start`/`end` formats
-5. **Language filtering**: Excludes "unknown" language values
-
-### Enhanced Transcript Panel Implementation
-The TranscriptPanel component provides rich interactive transcript display:
-
-```typescript
-function formatTimestamp(value: unknown): string {
-  // Handle string timestamps (e.g., "00:15", "1:30")
-  if (typeof value === "string") {
-    if (/^\d{1,2}(:\d{2}){1,2}$/.test(value)) return value;
-    const parsed = parseFloat(value);
-    if (!isNaN(parsed)) {
-      const m = Math.floor(parsed / 60);
-      const s = Math.floor(parsed % 60);
-      return `${m}:${s.toString().padStart(2, "0")}`;
-    }
-    return "0:00";
-  }
-  if (typeof value === "number" && !isNaN(value)) {
-    const m = Math.floor(value / 60);
-    const s = Math.floor(value % 60);
-    return `${m}:${s.toString().padStart(2, "0")}`;
-  }
-  return "0:00";
+```css
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 ```
 
-Interactive features:
-- **Auto-scrolling**: Smooth scrolling to active transcript segments
-- **Speaker badges**: Color-coded speaker identification
-- **Timestamp navigation**: Clickable timestamps for video seeking
-- **Language indicators**: Visual cues for multilingual content
-- **Active segment highlighting**: Clear indication of current playback position
+Typography features:
+- **Variable font support**: Dynamic font sizing and weight adjustments
+- **System font fallback**: Arial, Helvetica, sans-serif for broad compatibility
+- **CSS variable integration**: Seamless font variable usage throughout Tailwind utilities
+- **Performance optimization**: Next.js font optimization for fast loading
 
 **Section sources**
-- [useVideoProcessing.ts:22-28](file://frontend/src/lib/useVideoProcessing.ts#L22-L28)
-- [useVideoProcessing.ts:359-388](file://frontend/src/lib/useVideoProcessing.ts#L359-L388)
-- [TranscriptPanel.tsx:12-28](file://frontend/src/components/archive/TranscriptPanel.tsx#L12-L28)
-- [TranscriptPanel.tsx:30-48](file://frontend/src/components/archive/TranscriptPanel.tsx#L30-L48)
+- [globals.css:8-23](file://frontend/src/app/globals.css#L8-L23)
+- [globals.css:31-42](file://frontend/src/app/globals.css#L31-L42)
+- [globals.css:121-126](file://frontend/src/app/globals.css#L121-L126)
 
-## Advanced Timestamp Handling
+## Color Palette Management
 
-**Updated** Enhanced timestamp processing system with comprehensive format support and validation.
+**Updated** Comprehensive color palette management system with Tailwind CSS theme integration.
 
-### Multi-Format Timestamp Parsing
-The Archive page implements robust timestamp parsing:
+### Primary Color Scale Implementation
+The color palette follows a systematic approach from light to dark tints:
 
-```typescript
-function parseTimestamp(value: unknown): number {
-  if (typeof value === "number" && !isNaN(value)) return value;
-  if (typeof value === "string") {
-    // Try "HH:MM:SS" or "MM:SS"
-    const parts = value.split(":").map(Number);
-    if (parts.length === 3 && parts.every((p) => !isNaN(p))) {
-      return parts[0] * 3600 + parts[1] * 60 + parts[2];
-    }
-    if (parts.length === 2 && parts.every((p) => !isNaN(p))) {
-      return parts[0] * 60 + parts[1];
-    }
-    const parsed = parseFloat(value);
-    if (!isNaN(parsed)) return parsed;
-  }
-  return 0;
+| Shade | Hex Value | Usage Context |
+|-------|-----------|---------------|
+| 50 | #fff7ed | Lightest background accents |
+| 100 | #ffedd5 | Subtle borders and highlights |
+| 200 | #fed7aa | Secondary backgrounds |
+| 300 | #fdba74 | Medium emphasis |
+| 400 | #fb923c | Standard emphasis |
+| 500 | #f97316 | Primary brand color |
+| 600 | #ea580c | Strong emphasis |
+| 700 | #c2410c | Deep accents |
+| 800 | #9a3412 | Darkest accents |
+| 900 | #7c2d12 | Strongest emphasis |
+
+Implementation in components:
+- **Sidebar active state**: `bg-primary-50 text-primary-700`
+- **Button variants**: `bg-primary-500 text-white hover:bg-primary-600`
+- **Status indicators**: `text-primary-500` for API connectivity status
+
+### Tailwind CSS Theme Integration
+The color palette integrates seamlessly with Tailwind CSS utilities:
+
+```css
+@theme inline {
+  --color-primary-50: #fff7ed;
+  --color-primary-100: #ffedd5;
+  --color-primary-200: #fed7aa;
+  --color-primary-300: #fdba74;
+  --color-primary-400: #fb923c;
+  --color-primary-500: #f97316;
+  --color-primary-600: #ea580c;
+  --color-primary-700: #c2410c;
+  --color-primary-800: #9a3412;
+  --color-primary-900: #7c2d12;
 }
 ```
 
-Supported formats:
-- **Seconds (number)**: Direct numeric conversion
-- **"HH:MM:SS" (string)**: Hours, minutes, seconds format
-- **"MM:SS" (string)**: Minutes, seconds format
-- **Numeric string**: String representation of seconds
-- **Fallback**: Returns 0 for invalid inputs
+Tailwind utility usage:
+- `bg-primary-500`: Primary brand background
+- `text-primary-600`: Secondary text color
+- `border-primary-400`: Border accent color
+- `hover:bg-primary-600`: Interactive hover state
 
-### Consistent Timestamp Formatting
-Multiple components use standardized timestamp formatting:
+### Dark Mode Compatibility
+The color palette system works seamlessly with dark mode:
 
-```typescript
-function formatTimestamp(value: unknown): string {
-  // Handle string timestamps (e.g., "00:15", "1:30", "01:02:03")
-  if (typeof value === "string") {
-    if (/^\d{1,2}(:\d{2}){1,2}$/.test(value)) {
-      return value;
-    }
-    // Try parsing as a number string
-    const parsed = parseFloat(value);
-    if (!isNaN(parsed)) {
-      const m = Math.floor(parsed / 60);
-      const s = Math.floor(parsed % 60);
-      return `${m}:${s.toString().padStart(2, "0")}`;
-    }
-    return "0:00";
+```css
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
   }
-  // Handle numeric seconds
-  if (typeof value === "number" && !isNaN(value)) {
-    const m = Math.floor(value / 60);
-    const s = Math.floor(value % 60);
-    return `${m}:${s.toString().padStart(2, "0")}`;
-  }
-  // Fallback for NaN, undefined, null, etc.
-  return "0:00";
 }
 ```
 
-Display formats:
-- **Direct string format**: Preserves "HH:MM:SS" or "MM:SS" formats
-- **Numeric conversion**: Converts seconds to "M:SS" format with zero-padding
-- **Validation**: Robust input validation with fallback handling
-
-### Video Timeline Timestamp Integration
-The VideoTimeline component uses consistent formatting:
-
-```typescript
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-```
-
-Integration points:
-- **Video player**: Current time and duration display
-- **Scene markers**: Hover tooltips and click handlers
-- **Face appearances**: Timeline visualization with precise timing
-- **Object markers**: Timestamp-based positioning
+Dark mode adaptations:
+- **Background inversion**: Dark gray (#0a0a0a) for dark theme
+- **Foreground enhancement**: Light gray (#ededed) for improved readability
+- **Color preservation**: Primary colors maintain their intended hues
+- **Contrast maintenance**: Sufficient contrast ratios across all shades
 
 **Section sources**
-- [archive/page.tsx:14-30](file://frontend/src/app/archive/page.tsx#L14-L30)
-- [SearchDemo.tsx:31-54](file://frontend/src/components/archive/SearchDemo.tsx#L31-L54)
-- [TranscriptPanel.tsx:30-48](file://frontend/src/components/archive/TranscriptPanel.tsx#L30-L48)
-- [VideoTimeline.tsx:20-24](file://frontend/src/components/archive/VideoTimeline.tsx#L20-L24)
+- [globals.css:13-22](file://frontend/src/app/globals.css#L13-L22)
+- [globals.css:55-64](file://frontend/src/app/globals.css#L55-L64)
+- [globals.css:128-133](file://frontend/src/app/globals.css#L128-L133)
 
-## Intelligent Speaker Identification
+## Form Input Accessibility
 
-**Updated** Advanced speaker identification system with automatic naming and consistent mapping.
+**Updated** Enhanced form input styling with comprehensive accessibility features.
 
-### Speaker Mapping Logic
-The transcript processing system implements intelligent speaker identification:
+### Readable Text Implementation
+Form inputs feature optimized text colors for maximum readability:
 
-```typescript
-let speakerCounter = 0;
-const speakerMap: Record<string, string> = {};
-const transcript: TranscriptSegment[] = rawSegments.map((seg) => {
-  // Map speaker_id to friendly label
-  const rawSpeaker = (seg.speaker_id as string) || (seg.speaker as string) || "unknown";
-  let speaker: string;
-  if (rawSpeaker === "unknown" || rawSpeaker === "UNKNOWN" || !rawSpeaker) {
-    if (!speakerMap["unknown"]) {
-      speakerCounter++;
-      speakerMap["unknown"] = `Speaker ${speakerCounter}`;
-    }
-    speaker = speakerMap["unknown"];
-  } else {
-    if (!speakerMap[rawSpeaker]) {
-      speakerCounter++;
-      speakerMap[rawSpeaker] = `Speaker ${speakerCounter}`;
-    }
-    speaker = speakerMap[rawSpeaker];
-  }
-
-  return {
-    speaker,
-    start: (seg.start_time as number) ?? (seg.start as number) ?? 0,
-    end: (seg.end_time as number) ?? (seg.end as number) ?? 0,
-    text: (seg.text as string) || "",
-    language: ((seg.language as string) !== "unknown" ? (seg.language as string) : undefined),
-  };
-});
+```css
+input,
+textarea,
+select {
+  color: #1f2937;
+}
 ```
 
-Identification strategy:
-1. **Priority resolution**: `speaker_id` → `speaker` → "unknown"
-2. **Automatic naming**: Sequential numbering for unknown speakers
-3. **Consistent mapping**: Same speaker ID always maps to same friendly name
-4. **Duplicate prevention**: Prevents multiple names for single speaker
-5. **Backward compatibility**: Handles both raw and processed speaker data
+Readability benefits:
+- **Dark gray text**: #1f2937 provides excellent contrast against light backgrounds
+- **Consistent sizing**: Applicable to all form input elements uniformly
+- **Browser compatibility**: Works across all modern browsers
+- **Performance efficient**: Single CSS rule applies to all input types
 
-### Speaker Visualization System
-The TranscriptPanel implements visual speaker identification:
+### Placeholder Visibility Enhancement
+Placeholder text receives dedicated styling for improved clarity:
+
+```css
+input::placeholder,
+textarea::placeholder {
+  color: #6b7280;
+  opacity: 1;
+}
+```
+
+Placeholder features:
+- **Medium gray color**: #6b7280 balances visibility and subtlety
+- **Full opacity**: Explicit opacity setting ensures consistent visibility
+- **Cross-browser support**: Addresses browser-specific placeholder opacity issues
+- **Accessibility compliance**: Meets WCAG guidelines for text contrast
+
+### Component-Level Form Styling
+Individual components leverage the enhanced form styling:
 
 ```typescript
-const SPEAKER_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  "Speaker 1": { bg: "bg-blue-100", text: "text-blue-700", border: "border-blue-200" },
-  "Speaker 2": { bg: "bg-green-100", text: "text-green-700", border: "border-green-200" },
-  "Speaker 3": { bg: "bg-purple-100", text: "text-purple-700", border: "border-purple-200" },
-  "Speaker 4": { bg: "bg-amber-100", text: "text-amber-700", border: "border-amber-200" },
-  "Speaker 5": { bg: "bg-pink-100", text: "text-pink-700", border: "border-pink-200" },
+// Example from Button component
+const base =
+  "inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
+
+// Example from Card component
+<div className={`bg-white rounded-xl border border-gray-200 p-6 ${className}`}>
+```
+
+Component integration:
+- **Universal application**: All form inputs inherit enhanced styling automatically
+- **Component consistency**: Individual components maintain their specific styling while inheriting accessibility features
+- **Performance optimization**: CSS-in-JS approach ensures optimal bundle size
+- **Maintainability**: Centralized styling rules reduce code duplication
+
+**Section sources**
+- [globals.css:31-42](file://frontend/src/app/globals.css#L31-L42)
+- [globals.css:73-84](file://frontend/src/app/globals.css#L73-L84)
+- [Button.tsx:14-22](file://frontend/src/components/Button.tsx#L14-L22)
+- [Card.tsx:7-15](file://frontend/src/components/Card.tsx#L7-L15)
+
+## Typography Consistency
+
+**Updated** Comprehensive typography system with font variable integration and consistent styling.
+
+### Font Variable Integration
+The typography system integrates seamlessly with CSS variables:
+
+```css
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+```
+
+Font variable benefits:
+- **Dynamic font selection**: CSS variables enable runtime font switching
+- **Theme integration**: Fonts align with overall theme system
+- **Performance optimization**: Next.js font optimization reduces loading times
+- **Flexibility**: Easy to modify font families without code changes
+
+### System Font Fallback
+Robust font fallback ensures broad compatibility:
+
+```css
+body {
+  font-family: Arial, Helvetica, sans-serif;
+}
+```
+
+Fallback advantages:
+- **Wide browser support**: System fonts available on virtually all devices
+- **Performance optimization**: No external font loading required
+- **Reliability**: Consistent rendering across different environments
+- **Accessibility**: Familiar fonts improve readability for users
+
+### Component Typography Usage
+Components utilize the typography system effectively:
+
+```typescript
+// Example from Sidebar component
+<h1 className="text-lg font-bold text-gray-900 leading-tight">
+  Dubai Media
+</h1>
+
+// Example from Button component
+"inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-sm font-medium"
+```
+
+Typography implementation:
+- **Consistent sizing**: Standardized font sizes across components
+- **Proper hierarchy**: Logical heading and text hierarchy
+- **Leading optimization**: Appropriate line heights for readability
+- **Weight balance**: Balanced font weights for visual appeal
+
+**Section sources**
+- [globals.css:11-12](file://frontend/src/app/globals.css#L11-L12)
+- [globals.css:121-126](file://frontend/src/app/globals.css#L121-L126)
+- [globals.css:25-29](file://frontend/src/app/globals.css#L25-L29)
+- [Sidebar.tsx:24-30](file://frontend/src/components/Sidebar.tsx#L24-L30)
+- [Button.tsx:14-15](file://frontend/src/components/Button.tsx#L14-L15)
+
+## Component Styling Examples
+
+**Updated** Demonstrates practical implementation of the enhanced styling system across components.
+
+### Button Component Styling
+The Button component showcases the comprehensive color palette system:
+
+```typescript
+const variants = {
+  primary:
+    "bg-primary-500 text-white hover:bg-primary-600 focus:ring-primary-500",
+  secondary:
+    "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-primary-500",
 };
 ```
 
-Visual features:
-- **Color coding**: Distinct colors for up to 5 speakers
-- **Badge system**: Clear speaker identification badges
-- **Active highlighting**: Current speaker emphasis
-- **Consistent styling**: Tailwind utility classes for maintainability
+Button features:
+- **Primary variant**: Solid orange (#f97316) background with white text
+- **Secondary variant**: White background with gray border and orange focus ring
+- **Hover effects**: Darker primary color on hover for visual feedback
+- **Focus states**: Orange ring for keyboard navigation accessibility
 
-**Section sources**
-- [useVideoProcessing.ts:361-388](file://frontend/src/lib/useVideoProcessing.ts#L361-L388)
-- [TranscriptPanel.tsx:12-28](file://frontend/src/components/archive/TranscriptPanel.tsx#L12-L28)
-
-## Enhanced Person Name Display
-
-**Updated** Sophisticated person identification system with automatic naming and appearance synthesis.
-
-### Automatic Person Naming System
-The useVideoProcessing hook implements advanced person identification:
+### Card Component Integration
+The Card component demonstrates consistent styling practices:
 
 ```typescript
-let unknownCount = 0;
-const mappedFaces: DetectedFace[] = sourceFaces.map((face) => {
-  // Map name_en → name, with fallback
-  let name = (face.name_en as string) || (face.name as string) || "";
-  if (!name) {
-    unknownCount++;
-    name = `Person ${unknownCount}`;
-  }
-
-  // Map appearances or synthesize from timestamp
-  let appearances = face.appearances as { start: number; end: number }[] | undefined;
-  if (!appearances || appearances.length === 0) {
-    const ts = face.timestamp as string;
-    if (ts) {
-      const parts = ts.split(":");
-      const seconds = (parseInt(parts[0] || "0") * 60) + parseInt(parts[1] || "0");
-      appearances = [{ start: seconds, end: seconds + 15 }];
-    } else {
-      appearances = [];
-    }
-  }
-
-  return {
-    name,
-    name_ar: (face.name_ar as string) || undefined,
-    appearances,
-    color: "",
-  };
-});
+<div className={`bg-white rounded-xl border border-gray-200 p-6 ${className}`}>
 ```
 
-Name resolution priority:
-1. **Primary**: `name_en` field (English name)
-2. **Secondary**: `name` field (fallback name)
-3. **Fallback**: Automatic naming as `Person 1`, `Person 2`, etc.
+Card characteristics:
+- **White background**: Clean, modern appearance
+- **Subtle borders**: Light gray (#e5e7eb) for definition without visual weight
+- **Rounded corners**: Large radius (12px) for contemporary design
+- **Padding consistency**: 24px padding for comfortable content spacing
 
-Appearance synthesis:
-- **Direct appearances**: Uses existing appearance data
-- **Timestamp synthesis**: Converts "MM:SS" timestamps to appearance ranges
-- **Missing data**: Creates empty appearance arrays for unknown persons
-
-### Face Recognition Integration
-The system integrates with face recognition pipeline:
+### Page Component Styling
+Page components leverage the enhanced styling system:
 
 ```typescript
-const FACE_COLORS = [
-  "#3B82F6", "#10B981", "#8B5CF6", "#F59E0B",
-  "#EF4444", "#06B6D4", "#EC4899", "#14B8A6",
-];
+// Example from RFP Creator page
+<div className="bg-white rounded-xl border border-gray-200 p-8">
+```
 
-// Assign colors to faces
-if (metadata.faces) {
-  metadata.faces = metadata.faces.map((face, i) => ({
-    ...face,
-    appearances: face.appearances || [],
-    color: face.color || FACE_COLORS[i % FACE_COLORS.length],
-  }));
+Page styling patterns:
+- **Consistent card design**: Uniform card styling across all pages
+- **Responsive grids**: Flexible grid layouts for different screen sizes
+- **Color harmony**: Primary color palette integration for visual consistency
+- **Spacing optimization**: Thoughtful margins and padding for readability
+
+**Section sources**
+- [Button.tsx:8-29](file://frontend/src/components/Button.tsx#L8-L29)
+- [Card.tsx:7-16](file://frontend/src/components/Card.tsx#L7-L16)
+- [rfp-creator/page.tsx:106-155](file://frontend/src/app/rfp-creator/page.tsx#L106-L155)
+
+## Theme Integration
+
+**Updated** Comprehensive theme integration with Tailwind CSS and CSS custom properties.
+
+### Tailwind CSS Theme Configuration
+The theme system integrates deeply with Tailwind CSS:
+
+```css
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-primary-50: #fff7ed;
+  --color-primary-100: #ffedd5;
+  --color-primary-200: #fed7aa;
+  --color-primary-300: #fdba74;
+  --color-primary-400: #fb923c;
+  --color-primary-500: #f97316;
+  --color-primary-600: #ea580c;
+  --color-primary-700: #c2410c;
+  --color-primary-800: #9a3412;
+  --color-primary-900: #7c2d12;
 }
 ```
 
-Color assignment:
-- **Automatic coloring**: Assigns distinct colors to different persons
-- **Consistent mapping**: Maintains color consistency across sessions
-- **Visual differentiation**: Enhances person identification in UI components
+Theme integration benefits:
+- **CSS custom properties**: Seamless integration with modern CSS features
+- **Dynamic theming**: Runtime theme switching capabilities
+- **Component compatibility**: All components benefit from theme updates
+- **Performance optimization**: Efficient property-based theming
 
-### Search Demo Person Display
-The SearchDemo component renders person information with enhanced fallback handling:
+### Dark Mode Theme Support
+The theme system includes comprehensive dark mode support:
+
+```css
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+```
+
+Dark mode features:
+- **Automatic detection**: Native browser preference detection
+- **Smooth transitions**: CSS custom properties enable smooth theme changes
+- **Consistent colors**: All color values adapt appropriately for dark backgrounds
+- **Accessibility compliance**: Proper contrast ratios maintained in dark mode
+
+### Component Theme Usage
+Components utilize the theme system effectively:
 
 ```typescript
-{(result as unknown as { persons?: string[] }).persons &&
-  (result as unknown as { persons: string[] }).persons.length > 0 && (
-    <p className="text-xs text-primary-600 mt-1">
-      {(result as unknown as { persons: string[] }).persons.join(", ")}
-    </p>
-  )}
+// Example from Sidebar component
+"bg-white border-gray-200 hover:bg-gray-50 hover:text-gray-900"
+
+// Example from Button component
+"bg-primary-500 text-white hover:bg-primary-600"
 ```
 
-Features:
-- **Conditional rendering**: Only displays when persons array exists and is non-empty
-- **Comma-separated list**: Formats multiple persons with proper spacing
-- **Color styling**: Uses primary-600 text color for visual prominence
-- **Responsive design**: Maintains proper spacing and readability
+Theme usage patterns:
+- **Consistent color schemes**: All components follow established color guidelines
+- **State management**: Hover and active states maintain theme consistency
+- **Accessibility compliance**: Focus states and hover effects meet accessibility standards
+- **Performance optimization**: CSS custom properties minimize style recalculation
 
 **Section sources**
-- [useVideoProcessing.ts:303-331](file://frontend/src/lib/useVideoProcessing.ts#L303-L331)
-- [useVideoProcessing.ts:115-118](file://frontend/src/lib/useVideoProcessing.ts#L115-L118)
-- [SearchDemo.tsx:191-196](file://frontend/src/components/archive/SearchDemo.tsx#L191-L196)
-
-## Dependency Analysis
-External dependencies and build configuration:
-- Next.js runtime and font optimization are used for font loading.
-- Tailwind CSS is integrated via PostCSS plugin.
-- TypeScript configuration enables path aliases and JSX transform.
-
-Build and toolchain:
-- PostCSS configuration registers the Tailwind plugin.
-- Next.js configuration is minimal; defaults apply.
-- Path aliases resolve @/* to ./src/* for imports.
-
-```mermaid
-graph TB
-pkg["package.json"] --> next["Next.js Runtime"]
-pkg --> tailwind["Tailwind CSS"]
-postcss["postcss.config.mjs"] --> tailwind
-ts["tsconfig.json"] --> next
-ts --> tailwind
-next --> layout["RootLayout<br/>(layout.tsx)"]
-tailwind --> globals["Globals & Theme<br/>(globals.css)"]
-```
-
-**Diagram sources**
-- [package.json:11-27](file://frontend/package.json#L11-L27)
-- [postcss.config.mjs:1-7](file://frontend/postcss.config.mjs#L1-L7)
-- [tsconfig.json:21-23](file://frontend/tsconfig.json#L21-L23)
-- [layout.tsx:1-4](file://frontend/src/app/layout.tsx#L1-L4)
-- [globals.css:1-56](file://frontend/src/app/globals.css#L1-L56)
-
-**Section sources**
-- [package.json:11-27](file://frontend/package.json#L11-L27)
-- [postcss.config.mjs:1-7](file://frontend/postcss.config.mjs#L1-L7)
-- [tsconfig.json:21-23](file://frontend/tsconfig.json#L21-L23)
+- [globals.css:8-23](file://frontend/src/app/globals.css#L8-L23)
+- [globals.css:128-133](file://frontend/src/app/globals.css#L128-L133)
+- [Sidebar.tsx:41-45](file://frontend/src/components/Sidebar.tsx#L41-L45)
+- [Button.tsx:17-22](file://frontend/src/components/Button.tsx#L17-L22)
 
 ## Performance Considerations
 - Font optimization: Using Next.js font optimization ensures font resources are preloaded and optimized, reducing layout shifts and improving Core Web Vitals.
 - Minimal layout overhead: Fixed sidebar and main content area rely on simple CSS positioning and flexbox, minimizing reflows.
-- Tailwind utilities: Prefer utility classes for layout to avoid custom CSS bloat and leverage PurageCSS in production builds.
+- Tailwind utilities: Prefer utility classes for layout to avoid custom CSS bloat and leverage PurgeCSS in production builds.
 - Conditional rendering: Pages use conditional rendering to avoid unnecessary DOM nodes, especially in loading states.
 - SSR/SSG: Pages are server-rendered by default in Next.js; consider static generation for fully static pages where appropriate to reduce server load.
-- **Enhanced** Transcript processing: Optimized speaker mapping algorithm minimizes computational overhead during transcript processing.
-- **Enhanced** Timestamp processing: Efficient parsing algorithms with early exit conditions reduce processing time for large transcripts.
-- **Enhanced** Person name caching: Automatic naming system maintains consistent speaker identities across transcript segments.
-- **Enhanced** API integration: WebSocket connection with fallback polling reduces server load and improves reliability.
+- **Enhanced** Color palette optimization: CSS custom properties enable efficient theme switching without style recalculation.
+- **Enhanced** Form input accessibility: Optimized CSS rules minimize repaints and improve rendering performance.
+- **Enhanced** Typography system: Font variables reduce font loading overhead and improve text rendering performance.
+- **Enhanced** Theme integration: CSS custom properties provide efficient theming with minimal performance impact.
 
 ## Troubleshooting Guide
 Common issues and resolutions:
@@ -645,22 +633,21 @@ Common issues and resolutions:
 - Active state not highlighting: Confirm the pathname comparison logic matches the intended href values and nested route prefixes.
 - Dark mode not switching colors: Check the dark mode media query and CSS variable overrides.
 - Responsive layout breaking: Use Tailwind responsive modifiers consistently within page components.
-- **Enhanced** Transcript processing errors: Verify backend transcript format matches expected structure with speaker_id, start_time, end_time fields.
-- **Enhanced** Speaker identification issues: Check speaker mapping logic and ensure consistent speaker IDs across segments.
-- **Enhanced** Timestamp parsing errors: Verify timestamp formats match expected patterns (seconds, "MM:SS", "HH:MM:SS").
-- **Enhanced** Person name display issues: Check face recognition pipeline output format and ensure proper fallback handling.
-- **Enhanced** Search demo person list: Verify persons array structure and conditional rendering logic.
-- **Enhanced** Video timeline seeking: Ensure timestamp values are properly formatted and within video duration bounds.
+- **Enhanced** Color palette not displaying: Verify CSS custom properties are properly defined and accessible to Tailwind utilities.
+- **Enhanced** Form input styling not applying: Check CSS specificity and ensure global styles are loaded before component styles.
+- **Enhanced** Typography not consistent: Verify font variables are properly set and Tailwind theme integration is functioning.
+- **Enhanced** Theme switching issues: Check CSS custom property definitions and ensure proper media query handling.
+- **Enhanced** Button color variations not working: Verify Tailwind configuration includes the primary color scale.
+- **Enhanced** Card styling inconsistencies: Check component class composition and ensure proper Tailwind utility ordering.
 
 **Section sources**
 - [layout.tsx:30-36](file://frontend/src/app/layout.tsx#L30-L36)
 - [Sidebar.tsx:35-45](file://frontend/src/components/Sidebar.tsx#L35-L45)
 - [globals.css:44-49](file://frontend/src/app/globals.css#L44-L49)
-- [useVideoProcessing.ts:359-388](file://frontend/src/lib/useVideoProcessing.ts#L359-L388)
-- [archive/page.tsx:14-30](file://frontend/src/app/archive/page.tsx#L14-L30)
-- [SearchDemo.tsx:31-54](file://frontend/src/components/archive/SearchDemo.tsx#L31-L54)
+- [globals.css:13-22](file://frontend/src/app/globals.css#L13-L22)
+- [Button.tsx:17-22](file://frontend/src/components/Button.tsx#L17-L22)
 
 ## Conclusion
 The layout and navigation system is intentionally minimal and efficient. RootLayout centralizes global structure, fonts, and theme tokens, while the fixed sidebar provides persistent navigation with active-state awareness. Pages render within the main content area, leveraging Tailwind utilities for responsive design. The system supports customization through theme variables, font configuration, and component-level styling, while maintaining strong performance characteristics via Next.js font optimization and utility-first CSS.
 
-**Updated** The enhanced transcript processing system provides robust support for multiple timestamp formats with intelligent speaker identification and automatic person naming. These improvements significantly enhance user experience by providing more reliable video navigation, clearer speaker identification, and better handling of diverse video processing outputs. The comprehensive timestamp handling system ensures compatibility with various input formats, while the intelligent speaker mapping creates a seamless experience for users interacting with multilingual and multi-speaker content.
+**Updated** The enhanced styling system provides comprehensive color palette management with 50-900 shade variations, improved form input accessibility with readable text and placeholder colors, consistent typography through font variable integration, and seamless Tailwind CSS theme customization. These improvements significantly enhance the user experience by providing better visual consistency, accessibility compliance, and performance optimization across all components and pages.

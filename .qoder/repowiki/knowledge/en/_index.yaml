@@ -3,7 +3,7 @@ schema_version: 1
 locale: en-US
 branch: main
 nodes_managed: true
-exported_at: "2026-06-30T18:21:29Z"
+exported_at: "2026-07-01T07:23:19Z"
 modules:
     "":
         dir_name: AI-Powered Media Archive & RFP Toolkit
@@ -14,14 +14,15 @@ modules:
         depends_on: []
         related_to: []
     build_system:
-        dir_name: Docker Compose & Nginx Orchestration_2
-        title: Docker Compose & Nginx Orchestration
+        dir_name: Docker Compose Orchestration & Dual-Stack Dependency Management
+        title: Docker Compose Orchestration & Dual-Stack Dependency Management
         scope: []
         source_files:
             - docker-compose.yml
             - nginx.conf
             - backend/requirements.txt
             - frontend/package.json
+            - frontend/package-lock.json
             - push-via-api.sh
         children: []
         depends_on: []
@@ -91,12 +92,16 @@ modules:
         title: Standard Python Logging with Module-Level Loggers
         scope: []
         source_files:
+            - backend/main.py
+            - backend/config.py
+            - backend/pipeline/orchestrator.py
+            - backend/pipeline/ingestion.py
+            - backend/pipeline/visual_analysis.py
             - backend/pipeline/audio_analysis.py
             - backend/pipeline/face_recognition.py
-            - backend/pipeline/ingestion.py
-            - backend/pipeline/orchestrator.py
             - backend/routers/video.py
-            - backend/main.py
+            - backend/services/rfp_creator.py
+            - backend/services/rfp_evaluator.py
         children: []
         depends_on: []
         related_to: []

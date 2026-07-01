@@ -8,6 +8,7 @@ source_files:
     - backend/pipeline/orchestrator.py
     - backend/services/rfp_creator.py
     - backend/services/rfp_evaluator.py
+    - backend/pipeline/ingestion.py
     - frontend/src/lib/api.ts
     - frontend/src/lib/useVideoProcessing.ts
 depends_on: []
