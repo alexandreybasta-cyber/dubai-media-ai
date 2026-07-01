@@ -20,18 +20,23 @@
 - [TranscriptPanel.tsx](file://frontend/src/components/archive/TranscriptPanel.tsx)
 - [SearchDemo.tsx](file://frontend/src/components/archive/SearchDemo.tsx)
 - [APITransparencyPanel.tsx](file://frontend/src/components/archive/APITransparencyPanel.tsx)
+- [PipelineVisualizer.tsx](file://frontend/src/components/archive/PipelineVisualizer.tsx)
 - [package.json](file://frontend/package.json)
 - [next.config.ts](file://frontend/next.config.ts)
 </cite>
 
 ## Update Summary
 **Changes Made**
-- Enhanced API integration with real upload progress tracking via XMLHttpRequest
-- Improved timestamp formatting utilities across multiple components
-- Enhanced sensitive content display with better flag handling
+- Enhanced API integration with XMLHttpRequest-based upload progress tracking
+- Implemented robust polling fallback mechanism for video processing status monitoring
+- Improved WebSocket error handling with automatic fallback to REST polling
+- Enhanced resource management with proper cleanup of WebSocket connections and polling intervals
+- Added improved error handling and user feedback mechanisms for upload failures
+- Enhanced timestamp formatting utilities across multiple components
+- Improved sensitive content display with better flag handling
 - Intelligent thumbnail URL resolution with automatic path normalization
 - Added URL parameter support for loading existing videos via ?video=<video_id>
-- Improved error handling and user feedback mechanisms
+- Enhanced component error boundaries and graceful degradation
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -46,7 +51,7 @@
 10. [Appendices](#appendices)
 
 ## Introduction
-This document explains the Next.js frontend application architecture for the Dubai Media × Alibaba Cloud AI project. It covers the page-based routing structure, component library organization, reusable UI components, state management patterns, API integration layer, real-time WebSocket handling, sidebar navigation, layout components, responsive design, and integration patterns with backend APIs. It also provides examples of component usage, customization guidelines, performance optimization techniques, and troubleshooting guidance for common frontend issues.
+This document explains the Next.js frontend application architecture for the Dubai Media × Alibaba Cloud AI project. It covers the page-based routing structure, component library organization, reusable UI components, state management patterns, API integration layer, real-time WebSocket handling with polling fallback, sidebar navigation, layout components, responsive design, and integration patterns with backend APIs. It also provides examples of component usage, customization guidelines, performance optimization techniques, and troubleshooting guidance for common frontend issues.
 
 ## Project Structure
 The frontend is organized using Next.js App Router conventions under the src/app directory. Each feature area has its own page route:
@@ -62,7 +67,7 @@ Reusable UI primitives live in src/components/ and include Button and Card. Feat
 - RFP: src/components/rfp/*
 - Evaluator: src/components/evaluator/*
 
-The API integration layer is centralized in src/lib/api.ts, while real-time pipeline updates are handled by src/lib/useVideoProcessing.ts.
+The API integration layer is centralized in src/lib/api.ts, while real-time pipeline updates are handled by src/lib/useVideoProcessing.ts with robust fallback mechanisms.
 
 ```mermaid
 graph TB
@@ -87,6 +92,7 @@ VT["VideoTimeline<br/>src/components/archive/VideoTimeline.tsx"]
 TP["TranscriptPanel<br/>src/components/archive/TranscriptPanel.tsx"]
 SD["SearchDemo<br/>src/components/archive/SearchDemo.tsx"]
 ATP["APITransparencyPanel<br/>src/components/archive/APITransparencyPanel.tsx"]
+PV["PipelineVisualizer<br/>src/components/archive/PipelineVisualizer.tsx"]
 end
 subgraph "Lib"
 API["api.ts<br/>src/lib/api.ts"]
@@ -100,6 +106,7 @@ AR --> VT
 AR --> TP
 AR --> SD
 AR --> ATP
+AR --> PV
 RC --> RFPF
 RE --> ES
 AR --> UVP
@@ -141,9 +148,9 @@ These components are designed for consistency and minimal props, enabling easy r
 The application follows a layered architecture:
 - Presentation Layer: Next.js App Router pages render feature-specific views and orchestrate component composition.
 - Component Layer: Reusable UI primitives and feature-specific components encapsulate UI logic and interactions.
-- State Management: React hooks manage local UI state; a dedicated hook centralizes video processing state and WebSocket handling.
+- State Management: React hooks manage local UI state; a dedicated hook centralizes video processing state, WebSocket handling, and polling fallback mechanisms.
 - Integration Layer: A typed API client abstracts HTTP requests and WebSocket connections, exposing convenience methods per domain (video, RFP).
-- Backend Integration: Pages call the API client to perform uploads, fetch results, and poll evaluation status.
+- Backend Integration: Pages call the API client to perform uploads, fetch results, and poll evaluation status with robust fallback mechanisms.
 
 ```mermaid
 graph TB
@@ -164,6 +171,7 @@ C7["VideoTimeline<br/>src/components/archive/VideoTimeline.tsx"]
 C8["TranscriptPanel<br/>src/components/archive/TranscriptPanel.tsx"]
 C9["SearchDemo<br/>src/components/archive/SearchDemo.tsx"]
 C10["APITransparencyPanel<br/>src/components/archive/APITransparencyPanel.tsx"]
+C11["PipelineVisualizer<br/>src/components/archive/PipelineVisualizer.tsx"]
 end
 subgraph "State"
 H1["useVideoProcessing<br/>src/lib/useVideoProcessing.ts"]
@@ -178,6 +186,7 @@ P2 --> C7
 P2 --> C8
 P2 --> C9
 P2 --> C10
+P2 --> C11
 P3 --> C4
 P4 --> C5
 P2 --> H1
@@ -224,14 +233,15 @@ Page-->>U : display page content
 - [page.tsx:1-199](file://frontend/src/app/page.tsx#L1-L199)
 
 ### Archive Metadata Tool
-The Archive page coordinates video upload, pipeline visualization, and results presentation. It relies on a custom hook to manage upload state, WebSocket updates, and result retrieval.
+The Archive page coordinates video upload, pipeline visualization, and results presentation. It relies on a custom hook to manage upload state, WebSocket updates, polling fallback, and result retrieval.
 
 Key responsibilities:
 - Orchestrate VideoUpload component and pass upload callbacks.
-- Render PipelineVisualizer during processing.
+- Render PipelineVisualizer during processing with real-time status updates.
 - Display VideoTimeline, TranscriptPanel, MetadataPanel, and APITransparencyPanel upon completion.
 - Provide a persistent SearchDemo for semantic search across the archive.
 - Support loading existing videos via URL parameters (?video=<video_id>).
+- Implement robust error handling with graceful fallback mechanisms.
 
 ```mermaid
 sequenceDiagram
@@ -242,14 +252,32 @@ participant API as "api.ts"
 participant WS as "WebSocket"
 U->>AU : Select video file
 AU->>VP : uploadVideo(file)
-VP->>API : POST /api/video/upload (with progress tracking)
+VP->>API : POST /api/video/upload (with XMLHttpRequest progress tracking)
 API-->>VP : {video_id,status}
 VP->>WS : connect /ws/pipeline/{video_id}
+alt WebSocket connection established
 WS-->>VP : stage status updates
+VP->>VP : update stages and view
+alt all stages complete
 VP->>API : GET /api/video/{video_id}/metadata
 API-->>VP : metadata
 VP->>API : GET /api/video/{video_id}/transcript
 API-->>VP : transcript
+end
+else WebSocket error/closed
+VP->>VP : startPollingFallback(video_id)
+loop every 3 seconds
+VP->>API : GET /api/video/{video_id}/status
+API-->>VP : {stages}
+VP->>VP : update stages and view
+alt all stages complete
+VP->>API : GET /api/video/{video_id}/metadata
+API-->>VP : metadata
+VP->>API : GET /api/video/{video_id}/transcript
+API-->>VP : transcript
+end
+end
+end
 VP-->>AU : updated state (results)
 AU-->>U : render results panels
 Note over AU,VP : URL parameter support : ?video=<video_id>
@@ -262,18 +290,19 @@ Note over AU,VP : URL parameter support : ?video=<video_id>
 
 **Section sources**
 - [archive/page.tsx:1-167](file://frontend/src/app/archive/page.tsx#L1-L167)
-- [useVideoProcessing.ts:1-533](file://frontend/src/lib/useVideoProcessing.ts#L1-L533)
+- [useVideoProcessing.ts:1-543](file://frontend/src/lib/useVideoProcessing.ts#L1-L543)
 - [api.ts:164-244](file://frontend/src/lib/api.ts#L164-L244)
 
 ### Enhanced API Integration Layer
-The api.ts module has been enhanced with real upload progress tracking and improved error handling:
+The api.ts module has been enhanced with XMLHttpRequest-based upload progress tracking and improved error handling:
 
-- **Real Upload Progress Tracking**: Uses XMLHttpRequest instead of fetch for multipart/form-data uploads, enabling precise progress callbacks during file transfer.
-- **Enhanced Error Handling**: Improved error responses with detailed error messages and proper JSON parsing.
-- **WebSocket Integration**: Maintains WebSocket connection helper with typed message shapes for pipeline updates.
+- **XMLHttpRequest-Based Upload Progress Tracking**: Uses XMLHttpRequest instead of fetch for multipart/form-data uploads, enabling precise progress callbacks during file transfer with automatic timeout handling.
+- **Enhanced Error Handling**: Improved error responses with detailed error messages and proper JSON parsing for both upload and API calls.
+- **WebSocket Integration**: Maintains WebSocket connection helper with typed message shapes for pipeline updates and proper error handling.
 - **Domain-Specific Methods**: Video and RFP operations with proper typing and parameter handling.
+- **Status Endpoint**: Dedicated status endpoint for polling fallback mechanism.
 
-**Updated** Enhanced with XMLHttpRequest-based upload progress tracking for better user feedback during large file transfers.
+**Updated** Enhanced with XMLHttpRequest-based upload progress tracking for better user feedback during large file transfers and improved error handling mechanisms.
 
 ```mermaid
 sequenceDiagram
@@ -287,6 +316,7 @@ Server-->>API : Upload progress events
 API-->>Client : onProgress(percent)
 Server-->>API : Upload completion response
 API-->>Client : Resolve with {video_id,status}
+Note over API,Server : Automatic timeout handling set to 0 for large files
 ```
 
 **Diagram sources**
@@ -295,25 +325,27 @@ API-->>Client : Resolve with {video_id,status}
 **Section sources**
 - [api.ts:1-277](file://frontend/src/lib/api.ts#L1-L277)
 
-### Enhanced Video Processing Hook
-The useVideoProcessing hook has been enhanced with improved timestamp handling and better state management:
+### Enhanced Video Processing Hook with Polling Fallback
+The useVideoProcessing hook has been significantly enhanced with improved timestamp handling, better state management, and robust fallback mechanisms:
 
 - **Improved Timestamp Formatting**: Enhanced parsing and formatting functions for various timestamp formats (seconds, MM:SS, HH:MM:SS).
 - **Better State Management**: More robust state updates with proper cleanup and resource management.
-- **Enhanced Error Handling**: Improved error recovery and fallback mechanisms.
+- **Enhanced Error Handling**: Improved error recovery and fallback mechanisms with automatic WebSocket-to-polling transition.
 - **Resource Cleanup**: Proper cleanup of WebSockets, polling intervals, and object URLs on component unmount.
+- **Polling Fallback Mechanism**: Automatic fallback to REST polling when WebSocket connections fail or close.
+- **Enhanced Resource Management**: Proper cleanup of WebSocket connections and polling intervals on component unmount.
 
-**Updated** Enhanced with improved timestamp parsing utilities and better state management for video processing workflows.
+**Updated** Enhanced with improved timestamp parsing utilities, better state management for video processing workflows, and robust polling fallback mechanism for video processing status monitoring.
 
 **Section sources**
-- [useVideoProcessing.ts:1-533](file://frontend/src/lib/useVideoProcessing.ts#L1-L533)
+- [useVideoProcessing.ts:1-543](file://frontend/src/lib/useVideoProcessing.ts#L1-L543)
 
 ### Enhanced Component Features
 
 #### VideoUpload Component
-- **Real Progress Tracking**: Displays upload progress with percentage and file size formatting.
+- **Real Progress Tracking**: Displays upload progress with percentage and file size formatting using XMLHttpRequest callbacks.
 - **Enhanced File Validation**: Improved file type checking and size validation.
-- **Better User Feedback**: Clear error states and loading indicators.
+- **Better User Feedback**: Clear error states and loading indicators with improved error messaging.
 
 #### MetadataPanel Component
 - **Enhanced Sensitive Content Display**: Improved handling and display of sensitive content flags with better formatting.
@@ -325,12 +357,18 @@ The useVideoProcessing hook has been enhanced with improved timestamp handling a
 - **Enhanced Timestamp Formatting**: Support for various timestamp formats in search results.
 - **Better Result Handling**: Improved result display with person detection information.
 
-**Updated** Enhanced with improved timestamp formatting, better sensitive content display, and intelligent thumbnail URL resolution.
+#### PipelineVisualizer Component
+- **Enhanced Status Display**: Improved visual representation of pipeline stages with real-time status updates.
+- **Better Progress Tracking**: Enhanced progress indicators and stage completion visualization.
+- **Improved Error Handling**: Better display of failed stages and error states.
+
+**Updated** Enhanced with improved timestamp formatting, better sensitive content display, intelligent thumbnail URL resolution, and enhanced pipeline status visualization.
 
 **Section sources**
 - [VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
 - [MetadataPanel.tsx:1-380](file://frontend/src/components/archive/MetadataPanel.tsx#L1-L380)
 - [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
+- [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
 
 ### RFP Creator
 The RFP Creator page manages form submission, skeleton previews, and section regeneration. It uses the API client to create RFPs, regenerate sections, and export documents.
@@ -418,8 +456,9 @@ These components are designed to be self-contained, accept typed props, and mini
 
 ### State Management Patterns
 - Local UI state: Pages maintain transient UI state (loading, errors, form inputs).
-- Centralized video processing state: The useVideoProcessing hook encapsulates upload progress, pipeline stages, metadata, transcript, search results, and WebSocket lifecycle.
+- Centralized video processing state: The useVideoProcessing hook encapsulates upload progress, pipeline stages, metadata, transcript, search results, WebSocket lifecycle, and polling fallback mechanisms.
 - Controlled components: Inputs and interactive elements are controlled, updating state via callbacks.
+- Resource cleanup: Proper cleanup of WebSocket connections and polling intervals on component unmount.
 
 ```mermaid
 flowchart TD
@@ -429,31 +468,38 @@ Upload --> CallUpload["Call uploadVideo(file)"]
 CallUpload --> SetIdle["Set uploadState='uploading'"]
 SetIdle --> PostUpload["POST /api/video/upload (XHR with progress)"]
 PostUpload --> GotId{"Got video_id?"}
-GotId --> |Yes| ConnectWS["Connect WebSocket /ws/pipeline/{id}"]
+GotId --> |Yes| StartPolling["Start polling fallback mechanism"]
 GotId --> |No| HandleErr["Set uploadState='error'"]
-ConnectWS --> WSMsg["Receive stage status"]
+StartPolling --> PollLoop["Poll every 3 seconds:<br/>GET /api/video/{video_id}/status"]
+PollLoop --> WSConn["Attempt WebSocket connection:<br/>/ws/pipeline/{video_id}"]
+WSConn --> WSMsg["Receive stage status"]
 WSMsg --> UpdateStages["Update stages and view"]
+WSConn --> WSError["WebSocket error/closed"]
+WSError --> PollLoop
 UpdateStages --> Done{"All stages complete?"}
 Done --> |Yes| FetchData["Fetch metadata/transcript"]
-Done --> |No| Wait["Continue waiting"]
+Done --> |No| Wait["Continue polling/waiting"]
 FetchData --> Render["Render results panels"]
 HandleErr --> End(["End"])
 Render --> End
-Wait --> WSMsg
+Wait --> WSConn
 ```
 
 **Diagram sources**
 - [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
 
 **Section sources**
-- [useVideoProcessing.ts:1-533](file://frontend/src/lib/useVideoProcessing.ts#L1-L533)
+- [useVideoProcessing.ts:1-543](file://frontend/src/lib/useVideoProcessing.ts#L1-L543)
 
-### Real-Time WebSocket Handling
-The useVideoProcessing hook connects to a WebSocket endpoint to receive pipeline stage updates. It:
-- Establishes the connection on successful upload.
+### Real-Time WebSocket Handling with Polling Fallback
+The useVideoProcessing hook connects to a WebSocket endpoint to receive pipeline stage updates with robust fallback mechanisms:
+
+- Establishes the WebSocket connection on successful upload.
 - Parses incoming messages and updates stage statuses and timing.
 - Falls back to REST polling if WebSocket fails or closes.
 - Triggers result retrieval when the final stage completes.
+- Implements automatic cleanup of WebSocket connections and polling intervals.
+- Provides graceful degradation when network connectivity is poor.
 
 ```mermaid
 sequenceDiagram
@@ -461,6 +507,7 @@ participant VP as "useVideoProcessing"
 participant WS as "WebSocket"
 participant API as "Backend"
 VP->>WS : connect(/ws/pipeline/{videoId})
+alt WebSocket connection successful
 WS-->>VP : {"stage","status","message","progress"}
 VP->>VP : update stages and view
 alt status=complete
@@ -469,7 +516,32 @@ API-->>VP : metadata
 VP->>API : GET /api/video/{video_id}/transcript
 API-->>VP : transcript
 else error/closed
-VP->>API : GET /api/video/{video_id}/status (poll)
+VP->>VP : startPollingFallback(videoId)
+loop every 3 seconds
+VP->>API : GET /api/video/{video_id}/status
+API-->>VP : {stages}
+VP->>VP : update stages and view
+alt all stages complete
+VP->>API : GET /api/video/{video_id}/metadata
+API-->>VP : metadata
+VP->>API : GET /api/video/{video_id}/transcript
+API-->>VP : transcript
+end
+end
+end
+else WebSocket connection fails
+VP->>VP : startPollingFallback(videoId)
+loop every 3 seconds
+VP->>API : GET /api/video/{video_id}/status
+API-->>VP : {stages}
+VP->>VP : update stages and view
+alt all stages complete
+VP->>API : GET /api/video/{video_id}/metadata
+API-->>VP : metadata
+VP->>API : GET /api/video/{video_id}/transcript
+API-->>VP : transcript
+end
+end
 end
 ```
 
@@ -516,6 +588,7 @@ Customization tips:
 - Extend Button and Card with additional variants or sizes by adding new style mappings.
 - For components with complex forms, keep validation close to submission to surface errors early.
 - Use controlled components to avoid unexpected re-renders and simplify debugging.
+- Implement proper error boundaries for components that rely on external resources.
 
 **Section sources**
 - [Button.tsx:1-30](file://frontend/src/components/Button.tsx#L1-L30)
@@ -553,16 +626,19 @@ P --> RC["recharts"]
 - Web Workers: Offload heavy computations (e.g., transcript processing) to workers if needed.
 - Bundle size: Keep icons and charts scoped to pages to avoid unnecessary imports.
 - **Enhanced Upload Performance**: XMLHttpRequest-based uploads provide better progress tracking and user feedback for large files.
+- **Robust Fallback Mechanisms**: Automatic polling fallback ensures reliable status monitoring even with intermittent network connectivity.
+- **Resource Management**: Proper cleanup of WebSocket connections and polling intervals prevents memory leaks and improves application stability.
 
 ## Troubleshooting Guide
 Common issues and resolutions:
 - Upload failures
   - Symptom: Error displayed in VideoUpload with red banner.
   - Actions: Verify backend connectivity, supported file types (.mp4, .mov, .avi), and file size limits.
-  - **Updated**: Check upload progress tracking for XMLHttpRequest errors.
+  - **Updated**: Check upload progress tracking for XMLHttpRequest errors and network timeouts.
 - WebSocket disconnects
-  - Symptom: Pipeline stalls; fallback polling occurs.
+  - Symptom: Pipeline stalls; fallback polling occurs automatically.
   - Actions: Check network stability; confirm backend WebSocket endpoint availability.
+  - **New**: Monitor console for WebSocket error messages and verify automatic fallback to polling mechanism.
 - Evaluation timeout
   - Symptom: Polling continues indefinitely.
   - Actions: Inspect backend logs; ensure evaluation job starts and progresses.
@@ -578,6 +654,12 @@ Common issues and resolutions:
 - **New**: Timestamp formatting problems
   - Symptom: Incorrect time display in timeline or transcript panels.
   - Actions: Check timestamp parsing utilities for various input formats.
+- **New**: Polling fallback not triggering
+  - Symptom: Pipeline appears stuck without progress updates.
+  - Actions: Verify WebSocket connection establishment and check for console errors indicating fallback mechanism activation.
+- **New**: Memory leaks during video processing
+  - Symptom: Application becomes slower over time with multiple video uploads.
+  - Actions: Ensure proper cleanup of WebSocket connections and polling intervals on component unmount.
 
 **Section sources**
 - [VideoUpload.tsx:200-217](file://frontend/src/components/archive/VideoUpload.tsx#L200-L217)
@@ -585,7 +667,7 @@ Common issues and resolutions:
 - [api.ts:31-36](file://frontend/src/lib/api.ts#L31-L36)
 
 ## Conclusion
-The frontend employs a clean separation of concerns with Next.js App Router, reusable UI primitives, a centralized API client, and a dedicated hook for complex state and real-time updates. The architecture supports scalable feature development, robust error handling, and a responsive user experience across devices. Recent enhancements include improved upload progress tracking, better timestamp formatting, enhanced sensitive content display, and intelligent thumbnail URL resolution.
+The frontend employs a clean separation of concerns with Next.js App Router, reusable UI primitives, a centralized API client, and a dedicated hook for complex state and real-time updates with robust fallback mechanisms. The architecture supports scalable feature development, robust error handling, responsive user experience across devices, and reliable video processing status monitoring through automatic WebSocket-to-polling fallback transitions. Recent enhancements include improved upload progress tracking, better timestamp formatting, enhanced sensitive content display, intelligent thumbnail URL resolution, and comprehensive resource management for optimal application performance.
 
 ## Appendices
 - Environment variables: NEXT_PUBLIC_API_URL is used to configure the API base URL at runtime.

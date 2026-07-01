@@ -140,6 +140,7 @@ export function useVideoProcessing() {
 
   const wsRef = useRef<WebSocket | null>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollFailCountRef = useRef<number>(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // Clean up WebSocket and polling on unmount
@@ -411,16 +412,21 @@ export function useVideoProcessing() {
         pollIntervalRef.current = null;
       }
 
+      pollFailCountRef.current = 0;
+
       pollIntervalRef.current = setInterval(async () => {
         try {
           const statusRes = (await api.video.getStatus(videoId)) as {
-            stages: Record<string, string>;
+            stages?: Record<string, string>;
           };
-          if (statusRes.stages) {
+          if (statusRes && statusRes.stages) {
+            // Reset failure counter on success
+            pollFailCountRef.current = 0;
+
             setState((prev) => {
               const newStages = prev.stages.map((stage) => ({
                 ...stage,
-                status: (statusRes.stages[stage.id] || stage.status) as StageStatus,
+                status: (statusRes.stages![stage.id] || stage.status) as StageStatus,
               }));
               const allComplete = newStages.every(
                 (s) => s.status === "completed" || s.status === "failed"
@@ -444,8 +450,21 @@ export function useVideoProcessing() {
               fetchResults(videoId);
             }
           }
-        } catch {
-          // Silently fail, will retry on next interval
+        } catch (err) {
+          pollFailCountRef.current += 1;
+          console.warn(`[Polling] Status fetch failed (attempt ${pollFailCountRef.current}):`, err);
+
+          if (pollFailCountRef.current >= 5) {
+            // Stop polling after 5 consecutive failures
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+            }
+            setState((prev) => ({
+              ...prev,
+              error: "Lost connection to pipeline. Please check if the server is running and try again.",
+            }));
+          }
         }
       }, 3000);
     },

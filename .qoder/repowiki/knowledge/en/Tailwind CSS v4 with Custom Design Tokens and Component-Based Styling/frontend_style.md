@@ -1,60 +1,78 @@
-## System Overview
+## Styling System
 
-The frontend uses **Tailwind CSS v4** as its primary styling framework, integrated with Next.js 16 via the `@tailwindcss/postcss` plugin. The styling approach combines utility-first CSS with custom design tokens defined in CSS custom properties, enabling consistent theming across the application.
+The Dubai Media AI Dashboard uses **Tailwind CSS v4** as its primary styling framework, configured via the `@tailwindcss/postcss` plugin. The project leverages Tailwind's new v4 configuration approach using CSS-based theme definitions rather than a JavaScript config file.
 
-## Key Files and Configuration
+### Core Technology Stack
 
-### Core Styling Files
-- **`frontend/src/app/globals.css`** — Global stylesheet that imports Tailwind CSS v4 (`@import "tailwindcss"`) and defines the design token system using CSS custom properties within an `@theme inline` block.
-- **`frontend/postcss.config.mjs`** — PostCSS configuration that registers `@tailwindcss/postcss` as the sole plugin.
-- **`frontend/package.json`** — Declares `tailwindcss: ^4` and `@tailwindcss/postcss: ^4` as dev dependencies.
+- **Framework**: Next.js 16.2.9 with React 19
+- **CSS Framework**: Tailwind CSS v4 (via `@tailwindcss/postcss`)
+- **Icon Library**: Heroicons v2 (`@heroicons/react`) for consistent iconography
+- **Font System**: Geist Sans + Geist Mono (Google Fonts via `next/font/google`)
+- **Charting**: Recharts v3.9.0 for data visualization
 
-### Design Token Definitions (in `globals.css`)
-The `@theme inline` block defines:
-- **Color palette**: A complete orange-based primary color scale from `--color-primary-50` (#fff7ed) through `--color-primary-900` (#7c2d12), mapped to Tailwind's `primary-*` utility classes.
-- **Semantic colors**: `--color-background` and `--color-foreground` for theme-aware body styling.
-- **Typography**: `--font-sans` and `--font-mono` referencing Geist font families loaded via `next/font/google`.
+### Design Token Architecture
 
-### Font Loading
-Fonts are configured in **`frontend/src/app/layout.tsx`** using Next.js font optimization:
-```tsx
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
-```
-These variables are applied to the `<html>` element's `className`, making them available as CSS custom properties throughout the app.
+Design tokens are defined in `globals.css` using CSS custom properties within a `@theme inline` block:
 
-## Architecture and Conventions
+**Color Palette:**
+- **Primary Scale**: Orange-based palette (`primary-50` through `primary-900`) mapped to hex values from `#fff7ed` to `#7c2d12`, with `primary-500` (#f97316) as the brand accent color
+- **Semantic Colors**: Background/foreground pairs supporting both light and dark modes via `prefers-color-scheme: dark` media query
+- **Utility Colors**: Tailwind's built-in gray scale (`gray-50` through `gray-900`) used extensively for UI surfaces, borders, and text hierarchy
+
+**Typography:**
+- **Sans-serif**: Geist (variable `--font-geist-sans`)
+- **Monospace**: Geist Mono (variable `--font-geist-mono`)
+- **Fallback**: Arial, Helvetica, sans-serif
 
 ### Component Library Pattern
-Reusable UI components live in **`frontend/src/components/`** and follow a consistent pattern:
-- **`Button.tsx`** — Supports `primary` and `secondary` variants using Tailwind utility strings composed at runtime. Primary uses `bg-primary-500 text-white hover:bg-primary-600`; secondary uses bordered neutral styling.
-- **`Card.tsx`** — Provides a standard card container with `bg-white rounded-xl border border-gray-200 p-6`.
-- **`Sidebar.tsx`** — Fixed-position navigation sidebar (`w-64 bg-white border-r border-gray-200`) with active state highlighting using `bg-primary-50 text-primary-700`.
 
-### Styling Methodology
-1. **Utility-first with composition**: All components use inline Tailwind utility classes. Complex class strings are composed using template literals with conditional logic (e.g., active/inactive states in Sidebar).
-2. **Design token usage**: The custom `primary-*` color scale is used consistently for brand accents (orange #f97316 as primary-500). Components reference these via standard Tailwind class names like `text-primary-500`, `bg-primary-50`, `hover:bg-primary-600`.
-3. **Neutral palette**: Gray scale utilities (`gray-50` through `gray-900`) provide backgrounds, borders, and text hierarchy.
-4. **Semantic color coding**: Feature cards use distinct color schemes (blue for Archive, orange for RFP Creator, emerald for Evaluator) via inline style objects passed as props.
+The project implements a **minimal custom component library** with two reusable primitives:
 
-### Layout Structure
-- **Root layout** (`layout.tsx`) establishes a two-column layout: fixed sidebar (`ml-64` offset on main content) with `bg-gray-50` page background.
-- Pages wrap content in max-width containers (`max-w-6xl mx-auto`) for readability.
-- Consistent spacing: `p-8` padding on main content, `gap-6` for grid layouts.
+1. **Button** (`components/Button.tsx`): Variant-based API (`primary` | `secondary`) with consistent padding, rounded corners, focus rings, and disabled states
+2. **Card** (`components/Card.tsx`): White background, rounded-xl corners, subtle border (`border-gray-200`), and standard padding
 
-### Accessibility and UX Patterns
-- Focus rings: Buttons include `focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500`.
-- Disabled states: `disabled:opacity-50 disabled:cursor-not-allowed`.
-- Transition effects: `transition-colors` or `transition-all` on interactive elements.
-- Form input overrides: Global CSS ensures readable text color (`#1f2937`) and placeholder color (`#6b7280`) for inputs, textareas, and selects.
+These components use **composition over configuration** — they accept a `className` prop for overrides while providing sensible defaults.
 
-## Rules Developers Should Follow
+### Layout Strategy
 
-1. **Use design tokens via Tailwind classes**: Reference colors using `primary-{shade}` (e.g., `text-primary-600`, `bg-primary-50`) rather than hardcoded hex values. The primary scale is orange-based.
-2. **Compose component variants with utility strings**: When building reusable components, define variant styles as concatenated Tailwind utility strings (see `Button.tsx` pattern).
-3. **Maintain gray scale hierarchy**: Use `gray-50` for subtle backgrounds, `gray-200` for borders, `gray-500` for secondary text, `gray-900` for primary headings.
-4. **Apply consistent spacing**: Use `p-6` for card padding, `gap-6` for grid gaps, `space-y-1` or `space-y-1.5` for vertical lists.
-5. **Border radius convention**: Use `rounded-lg` for buttons and small elements, `rounded-xl` for cards and larger containers, `rounded-full` for badges/pills.
-6. **Font usage**: Body text uses Geist Sans (via `--font-geist-sans`). Monospace contexts use Geist Mono. Avoid overriding font families unless necessary.
-7. **Responsive strategy**: The current codebase uses mobile-first defaults with explicit breakpoints only where needed (e.g., `md:grid-cols-3`, `lg:grid-cols-3`). Follow this pattern for new responsive layouts.
-8. **No dark mode toggle implemented**: While `globals.css` contains a `prefers-color-scheme: dark` media query in one section, the active theme definition does not include dark mode overrides. Assume light-mode-only unless explicitly extended.
+The root layout (`layout.tsx`) establishes a **fixed sidebar + fluid main content** pattern:
+
+- **Sidebar**: Fixed position, 64rem width (`w-64`), white background with right border
+- **Main Content**: Flex-grow container with left margin offset (`ml-64`), light gray background (`bg-gray-50`), and generous padding (`p-8`)
+- **Full-height**: Both `html` and `body` set to `min-h-full` with flexbox for proper viewport coverage
+
+### Responsive Approach
+
+The application uses Tailwind's mobile-first responsive utilities sparingly but consistently:
+- Grid layouts switch from single-column to multi-column at breakpoints (`grid-cols-1 lg:grid-cols-3`)
+- Feature cards stack vertically on mobile, expand horizontally on large screens
+- No explicit breakpoint customization found — relies on Tailwind defaults
+
+### Styling Conventions
+
+**Class Composition Patterns:**
+- Components use template literals for conditional class merging: `` `${base} ${variants[variant]} ${className}` ``
+- State-based styling (active/hover) uses ternary expressions within className strings
+- Transition effects applied consistently: `transition-colors` for interactive elements, `transition-all` for card hover states
+
+**Visual Hierarchy:**
+- Headings: `text-lg font-semibold` or `text-4xl font-bold` for hero sections
+- Body text: `text-sm text-gray-500` for descriptions, `text-xs` for metadata/captions
+- Interactive links: Orange accent color (`text-orange-600 hover:text-orange-700`)
+
+**Spacing System:**
+- Consistent use of Tailwind's spacing scale: `p-6`, `px-4 py-2.5`, `gap-3`, `space-y-1`
+- Section margins: `mb-12` for major divisions, `mt-4` for internal spacing
+
+### Dark Mode Support
+
+Basic dark mode is implemented via CSS media query (`prefers-color-scheme: dark`), swapping background/foreground colors. However, no explicit dark mode toggle or `dark:` variant usage was found in components, suggesting this is currently a system-preference-only feature.
+
+### Developer Guidelines
+
+1. **Use design tokens**: Reference `primary-*` colors instead of hardcoded hex values
+2. **Component first**: Use `<Button>` and `<Card>` primitives before writing raw divs with Tailwind classes
+3. **Consistent spacing**: Follow the established padding/scale patterns (p-6 for cards, px-4 py-2.5 for buttons)
+4. **State styling**: Apply `focus:ring-2 focus:ring-offset-2` for accessibility on interactive elements
+5. **Icon integration**: Use Heroicons outline variants at consistent sizes (w-5 h-5 for nav, w-6 h-6 for features)
+6. **Border strategy**: Subtle borders (`border-gray-200`) for card separation, avoid heavy shadows

@@ -12,6 +12,7 @@
 - [rfp_evaluator.py](file://backend/services/rfp_evaluator.py)
 - [api.ts](file://frontend/src/lib/api.ts)
 - [useVideoProcessing.ts](file://frontend/src/lib/useVideoProcessing.ts)
+- [run_pipeline.py](file://backend/run_pipeline.py)
 - [requirements.txt](file://backend/requirements.txt)
 - [docker-compose.yml](file://docker-compose.yml)
 - [README.md](file://README.md)
@@ -21,8 +22,10 @@
 **Changes Made**
 - Updated WebSocket section to clarify that video processing pipeline now uses background task processing instead of WebSocket callbacks
 - Modified WebSocket endpoint documentation to reflect current implementation status
-- Updated troubleshooting guidance to account for WebSocket callback changes
+- Updated polling endpoint documentation to highlight dual communication mechanisms
+- Enhanced troubleshooting guidance to account for WebSocket callback changes
 - Added clarification about background task vs WebSocket functionality coexistence
+- Updated performance considerations to reflect polling-based progress tracking
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -40,7 +43,7 @@
 This document provides comprehensive API documentation for the Dubai Media backend REST and WebSocket APIs. It covers all HTTP endpoints including POST /api/video/upload, GET /api/video/{id}/status, GET /api/video/{id}/metadata, POST /api/search, and all RFP-related endpoints. It also documents the WebSocket endpoint /ws/pipeline/{id} for real-time progress tracking, along with request/response schemas, parameter specifications, authentication methods, error handling patterns, health checks, API versioning, rate limiting considerations, CORS configuration, and client integration patterns. Practical examples using curl and JavaScript fetch are included, alongside troubleshooting guidance and performance optimization tips.
 
 ## Project Structure
-The backend is implemented with FastAPI and organized into routers, services, and pipeline modules. The frontend provides a typed API client and WebSocket helpers for seamless integration.
+The backend is implemented with FastAPI and organized into routers, services, and pipeline modules. The frontend provides a typed API client and WebSocket helpers for seamless integration with dual communication mechanisms (WebSocket for initial connection and polling for progress updates).
 
 ```mermaid
 graph TB
@@ -53,6 +56,7 @@ ORCH["Pipeline Orchestrator<br/>pipeline/orchestrator.py"]
 SI["Search Index<br/>pipeline/search_index.py"]
 RFC["RFP Creator<br/>services/rfp_creator.py"]
 RFE["RFP Evaluator<br/>services/rfp_evaluator.py"]
+RP["Run Pipeline<br/>run_pipeline.py"]
 end
 subgraph "Frontend"
 FE["API Client<br/>frontend/src/lib/api.ts"]
@@ -63,6 +67,7 @@ M --> RR
 M --> CFG
 VR --> ORCH
 VR --> SI
+VR --> RP
 RR --> RFC
 RR --> RFE
 FE --> M
@@ -71,14 +76,15 @@ UEP --> FE
 
 **Diagram sources**
 - [main.py:1-44](file://backend/main.py#L1-L44)
-- [video.py:1-311](file://backend/routers/video.py#L1-L311)
+- [video.py:1-314](file://backend/routers/video.py#L1-L314)
 - [rfp.py:1-385](file://backend/routers/rfp.py#L1-L385)
 - [orchestrator.py:1-382](file://backend/pipeline/orchestrator.py#L1-L382)
 - [search_index.py:1-245](file://backend/pipeline/search_index.py#L1-L245)
 - [rfp_creator.py:1-639](file://backend/services/rfp_creator.py#L1-L639)
 - [rfp_evaluator.py:1-622](file://backend/services/rfp_evaluator.py#L1-L622)
+- [run_pipeline.py:1-29](file://backend/run_pipeline.py#L1-L29)
 - [api.ts:1-277](file://frontend/src/lib/api.ts#L1-L277)
-- [useVideoProcessing.ts:1-533](file://frontend/src/lib/useVideoProcessing.ts#L1-L533)
+- [useVideoProcessing.ts:1-543](file://frontend/src/lib/useVideoProcessing.ts#L1-L543)
 
 **Section sources**
 - [main.py:1-44](file://backend/main.py#L1-L44)
@@ -86,23 +92,25 @@ UEP --> FE
 
 ## Core Components
 - FastAPI Application: Initializes CORS, mounts static uploads, includes routers, and exposes a health check endpoint.
-- Video Router: Implements upload, status, metadata, transcript, search, and WebSocket progress endpoints.
+- Video Router: Implements upload, status, metadata, transcript, search, and WebSocket progress endpoints with dual communication support.
 - RFP Router: Implements RFP creation, regeneration, exports, vendor evaluation, and evaluation status/results endpoints.
 - Pipeline Orchestrator: Coordinates six-stage video processing pipeline with progress callbacks and status persistence.
 - Search Index: FAISS-backed vector search using DashScope embeddings.
 - RFP Creator/Evaluator Services: AI-driven RFP generation and vendor evaluation powered by DashScope.
+- Run Pipeline: Standalone subprocess executor for background task processing.
 
 **Section sources**
 - [main.py:20-44](file://backend/main.py#L20-L44)
-- [video.py:23-311](file://backend/routers/video.py#L23-L311)
+- [video.py:23-314](file://backend/routers/video.py#L23-L314)
 - [rfp.py:15-385](file://backend/routers/rfp.py#L15-L385)
 - [orchestrator.py:34-207](file://backend/pipeline/orchestrator.py#L34-L207)
 - [search_index.py:22-196](file://backend/pipeline/search_index.py#L22-L196)
 - [rfp_creator.py:67-151](file://backend/services/rfp_creator.py#L67-L151)
 - [rfp_evaluator.py:39-104](file://backend/services/rfp_evaluator.py#L39-L104)
+- [run_pipeline.py:15-29](file://backend/run_pipeline.py#L15-L29)
 
 ## Architecture Overview
-The backend exposes REST endpoints and WebSocket streams. The frontend integrates via a typed API client and WebSocket helpers. Nginx proxies static uploads and forwards requests to the backend.
+The backend exposes REST endpoints and WebSocket streams with dual communication mechanisms. The frontend integrates via a typed API client and WebSocket helpers, implementing both WebSocket connections for initial status and polling for continuous progress updates. Nginx proxies static uploads and forwards requests to the backend.
 
 ```mermaid
 graph TB
@@ -122,6 +130,7 @@ ORCH["Pipeline Orchestrator"]
 SI["Search Index"]
 RFC["RFP Creator"]
 RFE["RFP Evaluator"]
+RP["Run Pipeline Subprocess"]
 end
 subgraph "External Services"
 DS["DashScope API"]
@@ -134,6 +143,7 @@ APP --> VR
 APP --> RR
 VR --> ORCH
 VR --> SI
+VR --> RP
 RR --> RFC
 RR --> RFE
 ORCH --> DS
@@ -144,12 +154,13 @@ RFE --> DS
 
 **Diagram sources**
 - [main.py:27-38](file://backend/main.py#L27-L38)
-- [video.py:23-311](file://backend/routers/video.py#L23-L311)
+- [video.py:23-314](file://backend/routers/video.py#L23-L314)
 - [rfp.py:15-385](file://backend/routers/rfp.py#L15-L385)
 - [orchestrator.py:34-42](file://backend/pipeline/orchestrator.py#L34-L42)
 - [search_index.py:22-36](file://backend/pipeline/search_index.py#L22-L36)
 - [rfp_creator.py:70-74](file://backend/services/rfp_creator.py#L70-L74)
 - [rfp_evaluator.py:42-46](file://backend/services/rfp_evaluator.py#L42-L46)
+- [run_pipeline.py:15-29](file://backend/run_pipeline.py#L15-L29)
 
 ## Detailed Component Analysis
 
@@ -168,7 +179,8 @@ RFE --> DS
 - Implementation Details
   - Saves file to uploads directory with UUID-based filename
   - Creates initial status.json with queued state and pending stages
-  - Starts background pipeline via orchestrator using asyncio.create_task
+  - Launches pipeline as a separate subprocess using `run_pipeline.py`
+  - **Updated**: Pipeline runs independently in background, never blocking the main server
 - Example
   - curl: 
     ```bash
@@ -186,8 +198,9 @@ RFE --> DS
     ```
 
 **Section sources**
-- [video.py:39-92](file://backend/routers/video.py#L39-L92)
-- [api.ts:167-167](file://frontend/src/lib/api.ts#L167-L167)
+- [video.py:39-104](file://backend/routers/video.py#L39-L104)
+- [run_pipeline.py:15-29](file://backend/run_pipeline.py#L15-L29)
+- [api.ts:198-200](file://frontend/src/lib/api.ts#L198-L200)
 
 #### GET /api/video/{video_id}/status
 - Description: Read the current pipeline status for a video.
@@ -198,6 +211,10 @@ RFE --> DS
   - 200 OK: JSON status object with fields: video_id, status, progress, stages, filename, timestamps
   - 404 Not Found: Video not found
   - 500 Internal Server Error: Failed to read status
+- Implementation Details
+  - **Updated**: Polling endpoint for progress tracking (3-second intervals recommended)
+  - Returns current stage completion status for all pipeline stages
+  - Used by frontend polling mechanism for continuous progress updates
 - Example
   - curl:
     ```bash
@@ -209,8 +226,9 @@ RFE --> DS
     ```
 
 **Section sources**
-- [video.py:124-138](file://backend/routers/video.py#L124-L138)
-- [api.ts:169-169](file://frontend/src/lib/api.ts#L169-L169)
+- [video.py:108-124](file://backend/routers/video.py#L108-L124)
+- [useVideoProcessing.ts:406-453](file://frontend/src/lib/useVideoProcessing.ts#L406-L453)
+- [api.ts:200-201](file://frontend/src/lib/api.ts#L200-L201)
 
 #### GET /api/video/{video_id}/metadata
 - Description: Retrieve structured metadata for a processed video.
@@ -231,8 +249,8 @@ RFE --> DS
     ```
 
 **Section sources**
-- [video.py:143-174](file://backend/routers/video.py#L143-L174)
-- [api.ts:170-170](file://frontend/src/lib/api.ts#L170-L170)
+- [video.py:128-160](file://backend/routers/video.py#L128-L160)
+- [api.ts:202-203](file://frontend/src/lib/api.ts#L202-L203)
 
 #### GET /api/video/{video_id}/transcript
 - Description: Retrieve the transcript for a processed video.
@@ -254,8 +272,8 @@ RFE --> DS
     ```
 
 **Section sources**
-- [video.py:179-195](file://backend/routers/video.py#L179-L195)
-- [api.ts:172-172](file://frontend/src/lib/api.ts#L172-L172)
+- [video.py:164-181](file://backend/routers/video.py#L164-L181)
+- [api.ts:204-205](file://frontend/src/lib/api.ts#L204-L205)
 
 #### POST /api/search
 - Description: Search across all indexed videos using natural language.
@@ -277,8 +295,8 @@ RFE --> DS
     ```
 
 **Section sources**
-- [video.py:200-215](file://backend/routers/video.py#L200-L215)
-- [api.ts:174-178](file://frontend/src/lib/api.ts#L174-L178)
+- [video.py:185-219](file://backend/routers/video.py#L185-L219)
+- [api.ts:206-210](file://frontend/src/lib/api.ts#L206-L210)
 
 #### GET /api/health
 - Description: Health check endpoint.
@@ -297,7 +315,7 @@ RFE --> DS
 
 **Section sources**
 - [main.py:41-43](file://backend/main.py#L41-L43)
-- [api.ts:243-243](file://frontend/src/lib/api.ts#L243-L243)
+- [api.ts:275-276](file://frontend/src/lib/api.ts#L275-L276)
 
 #### RFP Endpoints
 
@@ -336,7 +354,7 @@ RFE --> DS
 
 **Section sources**
 - [rfp.py:97-130](file://backend/routers/rfp.py#L97-L130)
-- [api.ts:187-191](file://frontend/src/lib/api.ts#L187-L191)
+- [api.ts:219-223](file://frontend/src/lib/api.ts#L219-L223)
 
 ##### POST /api/rfp/regenerate-section
 - Description: Regenerate a single section of an existing RFP.
@@ -369,7 +387,7 @@ RFE --> DS
 
 **Section sources**
 - [rfp.py:170-183](file://backend/routers/rfp.py#L170-L183)
-- [api.ts:201-208](file://frontend/src/lib/api.ts#L201-L208)
+- [api.ts:233-236](file://frontend/src/lib/api.ts#L233-L236)
 
 ##### GET /api/rfp/{id}/export/pdf
 - Description: Download RFP as PDF.
@@ -382,7 +400,7 @@ RFE --> DS
 
 **Section sources**
 - [rfp.py:186-199](file://backend/routers/rfp.py#L186-L199)
-- [api.ts:205-208](file://frontend/src/lib/api.ts#L205-L208)
+- [api.ts:237-240](file://frontend/src/lib/api.ts#L237-L240)
 
 ##### POST /api/rfp/evaluate
 - Description: Start vendor evaluation with background processing.
@@ -406,7 +424,7 @@ RFE --> DS
 
 **Section sources**
 - [rfp.py:243-311](file://backend/routers/rfp.py#L243-L311)
-- [api.ts:209-219](file://frontend/src/lib/api.ts#L209-L219)
+- [api.ts:241-252](file://frontend/src/lib/api.ts#L241-L252)
 
 ##### GET /api/rfp/evaluation/{eval_id}/status
 - Description: Get evaluation progress and status.
@@ -423,7 +441,7 @@ RFE --> DS
 
 **Section sources**
 - [rfp.py:314-329](file://backend/routers/rfp.py#L314-L329)
-- [api.ts:221-229](file://frontend/src/lib/api.ts#L221-L229)
+- [api.ts:253-261](file://frontend/src/lib/api.ts#L253-L261)
 
 ##### GET /api/rfp/evaluation/{eval_id}/results
 - Description: Get evaluation results when completed.
@@ -436,12 +454,12 @@ RFE --> DS
 - Example
   - curl:
     ```bash
-    curl http://localhost:0/api/rfp/evaluation/<eval_id>/results
+    curl http://localhost:8000/api/rfp/evaluation/<eval_id>/results
     ```
 
 **Section sources**
 - [rfp.py:332-346](file://backend/routers/rfp.py#L332-L346)
-- [api.ts:230-233](file://frontend/src/lib/api.ts#L230-L233)
+- [api.ts:262-265](file://frontend/src/lib/api.ts#L262-L265)
 
 ##### GET /api/rfp/evaluation/{eval_id}/export/xlsx
 - Description: Export evaluation results as XLSX.
@@ -455,7 +473,7 @@ RFE --> DS
 
 **Section sources**
 - [rfp.py:349-365](file://backend/routers/rfp.py#L349-L365)
-- [api.ts:234-239](file://frontend/src/lib/api.ts#L234-L239)
+- [api.ts:266-269](file://frontend/src/lib/api.ts#L266-L269)
 
 ##### GET /api/rfp/evaluation/{eval_id}/export/pdf
 - Description: Export evaluation results as PDF.
@@ -469,7 +487,7 @@ RFE --> DS
 
 **Section sources**
 - [rfp.py:368-384](file://backend/routers/rfp.py#L368-L384)
-- [api.ts:237-239](file://frontend/src/lib/api.ts#L237-L239)
+- [api.ts:270-273](file://frontend/src/lib/api.ts#L270-L273)
 
 ### WebSocket Endpoints
 
@@ -488,6 +506,7 @@ RFE --> DS
 - Implementation Note
   - The WebSocket endpoint exists but no longer provides real-time progress updates during pipeline execution
   - Progress updates are now handled via background task processing and status polling
+  - **Updated**: Dual communication mechanism: WebSocket for initial connection, polling for continuous updates
 - Example
   - JavaScript:
     ```javascript
@@ -497,9 +516,9 @@ RFE --> DS
     ```
 
 **Section sources**
-- [video.py:264-311](file://backend/routers/video.py#L264-L311)
+- [video.py:267-314](file://backend/routers/video.py#L267-L314)
 - [api.ts:211-215](file://frontend/src/lib/api.ts#L211-L215)
-- [useVideoProcessing.ts:215-276](file://frontend/src/lib/useVideoProcessing.ts#L215-L276)
+- [useVideoProcessing.ts:222-283](file://frontend/src/lib/useVideoProcessing.ts#L222-L283)
 
 ### Request/Response Schemas
 
@@ -531,10 +550,10 @@ RFE --> DS
 - Fields: eval_id, status, results (object with vendors, recommendation, follow_up_questions)
 
 **Section sources**
-- [video.py:87-92](file://backend/routers/video.py#L87-L92)
-- [video.py:124-138](file://backend/routers/video.py#L124-L138)
-- [video.py:143-174](file://backend/routers/video.py#L143-L174)
-- [video.py:200-215](file://backend/routers/video.py#L200-L215)
+- [video.py:98-104](file://backend/routers/video.py#L98-L104)
+- [video.py:108-124](file://backend/routers/video.py#L108-L124)
+- [video.py:128-160](file://backend/routers/video.py#L128-L160)
+- [video.py:185-219](file://backend/routers/video.py#L185-L219)
 - [rfp.py:124-130](file://backend/routers/rfp.py#L124-L130)
 - [rfp.py:162-167](file://backend/routers/rfp.py#L162-L167)
 - [rfp.py:306-311](file://backend/routers/rfp.py#L306-L311)
@@ -553,11 +572,12 @@ RFE --> DS
 - Pipeline Failures: Orchestrator writes error details to status.json and emits failed status via WebSocket.
 - Search/Index Failures: SearchIndex logs warnings and returns empty results when FAISS is unavailable.
 - AI Service Failures: Services wrap DashScope calls with retries and raise ValueError/RuntimeError on failures.
+- **Updated**: Background Task Failures: Subprocess pipeline failures are logged separately from the main server process.
 
 **Section sources**
 - [video.py:57-59](file://backend/routers/video.py#L57-L59)
 - [video.py:136-138](file://backend/routers/video.py#L136-L138)
-- [video.py:166-168](file://backend/routers/video.py#L166-L168)
+- [video.py:170-171](file://backend/routers/video.py#L170-L171)
 - [video.py:194-195](file://backend/routers/video.py#L194-L195)
 - [video.py:213-215](file://backend/routers/video.py#L213-L215)
 - [video.py:118-120](file://backend/routers/video.py#L118-L120)
@@ -588,19 +608,24 @@ RFE --> DS
   - Add server-side rate limiting middleware.
   - Implement client-side retry with jitter.
   - Consider queueing mechanisms for high-throughput scenarios.
+  - **Updated**: Polling interval should be configurable (currently 3 seconds) to balance responsiveness and server load.
 
 **Section sources**
 - [rfp_evaluator.py:74-80](file://backend/services/rfp_evaluator.py#L74-L80)
+- [useVideoProcessing.ts:406-453](file://frontend/src/lib/useVideoProcessing.ts#L406-L453)
 
 ### API Client Integration Patterns
 - Typed API Client: Provides convenience methods for all endpoints and WebSocket connections.
 - Fetch Wrapper: Handles JSON serialization, error extraction, and URL construction.
 - WebSocket Helper: Manages connection lifecycle and message parsing.
+- **Updated**: Dual Communication Pattern: Uses WebSocket for initial connection and polling for continuous updates.
+- Polling Fallback: Automatically falls back to polling if WebSocket connection fails.
 
 **Section sources**
 - [api.ts:11-39](file://frontend/src/lib/api.ts#L11-L39)
 - [api.ts:67-99](file://frontend/src/lib/api.ts#L67-L99)
-- [api.ts:164-277](file://frontend/src/lib/api.ts#L164-L277)
+- [api.ts:195-215](file://frontend/src/lib/api.ts#L195-L215)
+- [useVideoProcessing.ts:222-283](file://frontend/src/lib/useVideoProcessing.ts#L222-L283)
 
 ## Dependency Analysis
 
@@ -613,10 +638,12 @@ ORCH["pipeline/orchestrator.py"]
 SI["pipeline/search_index.py"]
 RFC["services/rfp_creator.py"]
 RFE["services/rfp_evaluator.py"]
+RP["run_pipeline.py"]
 M --> VR
 M --> RR
 VR --> ORCH
 VR --> SI
+VR --> RP
 RR --> RFC
 RR --> RFE
 ```
@@ -629,6 +656,7 @@ RR --> RFE
 - [search_index.py:13-14](file://backend/pipeline/search_index.py#L13-L14)
 - [rfp_creator.py:30](file://backend/services/rfp_creator.py#L30)
 - [rfp_evaluator.py:29](file://backend/services/rfp_evaluator.py#L29)
+- [run_pipeline.py:12-17](file://backend/run_pipeline.py#L12-L17)
 
 **Section sources**
 - [requirements.txt:1-16](file://backend/requirements.txt#L1-L16)
@@ -640,6 +668,8 @@ RR --> RFE
 - Static Files: Nginx serves uploads; ensure sufficient disk space and bandwidth.
 - AI Calls: Implement retries and timeouts; consider caching frequently accessed prompts.
 - **Updated**: Background Task Processing: The video processing pipeline now runs as background tasks, reducing WebSocket overhead and improving scalability.
+- **Updated**: Polling Efficiency: Frontend polls every 3 seconds; adjust interval based on performance requirements.
+- **Updated**: Resource Isolation: Subprocess pipeline prevents server blocking and improves fault isolation.
 
 ## Troubleshooting Guide
 - 404 Not Found
@@ -657,6 +687,11 @@ RR --> RFE
   - Connection drops: Client should reconnect; server cleans disconnected clients.
   - No progress updates: The WebSocket endpoint no longer provides real-time progress updates during pipeline execution. Use status polling instead.
   - Connection works but no updates: This is expected behavior as WebSocket callbacks have been removed from the pipeline implementation.
+  - **Updated**: Background Task Issues: Check subprocess logs in pipeline.log for pipeline execution errors.
+- **Updated**: Polling Issues
+  - Stale status: Verify polling interval is appropriate (3 seconds default).
+  - Network connectivity: Ensure frontend can reach /api/video/{id}/status endpoint.
+  - Server load: High server load may cause polling delays.
 
 **Section sources**
 - [video.py:129-131](file://backend/routers/video.py#L129-L131)
@@ -666,9 +701,10 @@ RR --> RFE
 - [video.py:213-215](file://backend/routers/video.py#L213-L215)
 - [rfp.py:116-119](file://backend/routers/rfp.py#L116-L119)
 - [rfp_evaluator.py:74-80](file://backend/services/rfp_evaluator.py#L74-L80)
+- [useVideoProcessing.ts:406-453](file://frontend/src/lib/useVideoProcessing.ts#L406-L453)
 
 ## Conclusion
-The Dubai Media backend provides a robust REST and WebSocket API for video processing and RFP workflows. While the MVP lacks authentication and rate limiting, the architecture supports scalable enhancements. The typed frontend client simplifies integration, and the documented endpoints enable efficient automation and real-time monitoring. **Updated**: The video processing pipeline now uses background task processing instead of WebSocket callbacks, improving reliability and reducing resource consumption.
+The Dubai Media backend provides a robust REST and WebSocket API for video processing and RFP workflows. While the MVP lacks authentication and rate limiting, the architecture supports scalable enhancements. The typed frontend client simplifies integration, and the documented endpoints enable efficient automation and real-time monitoring. **Updated**: The video processing pipeline now uses background task processing instead of WebSocket callbacks, improving reliability and reducing resource consumption. The dual communication mechanism (WebSocket for initial connection plus polling for continuous updates) provides resilient progress tracking across various network conditions.
 
 ## Appendices
 
@@ -712,6 +748,18 @@ The Dubai Media backend provides a robust REST and WebSocket API for video proce
 ### Deployment Notes
 - Docker Compose sets up backend, frontend, and Nginx with volume mounts for uploads.
 - Nginx serves static uploads and proxies API requests.
+- **Updated**: Subprocess pipeline runs independently of the main server process.
 
 **Section sources**
 - [docker-compose.yml:1-43](file://docker-compose.yml#L1-L43)
+
+### Dual Communication Mechanism Details
+- **WebSocket Phase**: Initial connection provides current status snapshot
+- **Polling Phase**: Continuous progress updates via status endpoint polling
+- **Fallback Logic**: Automatic transition from WebSocket to polling on connection failure
+- **Polling Interval**: 3 seconds (configurable) for optimal balance between responsiveness and server load
+
+**Section sources**
+- [video.py:267-314](file://backend/routers/video.py#L267-L314)
+- [useVideoProcessing.ts:222-283](file://frontend/src/lib/useVideoProcessing.ts#L222-L283)
+- [useVideoProcessing.ts:406-453](file://frontend/src/lib/useVideoProcessing.ts#L406-L453)
