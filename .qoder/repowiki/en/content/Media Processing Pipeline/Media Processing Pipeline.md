@@ -18,6 +18,8 @@
 - [frontend/src/lib/useVideoProcessing.ts](file://frontend/src/lib/useVideoProcessing.ts)
 - [frontend/src/components/archive/PipelineVisualizer.tsx](file://frontend/src/components/archive/PipelineVisualizer.tsx)
 - [frontend/src/components/archive/VideoUpload.tsx](file://frontend/src/components/archive/VideoUpload.tsx)
+- [frontend/src/components/archive/SceneDetection.tsx](file://frontend/src/components/archive/SceneDetection.tsx)
+- [frontend/src/components/archive/VideoTimeline.tsx](file://frontend/src/components/archive/VideoTimeline.tsx)
 - [frontend/src/lib/api.ts](file://frontend/src/lib/api.ts)
 </cite>
 
@@ -27,6 +29,9 @@
 - Enhanced Troubleshooting Guide with specific guidance for WebSocket connection failures and polling fallback scenarios
 - Updated Performance Considerations to address the new polling-based status monitoring approach
 - Revised Architecture Overview to show the fallback architecture between WebSocket and REST polling
+- **Updated**: Enhanced scene boundary handling with optional scene_type properties and improved timestamp parsing for MM:SS/HH:MM:SS formats
+- **Updated**: Robust React ref implementations for callback synchronization in useVideoProcessing.ts
+- **Updated**: Enhanced scene detection UI components to handle scene types and improved timestamp formatting
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -74,6 +79,8 @@ subgraph "Frontend"
 HOOK["useVideoProcessing hook"]
 VIS["PipelineVisualizer"]
 UP["VideoUpload"]
+SCENEDET["SceneDetection"]
+TIMELINE["VideoTimeline"]
 WS["WebSocket Progress"]
 POLL["REST Polling"]
 FB["Fallback Mechanism"]
@@ -93,6 +100,8 @@ ST5 --> IPTC
 HOOK --> ROUTER
 VIS --> HOOK
 UP --> HOOK
+SCENEDET --> HOOK
+TIMELINE --> HOOK
 WS --> ROUTER
 POLL --> ROUTER
 FB --> WS
@@ -112,9 +121,11 @@ FB --> POLL
 - [backend/pipeline/search_index.py:1-306](file://backend/pipeline/search_index.py#L1-L306)
 - [backend/data/reference_faces.json:1-101](file://backend/data/reference_faces.json#L1-L101)
 - [backend/data/iptc_taxonomy.json:1-28](file://backend/data/iptc_taxonomy.json#L1-L28)
-- [frontend/src/lib/useVideoProcessing.ts:1-543](file://frontend/src/lib/useVideoProcessing.ts#L1-L543)
+- [frontend/src/lib/useVideoProcessing.ts:1-591](file://frontend/src/lib/useVideoProcessing.ts#L1-L591)
 - [frontend/src/components/archive/PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
 - [frontend/src/components/archive/VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
+- [frontend/src/components/archive/SceneDetection.tsx:1-181](file://frontend/src/components/archive/SceneDetection.tsx#L1-L181)
+- [frontend/src/components/archive/VideoTimeline.tsx:1-245](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L245)
 
 **Section sources**
 - [backend/main.py:1-44](file://backend/main.py#L1-L44)
@@ -133,7 +144,7 @@ Key orchestration responsibilities:
 - Sequential stage execution with cooperative yielding for server responsiveness
 - Persistent status and intermediate results
 - **Enhanced**: Subprocess-based execution with complete process isolation using stdin=subprocess.DEVNULL and start_new_session=True
-- Building searchable segments for embedding
+- Building searchable segments for embedding with enhanced timestamp parsing
 - **Maintained**: WebSocket progress streaming alongside REST polling with automatic fallback
 
 **Updated** The pipeline now uses a subprocess-based architecture where the orchestrator runs in a completely separate process, ensuring it can NEVER block the main server regardless of pipeline duration or resource usage. The `run_pipeline.py` script provides a dedicated execution environment that maintains system stability while preserving all real-time progress tracking capabilities. **Enhanced process isolation** is achieved through explicit stdin=subprocess.DEVNULL to prevent SIGTTIN signals from terminal and start_new_session=True to fully detach from the parent process session.
@@ -200,9 +211,15 @@ Responsibilities:
 - Tracks progress and status per stage
 - Persists status.json and intermediate results
 - **Enhanced**: Operates within subprocess isolation for improved system stability
-- Builds searchable segments for embedding
+- Builds searchable segments for embedding with enhanced timestamp parsing
 
 **Updated** The orchestrator now operates within a subprocess environment, providing complete process isolation from the main server. The `process_video` method accepts an optional `ws_callback` parameter but ignores it, focusing solely on sequential stage execution and status persistence. This subprocess isolation ensures that long-running pipeline operations cannot interfere with server responsiveness.
+
+**Enhanced** The `_timestamp_to_seconds` method now provides robust timestamp parsing supporting:
+- MM:SS format (e.g., "05:30" → 330 seconds)
+- HH:MM:SS format (e.g., "01:15:30" → 4530 seconds)
+- M:SS format (e.g., "5:30" → 330 seconds)
+- Numeric values (already in seconds)
 
 Inputs:
 - video_id, video_path
@@ -227,7 +244,7 @@ Stage1 --> Stage2["Run visual analysis"]
 Stage2 --> Stage3["Run audio analysis"]
 Stage3 --> Stage4["Run face recognition"]
 Stage4 --> Stage5["Run metadata structuring"]
-Stage5 --> Segments["Build searchable segments"]
+Stage5 --> Segments["Build searchable segments<br/>with enhanced timestamp parsing"]
 Segments --> Stage6["Run search index"]
 Stage6 --> Finalize["Finalize status (completed/completed_with_errors)"]
 Finalize --> Done(["Return (no WebSocket callback)"])
@@ -235,6 +252,7 @@ Finalize --> Done(["Return (no WebSocket callback)"])
 
 **Diagram sources**
 - [backend/pipeline/orchestrator.py:44-209](file://backend/pipeline/orchestrator.py#L44-L209)
+- [backend/pipeline/orchestrator.py:289-306](file://backend/pipeline/orchestrator.py#L289-L306)
 
 **Section sources**
 - [backend/pipeline/orchestrator.py:34-382](file://backend/pipeline/orchestrator.py#L34-L382)
@@ -273,6 +291,11 @@ Error handling:
 - Retries with exponential backoff
 - Parses JSON from raw response (direct or fenced code block)
 - Returns empty structured result on repeated failure
+
+**Enhanced** Scene boundaries now include optional `scene_type` property with predefined categories:
+- interview, b-roll, aerial, ceremony, news-anchor, sport, documentary, other
+
+Timestamp parsing is enhanced to handle both MM:SS and HH:MM:SS formats from the visual analysis responses.
 
 **Section sources**
 - [backend/pipeline/visual_analysis.py:57-344](file://backend/pipeline/visual_analysis.py#L57-L344)
@@ -357,6 +380,8 @@ Error handling:
 - Batched embedding requests with backoff
 - Saves index to disk; gracefully handles missing FAISS installation
 
+**Enhanced** Search index now properly handles scene_type metadata from scene boundaries, allowing for semantic search with scene classification.
+
 **Section sources**
 - [backend/pipeline/search_index.py:59-306](file://backend/pipeline/search_index.py#L59-L306)
 
@@ -369,6 +394,11 @@ Error handling:
 - WebSocket streaming provides real-time progress updates when available
 - REST polling serves as a reliable fallback mechanism for environments where WebSocket connections may be unstable
 - Results are fetched via separate endpoints when processing completes
+
+**Enhanced** The frontend now uses robust React ref implementations for callback synchronization:
+- `startPollingFallbackRef`: References the polling fallback function for safe callback invocation
+- `fetchResultsRef`: References the results fetching function for synchronized execution
+- These refs ensure callbacks can be invoked even when component re-renders
 
 ```mermaid
 sequenceDiagram
@@ -470,8 +500,12 @@ TASK["_run_pipeline"] --> SUBPROC
   - WebSocket connections provide real-time updates with automatic fallback to REST polling
   - REST polling interval of 3 seconds balances responsiveness with server load
   - Fallback mechanism ensures continuous progress monitoring even in unstable network conditions
+- **Enhanced Scene Boundary Processing**:
+  - Improved timestamp parsing reduces processing errors for scene boundaries
+  - Scene type categorization enables more precise semantic search and filtering
+  - Frontend components now properly handle optional scene_type properties
 
-**Updated** The subprocess-based architecture significantly enhances server responsiveness by providing complete process isolation. The `run_pipeline.py` script ensures that pipeline operations run in a completely separate process, so they can NEVER block the server regardless of pipeline duration or resource usage. The cooperative yielding mechanism ensures that long-running operations don't block the event loop, enabling multiple videos to be processed simultaneously without impacting system performance. **Enhanced process isolation** through stdin=subprocess.DEVNULL eliminates terminal-related signal interruptions and start_new_session=True provides complete session detachment for improved reliability. The new dual-monitoring architecture with automatic fallback provides robust progress tracking that works reliably across diverse network environments.
+**Updated** The subprocess-based architecture significantly enhances server responsiveness by providing complete process isolation. The `run_pipeline.py` script ensures that pipeline operations run in a completely separate process, so they can NEVER block the server regardless of pipeline duration or resource usage. The cooperative yielding mechanism ensures that long-running operations don't block the event loop, enabling multiple videos to be processed simultaneously without impacting system performance. **Enhanced process isolation** through stdin=subprocess.DEVNULL eliminates terminal-related signal interruptions and start_new_session=True provides complete session detachment for improved reliability. The new dual-monitoring architecture with automatic fallback provides robust progress tracking that works reliably across diverse network environments. **Enhanced scene boundary handling** with optional scene_type properties and improved timestamp parsing provides more accurate scene classification and better user experience in the frontend components.
 
 [No sources needed since this section provides general guidance]
 
@@ -522,8 +556,14 @@ Common issues and recovery strategies:
 - **Network connectivity issues**:
   - Symptom: Inconsistent progress updates or frequent disconnections
   - Action: Implement network resilience checks; verify firewall configurations; ensure WebSocket and REST endpoints are accessible from client environment
+- **Enhanced scene boundary processing issues**:
+  - Symptom: Scene detection shows incorrect timestamps or missing scene types
+  - Action: Verify visual analysis output format; check timestamp parsing logic; ensure scene_type values match predefined categories
+- **React ref synchronization problems**:
+  - Symptom: Callbacks not executing or polling not stopping properly
+  - Action: Verify ref initialization and cleanup; ensure useEffect runs to sync refs; check for proper ref.current usage
 
-**Updated** Added troubleshooting guidance for the enhanced subprocess-based architecture and the new dual-monitoring fallback mechanism. The WebSocket callback mechanism remains available as a primary option, while the new REST polling fallback provides reliable progress tracking in environments where WebSocket connections may be unstable. **Enhanced process isolation** through explicit stdin=subprocess.DEVNULL and start_new_session=True addresses signal-related interruptions and ensures reliable subprocess execution. The automatic fallback mechanism ensures continuous monitoring even when WebSocket connections fail, providing robust progress tracking across diverse deployment environments.
+**Updated** Added troubleshooting guidance for the enhanced subprocess-based architecture and the new dual-monitoring fallback mechanism. The WebSocket callback mechanism remains available as a primary option, while the new REST polling fallback provides reliable progress tracking in environments where WebSocket connections may be unstable. **Enhanced process isolation** through explicit stdin=subprocess.DEVNULL and start_new_session=True addresses signal-related interruptions and ensures reliable subprocess execution. The automatic fallback mechanism ensures continuous monitoring even when WebSocket connections fail, providing robust progress tracking across diverse deployment environments. **Enhanced scene boundary handling** requires verification of timestamp formats and scene_type categories to ensure proper processing and display in frontend components.
 
 **Section sources**
 - [backend/pipeline/visual_analysis.py:135-188](file://backend/pipeline/visual_analysis.py#L135-L188)
@@ -536,7 +576,7 @@ Common issues and recovery strategies:
 ## Conclusion
 The pipeline provides a robust, modular, and observable framework for AI-driven media processing. Its sequential orchestration, persistent state, and dual progress tracking mechanisms (WebSocket streaming and REST polling with automatic fallback) enable reliable archival workflows. **The subprocess-based architecture with enhanced process isolation** provides improved system stability and non-blocking operation, ensuring that pipeline operations never interfere with server responsiveness. The cooperative yielding mechanism ensures that long-running operations don't block the event loop, enabling multiple videos to be processed simultaneously without impacting system performance. **Enhanced process isolation** through stdin=subprocess.DEVNULL and start_new_session=True eliminates signal-related interruptions and ensures reliable subprocess execution. The new dual-monitoring architecture with automatic fallback provides robust progress tracking that works reliably across diverse network environments, while the removal of WebSocket callback mechanism in favor of REST polling simplifies the architecture while maintaining all essential functionality for real-time status monitoring. By tuning stage parameters, ensuring adequate infrastructure, leveraging retries and fallbacks, and utilizing the new subprocess isolation and monitoring enhancements, operators can achieve scalable and resilient media processing in production environments.
 
-**Updated** The pipeline now includes enhanced subprocess-based architecture with improved process isolation and system stability. The `run_pipeline.py` script provides a dedicated execution environment that ensures pipeline operations run independently from the main server, preventing resource contention and improving overall system reliability. **Enhanced process isolation** through explicit stdin=subprocess.DEVNULL prevents SIGTTIN signals from terminal and start_new_session=True ensures complete session detachment for improved reliability. The new dual-monitoring architecture with automatic fallback mechanism provides robust progress tracking that gracefully handles WebSocket connection failures and network instability, ensuring continuous monitoring across diverse deployment environments. The simplified architecture with REST polling as the primary monitoring mechanism while maintaining WebSocket support as a premium option provides optimal balance between reliability and real-time responsiveness.
+**Updated** The pipeline now includes enhanced subprocess-based architecture with improved process isolation and system stability. The `run_pipeline.py` script provides a dedicated execution environment that ensures pipeline operations run independently from the main server, preventing resource contention and improving overall system reliability. **Enhanced process isolation** through explicit stdin=subprocess.DEVNULL prevents SIGTTIN signals from terminal and start_new_session=True ensures complete session detachment for improved reliability. The new dual-monitoring architecture with automatic fallback mechanism provides robust progress tracking that gracefully handles WebSocket connection failures and network instability, ensuring continuous monitoring across diverse deployment environments. The simplified architecture with REST polling as the primary monitoring mechanism while maintaining WebSocket support as a premium option provides optimal balance between reliability and real-time responsiveness. **Enhanced scene boundary handling** with optional scene_type properties and improved timestamp parsing provides more accurate scene classification and better user experience in the frontend components, while robust React ref implementations ensure reliable callback synchronization and proper component lifecycle management.
 
 [No sources needed since this section summarizes without analyzing specific files]
 
@@ -570,7 +610,8 @@ The pipeline provides a robust, modular, and observable framework for AI-driven 
   - Total time can exceed 30min depending on stage throughput
 - **Enhanced**: Subprocess isolation ensures consistent performance even with extended processing times for large video files
 - **Enhanced**: Dual-monitoring architecture provides reliable progress tracking across diverse network environments
+- **Enhanced**: Scene boundary processing with improved timestamp parsing and scene type categorization provides more accurate scene detection and analysis
 
-**Updated** Server responsiveness improvements through enhanced subprocess isolation ensure consistent performance even with extended processing times for large video files. The subprocess architecture allows multiple videos to be processed concurrently without impacting system responsiveness, while the dual progress tracking approach (WebSocket streaming and REST polling with automatic fallback) provides flexible monitoring options that work reliably across diverse network conditions. **Enhanced process isolation** through stdin=subprocess.DEVNULL and start_new_session=True ensures reliable execution and prevents signal-related interruptions during extended processing operations. The automatic fallback mechanism guarantees continuous progress monitoring even when WebSocket connections are unstable or unavailable.
+**Updated** Server responsiveness improvements through enhanced subprocess isolation ensure consistent performance even with extended processing times for large video files. The subprocess architecture allows multiple videos to be processed concurrently without impacting system responsiveness, while the dual progress tracking approach (WebSocket streaming and REST polling with automatic fallback) provides flexible monitoring options that work reliably across diverse network conditions. **Enhanced process isolation** through stdin=subprocess.DEVNULL and start_new_session=True ensures reliable execution and prevents signal-related interruptions during extended processing operations. The automatic fallback mechanism guarantees continuous progress monitoring even when WebSocket connections are unstable or unavailable. **Enhanced scene boundary handling** with robust timestamp parsing and scene type categorization improves the accuracy of scene detection and provides better user experience in the frontend components.
 
 [No sources needed since this section provides general guidance]

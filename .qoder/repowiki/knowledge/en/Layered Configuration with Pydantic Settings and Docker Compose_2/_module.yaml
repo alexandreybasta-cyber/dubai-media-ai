@@ -9,6 +9,5 @@ source_files:
     - nginx.conf
     - frontend/src/lib/api.ts
     - backend/main.py
-    - backend/requirements.txt
 depends_on: []
 related_to: []

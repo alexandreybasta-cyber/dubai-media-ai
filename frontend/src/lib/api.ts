@@ -1,5 +1,5 @@
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8800";
 const WS_BASE_URL = API_BASE_URL.replace(/^http/, "ws");
 
 // ─── Typed Fetch Wrapper ────────────────────────────────────────────────
@@ -129,6 +129,22 @@ export function connectWebSocket(
   return ws;
 }
 
+// ─── Video Library Types ────────────────────────────────────────────────
+
+export interface LibraryVideo {
+  video_id: string;
+  filename: string;
+  title: string;
+  status: string;
+  progress: number;
+  created_at: string;
+  duration: number;
+  thumbnail: string;
+  scene_count: number;
+  persons: string[];
+  summary: string;
+}
+
 // ─── RFP Types ──────────────────────────────────────────────────────────
 
 export interface RFPSection {
@@ -203,11 +219,31 @@ export const api = {
       apiFetch(`/api/video/${videoId}/metadata`),
     getTranscript: (videoId: string) =>
       apiFetch(`/api/video/${videoId}/transcript`),
-    search: (query: string, topK: number = 5) =>
+    search: (query: string, topK: number = 5, typeFilter?: string) =>
       apiFetch("/api/search", {
         method: "POST",
-        body: JSON.stringify({ query, top_k: topK }),
+        body: JSON.stringify({
+          query,
+          top_k: topK,
+          type_filter: typeFilter || null,
+        }),
       }),
+    list: () =>
+      apiFetch<{ videos: LibraryVideo[]; total: number }>("/api/videos"),
+    nameFace: (
+      videoId: string,
+      data: {
+        face_index: number;
+        name_en: string;
+        name_ar?: string;
+        role?: string;
+        add_to_reference?: boolean;
+      }
+    ) =>
+      apiFetch<{ status: string; face: Record<string, unknown>; added_to_reference: boolean }>(
+        `/api/video/${videoId}/faces/name`,
+        { method: "POST", body: JSON.stringify(data) }
+      ),
     connectPipeline: (
       videoId: string,
       onMessage: (data: WSMessage) => void

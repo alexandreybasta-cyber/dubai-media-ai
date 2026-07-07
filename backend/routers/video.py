@@ -10,7 +10,7 @@ import subprocess
 import sys
 import uuid
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Optional
 
 import aiofiles
 from fastapi import APIRouter, UploadFile, File, WebSocket, WebSocketDisconnect, HTTPException
@@ -34,6 +34,16 @@ _active_ws: Dict[str, list] = {}
 class SearchRequest(BaseModel):
     query: str
     top_k: int = 5
+    type_filter: Optional[str] = None  # "scene" | "transcript" | "person"
+    video_id: Optional[str] = None
+
+
+class NameFaceRequest(BaseModel):
+    face_index: int
+    name_en: str
+    name_ar: Optional[str] = None
+    role: Optional[str] = None
+    add_to_reference: bool = False
 
 
 # ── Upload ──────────────────────────────────────────────────────────
@@ -156,7 +166,23 @@ async def get_video_metadata(video_id: str):
         raise HTTPException(status_code=404, detail="No metadata available yet")
 
     result["video_id"] = video_id
+    video_file = _find_video_file(video_id)
+    if video_file:
+        result["video_url"] = f"/uploads/{video_file}"
     return result
+
+
+def _find_video_file(video_id: str) -> Optional[str]:
+    """Locate the uploaded media file for a video id (saved as <id>.<ext>)."""
+    try:
+        for fname in os.listdir(settings.UPLOAD_DIR):
+            if fname.startswith(video_id + ".") and os.path.isfile(
+                os.path.join(settings.UPLOAD_DIR, fname)
+            ):
+                return fname
+    except OSError:
+        pass
+    return None
 
 
 # ── Transcript ──────────────────────────────────────────────────────
@@ -180,6 +206,165 @@ async def get_video_transcript(video_id: str):
         raise HTTPException(status_code=500, detail="Failed to read transcript")
 
 
+# ── Video Library ───────────────────────────────────────────────────
+
+def _read_json(path: str) -> Optional[dict]:
+    """Read a JSON file, returning None when missing or invalid."""
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.warning("Could not read %s: %s", path, e)
+        return None
+
+
+@router.get("/videos")
+async def list_videos():
+    """List all uploaded videos with their processing status and key metadata."""
+    videos = []
+    if not os.path.isdir(settings.UPLOAD_DIR):
+        return {"videos": [], "total": 0}
+
+    for entry in os.listdir(settings.UPLOAD_DIR):
+        video_dir = os.path.join(settings.UPLOAD_DIR, entry)
+        status = _read_json(os.path.join(video_dir, "status.json"))
+        if not os.path.isdir(video_dir) or not status:
+            continue
+
+        ingestion = _read_json(os.path.join(video_dir, "ingestion.json")) or {}
+        metadata = _read_json(os.path.join(video_dir, "metadata.json")) or {}
+        visual = _read_json(os.path.join(video_dir, "visual_analysis.json")) or {}
+        faces = _read_json(os.path.join(video_dir, "faces.json")) or []
+
+        headline = (
+            (metadata.get("iptc_video_metadata") or {})
+            .get("videoContent", {})
+            .get("headline", "")
+        )
+        thumbnail = ""
+        if os.path.exists(os.path.join(video_dir, "thumbnail.jpg")):
+            thumbnail = f"/uploads/{entry}/thumbnail.jpg"
+
+        persons = []
+        if isinstance(faces, list):
+            persons = [
+                f.get("name_en") for f in faces
+                if isinstance(f, dict) and f.get("identified") and f.get("name_en")
+            ]
+
+        video_file = _find_video_file(entry)
+        videos.append({
+            "video_id": entry,
+            "video_url": f"/uploads/{video_file}" if video_file else "",
+            "filename": status.get("filename", ""),
+            "title": headline or status.get("filename", "") or entry,
+            "status": status.get("status", "unknown"),
+            "progress": status.get("progress", 0),
+            "created_at": status.get("created_at", ""),
+            "duration": ingestion.get("duration", 0),
+            "thumbnail": thumbnail,
+            "scene_count": len(visual.get("scenes", []) if isinstance(visual, dict) else []),
+            "persons": persons,
+            "summary": visual.get("overall_summary_en", "") if isinstance(visual, dict) else "",
+        })
+
+    videos.sort(key=lambda v: v.get("created_at", ""), reverse=True)
+    return {"videos": videos, "total": len(videos)}
+
+
+# ── Person Naming ───────────────────────────────────────────────────
+
+@router.post("/video/{video_id}/faces/name")
+async def name_face(video_id: str, request: NameFaceRequest):
+    """
+    Assign or correct the name of a detected person, optionally saving them
+    to the reference database so they are recognized in future videos.
+    """
+    output_dir = os.path.join(settings.UPLOAD_DIR, video_id)
+    faces_path = os.path.join(output_dir, "faces.json")
+    faces = _read_json(faces_path)
+    if faces is None or not isinstance(faces, list):
+        raise HTTPException(status_code=404, detail=f"No faces found for video {video_id}")
+
+    if not (0 <= request.face_index < len(faces)):
+        raise HTTPException(status_code=400, detail=f"Invalid face index {request.face_index}")
+
+    name_en = request.name_en.strip()
+    if not name_en:
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+
+    face = faces[request.face_index]
+    face.update({
+        "identified": True,
+        "name_en": name_en,
+        "name_ar": (request.name_ar or "").strip() or face.get("name_ar"),
+        "role": (request.role or "").strip() or face.get("role"),
+        "confidence": 1.0,
+        "source": "manual",
+    })
+
+    with open(faces_path, "w", encoding="utf-8") as f:
+        json.dump(faces, f, ensure_ascii=False, indent=2)
+
+    # Keep combined results.json in sync so reindexing picks up the new name
+    results_path = os.path.join(output_dir, "results.json")
+    results = _read_json(results_path)
+    if results is not None:
+        results["faces"] = faces
+        with open(results_path, "w", encoding="utf-8") as f:
+            json.dump(results, f, ensure_ascii=False, indent=2)
+
+    # Optionally add to the reference database for future recognition
+    added_to_reference = False
+    if request.add_to_reference and face.get("description"):
+        ref_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "data", "reference_faces.json",
+        )
+        references = _read_json(ref_path) or []
+        already_known = any(
+            r.get("name_en", "").lower() == name_en.lower() for r in references
+        )
+        if not already_known:
+            next_id = max(
+                (int(r["id"]) for r in references if str(r.get("id", "")).isdigit()),
+                default=0,
+            ) + 1
+            references.append({
+                "id": str(next_id),
+                "name_en": name_en,
+                "name_ar": face.get("name_ar") or "",
+                "role": face.get("role") or "",
+                "description": face["description"],
+            })
+            with open(ref_path, "w", encoding="utf-8") as f:
+                json.dump(references, f, ensure_ascii=False, indent=2)
+            added_to_reference = True
+
+    # Make the person findable via semantic search immediately
+    try:
+        appearances = face.get("appearances") or []
+        first_seen = appearances[0]["start"] if appearances else 0
+        await _orchestrator.search_index.add_video(video_id, [{
+            "description_en": f"{name_en} ({face.get('role') or 'person'}) appears in this video",
+            "timestamp": first_seen,
+            "type": "person",
+            "title": name_en,
+            "thumbnail": f"/uploads/{video_id}/thumbnail.jpg",
+            "persons": [name_en],
+        }])
+    except Exception as e:
+        logger.warning("Could not index named person for %s: %s", video_id, e)
+
+    return {
+        "status": "ok",
+        "face": face,
+        "added_to_reference": added_to_reference,
+    }
+
+
 # ── Search ──────────────────────────────────────────────────────────
 
 @router.post("/search")
@@ -189,6 +374,8 @@ async def semantic_search(request: SearchRequest):
         results = await _orchestrator.search_index.search(
             query=request.query,
             top_k=request.top_k,
+            type_filter=request.type_filter,
+            video_id=request.video_id,
         )
         return {
             "query": request.query,
@@ -201,12 +388,19 @@ async def semantic_search(request: SearchRequest):
 
 
 @router.get("/search")
-async def semantic_search_get(query: str, top_k: int = 5):
+async def semantic_search_get(
+    query: str,
+    top_k: int = 5,
+    type_filter: Optional[str] = None,
+    video_id: Optional[str] = None,
+):
     """Search across all indexed videos using natural language (GET)."""
     try:
         results = await _orchestrator.search_index.search(
             query=query,
             top_k=top_k,
+            type_filter=type_filter,
+            video_id=video_id,
         )
         return {
             "query": query,

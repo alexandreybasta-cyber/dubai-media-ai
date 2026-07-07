@@ -1,90 +1,76 @@
-## Overview
+# Dual-Stack Dependency Management
 
-This repository employs a **dual-stack dependency management** strategy, maintaining separate dependency ecosystems for the Python-based backend and Next.js-based frontend. Both stacks use **exact version pinning** to ensure reproducible builds across environments.
+This repository uses a **dual-stack architecture** with separate dependency management systems for the Python backend (FastAPI) and Node.js frontend (Next.js). Both stacks employ **exact version pinning** for reproducibility, combined with lockfiles for deterministic builds.
 
 ## Backend: Python/pip with requirements.txt
 
 ### Manifest File
-- **Location**: `backend/requirements.txt`
-- **Format**: Flat list of packages with exact version pins using `==` operator
+- **`backend/requirements.txt`** — All 15 dependencies are pinned to exact versions using `==` syntax:
+  - Core framework: `fastapi==0.115.0`, `uvicorn[standard]==0.30.0`
+  - AI integration: `dashscope==1.20.0` (Alibaba Cloud Qwen/DashScope SDK)
+  - Media processing: `ffmpeg-python==0.2.0`
+  - Document generation: `python-docx==1.1.0`, `reportlab==4.2.0`, `openpyxl==3.1.5`, `pdfplumber==0.11.0`
+  - Vector search: `faiss-cpu==1.8.0`, `numpy==1.26.4`
+  - Configuration & async: `pydantic-settings==2.4.0`, `aiofiles==24.1.0`, `httpx==0.27.0`
+  - Utilities: `python-multipart==0.0.9`, `websockets==12.0`
 
-### Key Dependencies (all pinned)
-- **Web Framework**: `fastapi==0.115.0`, `uvicorn[standard]==0.30.0`
-- **AI Processing**: `dashscope==1.20.0` (Alibaba Cloud Qwen/DashScope SDK)
-- **Media Processing**: `ffmpeg-python==0.2.0`
-- **Document Generation**: `python-docx==1.1.0`, `reportlab==4.2.0`, `openpyxl==3.1.5`, `pdfplumber==0.11.0`
-- **Search/Indexing**: `faiss-cpu==1.8.0`, `numpy==1.26.4`
-- **Async/HTTP**: `websockets==12.0`, `aiofiles==24.1.0`, `httpx==0.27.0`
-- **Configuration**: `pydantic-settings==2.4.0`
-- **File Upload**: `python-multipart==0.0.9`
+### Installation Strategy
+- Dependencies are installed via `pip install -r requirements.txt` into a local virtual environment (`backend/venv/`)
+- No `pyproject.toml` or `setup.py` is present — the project uses the flat `requirements.txt` approach
+- No `requirements-dev.txt` or separate test dependencies file exists
+- No pip lockfile (`requirements-lock.txt` or `Pipfile.lock`) is generated; version pinning in `requirements.txt` serves as the primary reproducibility mechanism
 
-### Installation
-```bash
-cd backend
-pip install -r requirements.txt
-```
+### Docker Integration
+- `docker-compose.yml` references a `Dockerfile` in `./backend`, but no Dockerfile currently exists in the repository. The compose file expects one to be created for containerized deployment.
 
-### Virtual Environment
-A local virtual environment exists at `backend/venv/`, indicating developers are expected to isolate dependencies per-project rather than relying on system-wide Python packages.
-
-## Frontend: npm with package-lock.json
+## Frontend: npm with package.json + package-lock.json
 
 ### Manifest Files
-- **Primary**: `frontend/package.json` — declares direct dependencies with semantic version ranges
-- **Lockfile**: `frontend/package-lock.json` (7,228 lines) — locks entire dependency tree with exact versions and integrity hashes
+- **`frontend/package.json`** — Declares direct dependencies with semantic versioning:
+  - Runtime: `next@16.2.9` (exact), `react@19.2.4` (exact), `react-dom@19.2.4` (exact)
+  - UI libraries: `@heroicons/react@^2.2.0`, `recharts@^3.9.0`
+  - Dev tooling: `tailwindcss@^4`, `@tailwindcss/postcss@^4`, `eslint@^9`, `typescript@^5`, `@types/*` packages
 
-### Direct Dependencies
-- **Framework**: `next@16.2.9`, `react@19.2.4`, `react-dom@19.2.4`
-- **UI Icons**: `@heroicons/react@^2.2.0`
-- **Charts**: `recharts@^3.9.0`
+- **`frontend/package-lock.json`** (7,228 lines) — Full transitive dependency tree with integrity hashes, providing deterministic installs. Uses lockfileVersion 3 (npm v7+ format).
 
-### Dev Dependencies
-- **Styling**: `tailwindcss@^4`, `@tailwindcss/postcss@^4`
-- **TypeScript**: `typescript@^5`, `@types/node@^20`, `@types/react@^19`, `@types/react-dom@^19`
-- **Linting**: `eslint@^9`, `eslint-config-next@16.2.9`
+### Installation Strategy
+- Standard npm workflow: `npm install` reads `package-lock.json` to resolve exact versions of all ~320 packages in `node_modules/`
+- The lockfile includes platform-specific optional dependencies (e.g., `@img/sharp-*` for image processing across darwin/linux/win32 architectures)
+- No Yarn or pnpm configuration files exist — npm is the sole package manager
 
-### Lockfile Strategy
-The `package-lock.json` uses **lockfileVersion 3**, which supports modern npm features including:
-- Integrity hashes (SHA-512) for supply chain security
-- Peer dependency resolution
-- Workspace support (though not currently used)
+### Build Tooling
+- Next.js handles its own build pipeline via `next build` / `next dev` scripts
+- TypeScript compilation is configured via `tsconfig.json`
+- ESLint configuration via `eslint.config.mjs` (ESLint v9 flat config format)
+- PostCSS configuration via `postcss.config.mjs` for Tailwind CSS v4 integration
 
-All transitive dependencies are fully resolved and pinned, ensuring identical installs across machines.
+## Cross-Cutting Conventions
 
-### Installation
-```bash
-cd frontend
-npm install
-```
+### Version Pinning Philosophy
+Both stacks prioritize **reproducibility over automatic updates**:
+- Python: All versions use `==` (exact pin)
+- Node.js: Core framework packages (`next`, `react`, `react-dom`) use exact versions; UI/dev libraries use `^` (caret) for minor/patch updates
 
-Note: The `.gitignore` includes Yarn-specific entries (`.yarn/*`, `yarn-debug.log*`), suggesting Yarn was considered or previously used, but the active toolchain is npm.
+### No Private Registry Configuration
+- All dependencies come from public registries (PyPI for Python, npm registry for Node.js)
+- No `.npmrc`, `GOPRIVATE`, or private PyPI index configuration is present
+- The DashScope SDK (`dashscope==1.20.0`) is a public PyPI package, not a private Alibaba registry
 
-## Docker Orchestration
+### No Automated Dependency Updates
+- No Dependabot, Renovate, or similar automated update configuration exists
+- No CI/CD pipeline files (`.github/workflows/`, `.gitlab-ci.yml`) are present to enforce dependency scanning or updates
+- Dependency updates are manual: edit `requirements.txt` or `package.json`, then regenerate lockfiles
 
-### docker-compose.yml
-The project uses Docker Compose to orchestrate three services:
-- **backend**: Built from `./backend` context, mounts source code and uploads volume
-- **frontend**: Built from `./frontend` context, mounts source code for hot-reload
-- **nginx**: Reverse proxy using `nginx:alpine` image
+### Environment Isolation
+- Backend: Local virtual environment (`backend/venv/`) listed in `.gitignore`
+- Frontend: `node_modules/` directory listed in `.gitignore`
+- Docker Compose provides container-level isolation for production-like environments
 
-Dependencies between services are declared via `depends_on`, ensuring correct startup order.
+## Developer Rules
 
-### Volume Strategy
-- Source code is mounted as volumes for development hot-reload
-- `uploads` named volume persists processed video artifacts across container restarts
-
-## Conventions and Rules for Developers
-
-1. **Never commit `node_modules/` or `venv/`** — both are gitignored; rely on lockfiles and manifests for reproducibility
-2. **Pin all backend dependencies** — use `==` in `requirements.txt`; avoid `>=` or `~=` unless there's a specific compatibility reason
-3. **Commit `package-lock.json`** — this is the source of truth for frontend dependency resolution; never delete or ignore it
-4. **Update dependencies deliberately** — when upgrading, test thoroughly before committing new pins; document breaking changes
-5. **Use virtual environments** — always activate `backend/venv` before installing or running Python code
-6. **Docker for production parity** — use `docker-compose up` to replicate production-like environments locally
-7. **No vendoring** — neither stack vendors dependencies; all third-party code comes from public registries (PyPI, npm)
-
-## Registry Configuration
-
-- **Python**: Uses default PyPI registry (no custom `pip.conf` or private registry configuration found)
-- **Node.js**: Uses default npm registry (`https://registry.npmjs.org`); no `.npmrc` with custom registries detected
-- No GOPRIVATE or Go module configuration (this is not a Go project)
+1. **Never commit `venv/` or `node_modules/`** — both are gitignored; rely on manifest files for reproducible installs
+2. **Pin new Python dependencies with `==`** — add exact versions to `requirements.txt` after testing compatibility
+3. **Commit `package-lock.json` changes** — any `npm install` that modifies the lockfile must be committed to ensure team consistency
+4. **Test dependency upgrades in isolation** — no automated test suite exists to catch breaking changes; manual verification via the demo walkthrough is required
+5. **Sync `.env` with dependency changes** — new API integrations may require additional environment variables (see `.env.example`)
+6. **Docker builds require Dockerfiles** — the `docker-compose.yml` references Dockerfiles that do not yet exist; create them before attempting `docker compose up --build`

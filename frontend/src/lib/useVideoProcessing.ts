@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { api, connectWebSocket, WSMessage } from "./api";
+import { api, connectWebSocket, WSMessage, API_BASE_URL } from "./api";
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -29,14 +29,23 @@ export interface TranscriptSegment {
 
 export interface SceneBoundary {
   timestamp: number;
+  start?: number;
+  end?: number;
   description: string;
+  description_ar?: string;
   scene_type?: string;
   thumbnail?: string;
 }
 
 export interface DetectedFace {
+  index: number;
   name: string;
   name_ar?: string;
+  role?: string;
+  identified: boolean;
+  confidence?: number;
+  source?: string;
+  description?: string;
   appearances: { start: number; end: number }[];
   color: string;
 }
@@ -82,6 +91,9 @@ export interface SearchResult {
   description: string;
   score: number;
   thumbnail?: string;
+  type?: string;
+  scene_type?: string;
+  persons?: string[];
 }
 
 export type PageView = "upload" | "processing" | "results";
@@ -143,6 +155,7 @@ export function useVideoProcessing() {
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pollFailCountRef = useRef<number>(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const pendingSeekRef = useRef<number | null>(null);
   const startPollingFallbackRef = useRef<((videoId: string) => void) | null>(null);
   const fetchResultsRef = useRef<((videoId: string) => Promise<void>) | null>(null);
 
@@ -308,7 +321,7 @@ export function useVideoProcessing() {
       const sourceFaces = rawFaces.length > 0 ? rawFaces : rawVisualFaces;
 
       let unknownCount = 0;
-      const mappedFaces: DetectedFace[] = sourceFaces.map((face) => {
+      const mappedFaces: DetectedFace[] = sourceFaces.map((face, index) => {
         // Map name_en → name, with fallback
         let name = (face.name_en as string) || (face.name as string) || "";
         if (!name) {
@@ -330,8 +343,14 @@ export function useVideoProcessing() {
         }
 
         return {
+          index,
           name,
           name_ar: (face.name_ar as string) || undefined,
+          role: (face.role as string) || undefined,
+          identified: Boolean(face.identified),
+          confidence: typeof face.confidence === "number" ? face.confidence : undefined,
+          source: (face.source as string) || undefined,
+          description: (face.description as string) || undefined,
           appearances,
           color: "",
         };
@@ -358,9 +377,13 @@ export function useVideoProcessing() {
               ts = parts[0] * 60 + parts[1];
             }
           }
+          const start = typeof s.start === "number" ? s.start : ts;
           return {
-            timestamp: ts,
+            timestamp: start,
+            start,
+            end: typeof s.end === "number" ? s.end : undefined,
             description: (s.description_en as string) || (s.description as string) || "",
+            description_ar: (s.description_ar as string) || undefined,
             scene_type: (s.scene_type as string) || "other",
             thumbnail: (s.thumbnail as string) || undefined,
           } as SceneBoundary;
@@ -414,10 +437,17 @@ export function useVideoProcessing() {
         };
       });
 
+      // For reopened archive videos there is no local object URL — use the
+      // server-side file so the player works.
+      const serverVideoUrl = raw.video_url
+        ? `${API_BASE_URL}${raw.video_url as string}`
+        : null;
+
       setState((prev) => ({
         ...prev,
         metadata,
         transcript,
+        videoUrl: prev.videoUrl || serverVideoUrl,
         view: "results",
       }));
     } catch (err) {
@@ -502,12 +532,12 @@ export function useVideoProcessing() {
 
   // ─── Search ─────────────────────────────────────────────────────────
 
-  const search = useCallback(async (query: string) => {
+  const search = useCallback(async (query: string, typeFilter?: string) => {
     if (!query.trim()) return;
     setState((prev) => ({ ...prev, searchQuery: query, isSearching: true }));
 
     try {
-      const results = (await api.video.search(query, 5)) as {
+      const results = (await api.video.search(query, 8, typeFilter)) as {
         results: SearchResult[];
       };
       setState((prev) => ({
@@ -520,6 +550,45 @@ export function useVideoProcessing() {
     }
   }, []);
 
+  // ─── Person Naming ──────────────────────────────────────────────────
+
+  const renameFace = useCallback(
+    async (
+      faceIndex: number,
+      data: { name_en: string; name_ar?: string; role?: string; add_to_reference?: boolean }
+    ) => {
+      const videoId = state.videoId;
+      if (!videoId) throw new Error("No video loaded");
+
+      const result = await api.video.nameFace(videoId, {
+        face_index: faceIndex,
+        ...data,
+      });
+
+      // Reflect the new identity locally without a full refetch
+      setState((prev) => {
+        if (!prev.metadata) return prev;
+        const faces = prev.metadata.faces.map((face) =>
+          face.index === faceIndex
+            ? {
+                ...face,
+                name: data.name_en,
+                name_ar: data.name_ar || face.name_ar,
+                role: data.role || face.role,
+                identified: true,
+                confidence: 1,
+                source: "manual",
+              }
+            : face
+        );
+        return { ...prev, metadata: { ...prev.metadata, faces } };
+      });
+
+      return result;
+    },
+    [state.videoId]
+  );
+
   // ─── Video Time Sync ────────────────────────────────────────────────
 
   const setCurrentTime = useCallback((time: number) => {
@@ -527,8 +596,13 @@ export function useVideoProcessing() {
   }, [updateState]);
 
   const seekTo = useCallback((time: number) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = time;
+    const video = videoRef.current;
+    if (video && video.readyState >= 1) {
+      video.currentTime = time;
+    } else {
+      // Media not mounted/ready yet (deep link, cross-video search click) —
+      // VideoTimeline applies this once metadata loads.
+      pendingSeekRef.current = time;
     }
     updateState({ currentTime: time });
   }, [updateState]);
@@ -572,6 +646,12 @@ export function useVideoProcessing() {
       videoId,
       view: "results",
       uploadState: "uploaded",
+      // Clear any previously loaded video so fetchResults uses this video's
+      // server-side URL instead of a stale object URL
+      videoUrl: null,
+      metadata: null,
+      transcript: [],
+      currentTime: 0,
       stages: INITIAL_STAGES.map(s => ({ ...s, status: "completed" as StageStatus })),
     });
     await fetchResults(videoId);
@@ -580,9 +660,11 @@ export function useVideoProcessing() {
   return {
     state,
     videoRef,
+    pendingSeekRef,
     uploadVideo,
     loadExistingVideo,
     search,
+    renameFace,
     setCurrentTime,
     seekTo,
     reset,

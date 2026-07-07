@@ -90,7 +90,7 @@ VT --> TP
 VT --> MP
 VT --> SC
 MP --> SD
-PV --> SD
+PV --> SC
 SC --> SD
 RF --> RP
 TE --> RF
@@ -354,6 +354,7 @@ UV-->>VU : metadata, transcript when ready
 - **Enhanced Scene Type Categorization**: Implements comprehensive color mapping for 8 different scene types including interview, b-roll, aerial, ceremony, documentary, news-anchor, sport, and other. Each scene type has associated background, text, border, and bar colors for consistent visual representation.
 - **Interactive Timeline Visualization**: Provides precise timeline segmentation with calculated width percentages based on scene durations, creating an intuitive visual representation of scene distribution throughout the video.
 - **Responsive Scene List**: Features expandable scene descriptions with show more/show less functionality, preventing clutter while providing detailed information access.
+- **Integration with VideoTimeline**: Seamlessly complements VideoTimeline by providing an alternative visualization method and additional scene analysis capabilities. Both components share the same SceneBoundary interface from useVideoProcessing, ensuring consistency across the video analysis ecosystem.
 
 **New** Comprehensive documentation for the SceneDetection component, including:
 - Scene type color mapping system with 8 predefined categories

@@ -105,6 +105,7 @@ class PipelineOrchestrator:
                 api_key=settings.DASHSCOPE_VIDEO_API_KEY,
                 model=settings.MODEL_VIDEO,
                 base_url=settings.DASHSCOPE_BASE_URL,
+                output_dir=output_dir,
             ),
             result_key="visual_analysis",
         )
@@ -127,8 +128,11 @@ class PipelineOrchestrator:
         )
 
         # ── Stage 4: Face Recognition ──────────────────────────────
-        faces_detected = results.get("visual_analysis", {}).get("faces", [])
-        text_ocr = results.get("visual_analysis", {}).get("text_ocr", [])
+        visual = results.get("visual_analysis", {})
+        faces_detected = visual.get("faces", [])
+        text_ocr = visual.get("text_ocr", [])
+        scene_segments = visual.get("scene_detection", {}).get("segments", [])
+        transcript_segments = results.get("transcript", {}).get("segments", [])
         video_duration = results.get("ingestion", {}).get("duration", 0)
         await self._run_stage(
             stage_name="face_recognition",
@@ -141,6 +145,8 @@ class PipelineOrchestrator:
             coro_fn=lambda: identify_faces(
                 faces_detected=faces_detected,
                 text_ocr=text_ocr,
+                transcript_segments=transcript_segments,
+                scene_segments=scene_segments,
                 video_duration=video_duration,
                 api_key=settings.DASHSCOPE_API_KEY,
                 model=settings.MODEL_TEXT,
@@ -329,15 +335,19 @@ class PipelineOrchestrator:
         faces_list = results.get("faces", [])
         person_names = [f.get("name_en", "") for f in faces_list if f.get("identified") and f.get("name_en")]
 
-        # Add scenes from visual analysis
+        # Add scenes from visual analysis (prefer per-scene thumbnails and
+        # real detected boundaries when the scene-detection stage provided them)
         for scene in results.get("visual_analysis", {}).get("scenes", []):
+            start = scene.get("start")
+            if start is None:
+                start = self._timestamp_to_seconds(scene.get("timestamp", "0:00"))
             segments.append({
                 "description_en": scene.get("description_en", ""),
-                "timestamp": self._timestamp_to_seconds(scene.get("timestamp", "0:00")),
+                "timestamp": start,
                 "scene_type": scene.get("scene_type", ""),
                 "type": "scene",
                 "title": title,
-                "thumbnail": thumbnail,
+                "thumbnail": scene.get("thumbnail") or thumbnail,
             })
 
         # Add transcript segments

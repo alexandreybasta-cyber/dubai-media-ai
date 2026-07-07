@@ -211,16 +211,25 @@ class SearchIndex:
 
         logger.info("Added %d segments for video %s to search index", len(texts), video_id)
 
-    async def search(self, query: str, top_k: int = 5) -> list:
+    async def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        type_filter: Optional[str] = None,
+        video_id: Optional[str] = None,
+    ) -> list:
         """
         Search for videos/segments matching a natural language query.
 
         Args:
             query: Natural language search query.
             top_k: Number of results to return.
+            type_filter: Restrict results to a segment type
+                ("scene", "transcript", or "person").
+            video_id: Restrict results to a single video.
 
         Returns:
-            List of dicts with video_id, timestamp, description, score.
+            List of dicts with video_id, timestamp, description, type, score.
         """
         if self.index is None or self.index.ntotal == 0:
             logger.warning("Search index is empty or unavailable")
@@ -235,26 +244,44 @@ class SearchIndex:
         norms[norms == 0] = 1
         query_vec = query_vec / norms
 
-        k = min(top_k, self.index.ntotal)
+        # Over-fetch when filtering so post-filter results can still fill top_k
+        fetch_k = top_k * 5 if (type_filter or video_id) else top_k
+        k = min(fetch_k, self.index.ntotal)
         scores, indices = self.index.search(query_vec, k)
+
+        # Lightweight lexical boost: exact query-term hits rank above
+        # semantically-near-but-wordless matches at similar vector scores.
+        query_terms = [t for t in query.lower().split() if len(t) > 2]
 
         results = []
         for score, idx in zip(scores[0], indices[0]):
             if idx < 0 or idx >= len(self.metadata):
                 continue
             meta = self.metadata[idx]
+            if type_filter and meta.get("type", "scene") != type_filter:
+                continue
+            if video_id and meta.get("video_id") != video_id:
+                continue
+
+            description = meta["description"]
+            desc_lower = description.lower()
+            term_hits = sum(1 for t in query_terms if t in desc_lower)
+            boost = 0.05 * min(term_hits, 3)
+
             results.append({
                 "video_id": meta["video_id"],
                 "title": meta.get("title", "Untitled"),
                 "timestamp": meta["timestamp"],
-                "description": meta["description"],
+                "description": description,
                 "scene_type": meta.get("scene_type", ""),
-                "score": float(score),
+                "type": meta.get("type", "scene"),
+                "score": float(score) + boost,
                 "thumbnail": meta.get("thumbnail", ""),
                 "persons": meta.get("persons", []),
             })
 
-        return results
+        results.sort(key=lambda r: r["score"], reverse=True)
+        return results[:top_k]
 
     async def _get_embeddings(self, texts: list) -> Optional[List[list]]:
         """Get text embeddings from DashScope API."""

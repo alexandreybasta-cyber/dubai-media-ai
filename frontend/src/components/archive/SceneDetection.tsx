@@ -2,6 +2,16 @@
 
 import { useState } from "react";
 import { SceneBoundary } from "@/lib/useVideoProcessing";
+import { API_BASE_URL } from "@/lib/api";
+
+/** Convert a backend-relative thumbnail path to a browser URL */
+function thumbnailUrl(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+  let path = raw.replace(/^\.?\//, "/");
+  if (!path.startsWith("/")) path = "/" + path;
+  return `${API_BASE_URL}${path}`;
+}
 
 interface SceneDetectionProps {
   scenes: SceneBoundary[];
@@ -42,10 +52,14 @@ export default function SceneDetection({
 
   if (!scenes || scenes.length === 0) return null;
 
-  // Compute scene segments with start/end times for timeline bar
+  // Compute scene segments for the timeline bar. Prefer real detected
+  // boundaries (start/end from ffmpeg shot detection); fall back to
+  // inferring the end from the next scene's start.
   const segments = scenes.map((scene, i) => {
-    const start = scene.timestamp;
-    const end = i < scenes.length - 1 ? scenes[i + 1].timestamp : duration;
+    const start = scene.start ?? scene.timestamp;
+    const end =
+      scene.end ??
+      (i < scenes.length - 1 ? (scenes[i + 1].start ?? scenes[i + 1].timestamp) : duration);
     return { ...scene, start, end, index: i };
   });
 
@@ -115,12 +129,14 @@ export default function SceneDetection({
         </div>
 
         {/* Scene List */}
-        <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
-          {scenes.map((scene, i) => {
+        <div className="space-y-2 max-h-[440px] overflow-y-auto pr-1">
+          {segments.map((scene, i) => {
             const color = getSceneColor(scene.scene_type);
             const isActive = i === activeSceneIndex;
             const isExpanded = expandedScene === i;
-            const descTruncated = scene.description.length > 120;
+            const descTruncated = scene.description.length > 140;
+            const thumb = thumbnailUrl(scene.thumbnail);
+            const sceneLength = Math.max(0, scene.end - scene.start);
 
             return (
               <div
@@ -131,32 +147,52 @@ export default function SceneDetection({
                     : "bg-white hover:bg-gray-50 border-transparent hover:border-gray-300"
                 } ${color.border}`}
                 style={{ borderLeftColor: color.bar }}
-                onClick={() => onSeek(scene.timestamp)}
+                onClick={() => onSeek(scene.start)}
               >
                 <div className="flex items-start gap-3">
-                  {/* Timestamp */}
-                  <button
-                    className="flex-shrink-0 text-xs font-mono font-medium text-orange-600 bg-orange-50 px-2 py-1 rounded hover:bg-orange-100 transition-colors"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSeek(scene.timestamp);
-                    }}
-                  >
-                    {formatTime(scene.timestamp)}
-                  </button>
+                  {/* Thumbnail */}
+                  {thumb && (
+                    <div className="flex-shrink-0 w-28 h-16 rounded-md overflow-hidden bg-gray-900 relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={thumb} alt="" className="w-full h-full object-cover" loading="lazy" />
+                      {sceneLength > 0 && (
+                        <span className="absolute bottom-0.5 right-0.5 px-1 py-px rounded bg-black/70 text-white text-[9px] font-mono">
+                          {Math.round(sceneLength)}s
+                        </span>
+                      )}
+                    </div>
+                  )}
 
-                  {/* Scene type badge */}
-                  <span
-                    className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full capitalize ${color.bg} ${color.text}`}
-                  >
-                    {scene.scene_type || "other"}
-                  </span>
-
-                  {/* Description */}
                   <div className="flex-1 min-w-0">
-                    <p className={`text-sm text-gray-700 leading-relaxed ${!isExpanded && descTruncated ? "line-clamp-2" : ""}`}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Time range */}
+                      <button
+                        className="flex-shrink-0 text-xs font-mono font-medium text-orange-600 bg-orange-50 px-2 py-1 rounded hover:bg-orange-100 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSeek(scene.start);
+                        }}
+                      >
+                        {formatTime(scene.start)}–{formatTime(scene.end)}
+                      </button>
+
+                      {/* Scene type badge */}
+                      <span
+                        className={`flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full capitalize ${color.bg} ${color.text}`}
+                      >
+                        {scene.scene_type || "other"}
+                      </span>
+                    </div>
+
+                    {/* Description */}
+                    <p className={`mt-1.5 text-sm text-gray-700 leading-relaxed ${!isExpanded && descTruncated ? "line-clamp-2" : ""}`}>
                       {scene.description}
                     </p>
+                    {isExpanded && scene.description_ar && (
+                      <p className="mt-1 text-sm text-gray-500 leading-relaxed" dir="rtl">
+                        {scene.description_ar}
+                      </p>
+                    )}
                     {descTruncated && (
                       <button
                         className="text-xs text-orange-600 hover:text-orange-700 mt-1 font-medium"

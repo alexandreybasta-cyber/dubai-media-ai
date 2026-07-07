@@ -6,22 +6,28 @@
 - [Sidebar.tsx](file://frontend/src/components/Sidebar.tsx)
 - [globals.css](file://frontend/src/app/globals.css)
 - [page.tsx](file://frontend/src/app/page.tsx)
+- [archive/page.tsx](file://frontend/src/app/archive/page.tsx)
 - [rfp-creator/page.tsx](file://frontend/src/app/rfp-creator/page.tsx)
 - [Button.tsx](file://frontend/src/components/Button.tsx)
 - [Card.tsx](file://frontend/src/components/Card.tsx)
+- [SceneDetection.tsx](file://frontend/src/components/archive/SceneDetection.tsx)
+- [TranscriptPanel.tsx](file://frontend/src/components/archive/TranscriptPanel.tsx)
+- [MetadataPanel.tsx](file://frontend/src/components/archive/MetadataPanel.tsx)
+- [VideoTimeline.tsx](file://frontend/src/components/archive/VideoTimeline.tsx)
 - [package.json](file://frontend/package.json)
 - [postcss.config.mjs](file://frontend/postcss.config.mjs)
 - [next.config.ts](file://frontend/next.config.ts)
 - [tsconfig.json](file://frontend/tsconfig.json)
+- [useVideoProcessing.ts](file://frontend/src/lib/useVideoProcessing.ts)
 </cite>
 
 ## Update Summary
 **Changes Made**
-- Documented comprehensive new color palette system with primary color variations from 50 to 900 shades
-- Added enhanced form input accessibility styling with readable text and placeholder colors
-- Updated typography consistency with font variable integration
-- Enhanced Tailwind CSS theme customization with comprehensive color token system
-- Added new component examples demonstrating the improved styling system
+- Updated archive page layout documentation to include the new SceneDetection component integration
+- Added comprehensive documentation for the SceneDetection component with scene timeline visualization and interactive features
+- Enhanced archive page component analysis to reflect the new three-column layout with SceneDetection integrated alongside TranscriptPanel and MetadataPanel
+- Updated component interaction patterns to show how SceneDetection works with other archive components
+- Added detailed coverage of scene detection functionality including timeline bars, scene types, and interactive seeking
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -42,7 +48,7 @@
 ## Introduction
 This document explains the Next.js application layout and navigation system used in the frontend. It covers the RootLayout component structure, font configuration with Geist and Geist Mono, responsive design implementation, the sidebar navigation component (menu items, active state management, and mobile responsiveness), the main content area layout, padding, and background styling. It also provides examples of layout customization, theme integration, navigation patterns, and how layout components relate to page rendering, including SSR/SSG considerations and performance optimizations.
 
-**Updated** Enhanced with comprehensive styling improvements including new color palette system, enhanced form input accessibility, typography consistency, and Tailwind CSS theme customization with primary color variations from 50 to 900 shades.
+**Updated** Enhanced with comprehensive styling improvements including new color palette system, enhanced form input accessibility, typography consistency, and Tailwind CSS theme customization with primary color variations from 50 to 900 shades. The archive page now includes the new SceneDetection component for advanced scene analysis and timeline visualization.
 
 ## Project Structure
 The layout system centers around a single RootLayout that wraps all pages and a fixed sidebar navigation. Pages render inside the main content area with consistent padding and background styling. Fonts are configured via Next.js font optimization, and Tailwind CSS provides responsive utilities and theme tokens with comprehensive color palette support.
@@ -52,6 +58,7 @@ graph TB
 RootLayout["RootLayout<br/>(layout.tsx)"] --> Sidebar["Sidebar<br/>(components/Sidebar.tsx)"]
 RootLayout --> Main["Main Content<br/>(<main>)"]
 Main --> PageHome["Home Page<br/>(app/page.tsx)"]
+Main --> PageArchive["Archive Page<br/>(app/archive/page.tsx)"]
 Main --> PageCreator["RFP Creator Page<br/>(app/rfp-creator/page.tsx)"]
 RootLayout --> Fonts["Geist Sans & Mono<br/>(layout.tsx)"]
 RootLayout --> Theme["Tailwind Theme Tokens<br/>(app/globals.css)"]
@@ -63,6 +70,7 @@ RootLayout --> Colors["Primary Color Palette<br/>(50-900 shades)"]
 - [Sidebar.tsx:17-66](file://frontend/src/components/Sidebar.tsx#L17-L66)
 - [globals.css:8-23](file://frontend/src/app/globals.css#L8-L23)
 - [page.tsx:69-198](file://frontend/src/app/page.tsx#L69-L198)
+- [archive/page.tsx:167-173](file://frontend/src/app/archive/page.tsx#L167-L173)
 - [rfp-creator/page.tsx:8-158](file://frontend/src/app/rfp-creator/page.tsx#L8-L158)
 
 **Section sources**
@@ -75,17 +83,20 @@ RootLayout --> Colors["Primary Color Palette<br/>(50-900 shades)"]
 - Sidebar: Fixed left navigation with active-state highlighting based on current route.
 - Global Styles: Tailwind-based theme tokens and comprehensive color palette, plus font family variables.
 - Pages: Home, Archive, RFP Creator, and RFP Evaluator pages render within the main content area.
+- Archive Page: Enhanced with SceneDetection component for scene analysis and timeline visualization.
 
 Key responsibilities:
 - RootLayout sets up the base HTML element with font variables and ensures the body is a flex container.
 - Sidebar handles navigation links, active state detection, and branding.
 - Global styles define theme tokens and comprehensive color scheme for light/dark modes.
 - Pages define their own content and responsive layouts within the main content area.
+- Archive page manages complex video processing state with multiple specialized panels.
 
 **Section sources**
 - [layout.tsx:22-40](file://frontend/src/app/layout.tsx#L22-L40)
 - [Sidebar.tsx:17-66](file://frontend/src/components/Sidebar.tsx#L17-L66)
 - [globals.css:8-23](file://frontend/src/app/globals.css#L8-L23)
+- [archive/page.tsx:113-149](file://frontend/src/app/archive/page.tsx#L113-L149)
 
 ## Architecture Overview
 The layout architecture follows a strict hierarchy: RootLayout wraps all pages, hosts the Sidebar, and defines the main content container. Pages render inside the main content area with their own responsive grids and components.
@@ -96,7 +107,7 @@ html["<html> with font variables<br/>(layout.tsx)"] --> body["<body> flex contai
 body --> aside["<aside> Fixed Sidebar<br/>(Sidebar.tsx)"]
 body --> main["<main> Main Content<br/>(layout.tsx)"]
 main --> divPadding["<div> Padding Container<br/>(layout.tsx)"]
-divPadding --> page["Page Component<br/>(page.tsx, rfp-creator)"]
+divPadding --> page["Page Component<br/>(page.tsx, archive)"]
 ```
 
 **Diagram sources**
@@ -204,10 +215,88 @@ Customization examples:
 - [globals.css:3-23](file://frontend/src/app/globals.css#L3-L23)
 - [globals.css:128-133](file://frontend/src/app/globals.css#L128-L133)
 
+### Archive Page Layout and Component Integration
+The archive page represents the most complex layout in the application, featuring a sophisticated three-column design with the new SceneDetection component integrated alongside existing panels.
+
+#### Three-Column Layout Architecture
+The archive page implements a responsive grid system:
+- **Left Column (66% width)**: Contains VideoTimeline and SceneDetection components stacked vertically
+- **Right Column (33% width)**: Contains MetadataPanel and APITransparencyPanel stacked vertically
+- **Responsive Breakpoints**: Uses lg:grid-cols-5 for desktop, collapsing to single column on smaller screens
+
+#### SceneDetection Component Integration
+The SceneDetection component is strategically positioned between VideoTimeline and TranscriptPanel to provide comprehensive scene analysis:
+
+```typescript
+// SceneDetection integration in archive page
+<SceneDetection
+  scenes={state.metadata?.scenes || []}
+  duration={state.metadata?.duration || 0}
+  currentTime={state.currentTime}
+  onSeek={seekTo}
+/>
+```
+
+**Updated** The SceneDetection component provides advanced scene analysis with timeline visualization, interactive seeking, and scene type categorization.
+
+#### Component Interaction Patterns
+The archive page demonstrates sophisticated component interaction:
+- **State Management**: Centralized through useVideoProcessing hook managing video processing lifecycle
+- **Event Propagation**: Seek events bubble up from components to trigger video playback synchronization
+- **Conditional Rendering**: Components only render when relevant data is available
+- **Responsive Design**: Grid layout adapts to different screen sizes while maintaining component functionality
+
+**Section sources**
+- [archive/page.tsx:113-149](file://frontend/src/app/archive/page.tsx#L113-L149)
+- [archive/page.tsx:127-132](file://frontend/src/app/archive/page.tsx#L127-L132)
+
+### SceneDetection Component
+The SceneDetection component provides comprehensive scene analysis and visualization capabilities:
+
+#### Scene Timeline Visualization
+- **Timeline Bar**: Horizontal bar showing scene boundaries with color-coded segments
+- **Interactive Segments**: Clickable scene regions that jump to specific timestamps
+- **Playback Indicator**: Real-time position marker synchronized with video playback
+- **Legend System**: Color-coded scene type indicators for quick identification
+
+#### Scene Type Classification
+The component supports multiple scene types with distinct visual treatments:
+- **interview**: Blue timeline segments with blue accent colors
+- **b-roll**: Orange segments with orange styling
+- **aerial**: Teal segments with teal styling
+- **ceremony**: Purple segments with purple styling
+- **documentary**: Amber segments with amber styling
+- **news-anchor**: Red segments with red styling
+- **sport**: Green segments with green styling
+- **other**: Gray segments with default styling
+
+#### Interactive Features
+- **Timestamp Seeking**: Click scene segments to jump to specific video positions
+- **Description Expansion**: Expand/collapse detailed scene descriptions
+- **Active Scene Highlighting**: Current scene is visually emphasized
+- **Auto-Scroll**: Smooth scrolling to active scene during playback
+
+#### Technical Implementation
+- **Scene Boundary Calculation**: Computes start/end times for each scene segment
+- **Active Scene Detection**: Real-time determination of currently playing scene
+- **Color Mapping**: Dynamic color assignment based on scene type
+- **Performance Optimization**: Efficient rendering with virtualized lists for long transcripts
+
+**Section sources**
+- [SceneDetection.tsx:14-27](file://frontend/src/components/archive/SceneDetection.tsx#L14-L27)
+- [SceneDetection.tsx:45-55](file://frontend/src/components/archive/SceneDetection.tsx#L45-L55)
+- [SceneDetection.tsx:118-176](file://frontend/src/components/archive/SceneDetection.tsx#L118-L176)
+
 ### Page Rendering and Layout Relationship
 Home page:
 - Demonstrates responsive grid layouts and card-based content.
 - Uses Tailwind utilities for spacing, typography, and responsive breakpoints.
+
+Archive page:
+- **Complex State Management**: Integrates useVideoProcessing hook for comprehensive video processing lifecycle
+- **Multi-Panel Layout**: Three-column design with specialized components for different aspects of video analysis
+- **Real-time Synchronization**: Components coordinate through shared state for seamless user experience
+- **Conditional Rendering**: Components only display when relevant data is available
 
 RFP Creator page:
 - Uses responsive grid layouts for forms and previews.
@@ -217,9 +306,11 @@ RFP Creator page:
 Layout relationship:
 - All pages render inside the main content area defined by RootLayout.
 - Pages do not need to manage sidebar or global layout concerns.
+- Archive page serves as the most complex example of component integration and state management.
 
 **Section sources**
 - [page.tsx:89-150](file://frontend/src/app/page.tsx#L89-L150)
+- [archive/page.tsx:33-165](file://frontend/src/app/archive/page.tsx#L33-L165)
 - [rfp-creator/page.tsx:96-155](file://frontend/src/app/rfp-creator/page.tsx#L96-L155)
 
 ## Enhanced Styling System
@@ -523,24 +614,34 @@ Card characteristics:
 - **Rounded corners**: Large radius (12px) for contemporary design
 - **Padding consistency**: 24px padding for comfortable content spacing
 
-### Page Component Styling
-Page components leverage the enhanced styling system:
+### Archive Page Component Styling
+The archive page demonstrates sophisticated component integration:
 
 ```typescript
-// Example from RFP Creator page
-<div className="bg-white rounded-xl border border-gray-200 p-8">
+// SceneDetection component styling
+<div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+
+// TranscriptPanel component styling  
+<div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col h-full">
+
+// MetadataPanel component styling
+<div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col h-full">
 ```
 
-Page styling patterns:
-- **Consistent card design**: Uniform card styling across all pages
-- **Responsive grids**: Flexible grid layouts for different screen sizes
-- **Color harmony**: Primary color palette integration for visual consistency
-- **Spacing optimization**: Thoughtful margins and padding for readability
+Archive styling patterns:
+- **Consistent card design**: All components follow the same rounded corner and border treatment
+- **Shadow system**: Subtle shadows provide depth while maintaining clean aesthetics
+- **Responsive grid**: Flexible grid layout adapts to different screen sizes
+- **Color coordination**: SceneDetection uses vibrant colors for scene type differentiation
+- **Typography hierarchy**: Clear visual hierarchy with consistent font weights and sizes
 
 **Section sources**
 - [Button.tsx:8-29](file://frontend/src/components/Button.tsx#L8-L29)
 - [Card.tsx:7-16](file://frontend/src/components/Card.tsx#L7-L16)
-- [rfp-creator/page.tsx:106-155](file://frontend/src/app/rfp-creator/page.tsx#L106-L155)
+- [SceneDetection.tsx:58-179](file://frontend/src/components/archive/SceneDetection.tsx#L58-L179)
+- [TranscriptPanel.tsx:102-167](file://frontend/src/components/archive/TranscriptPanel.tsx#L102-L167)
+- [MetadataPanel.tsx:344-378](file://frontend/src/components/archive/MetadataPanel.tsx#L344-L378)
+- [archive/page.tsx:116-148](file://frontend/src/app/archive/page.tsx#L116-L148)
 
 ## Theme Integration
 
@@ -625,6 +726,7 @@ Theme usage patterns:
 - **Enhanced** Form input accessibility: Optimized CSS rules minimize repaints and improve rendering performance.
 - **Enhanced** Typography system: Font variables reduce font loading overhead and improve text rendering performance.
 - **Enhanced** Theme integration: CSS custom properties provide efficient theming with minimal performance impact.
+- **Enhanced** SceneDetection performance: Efficient rendering with virtualized lists and optimized scene boundary calculations.
 
 ## Troubleshooting Guide
 Common issues and resolutions:
@@ -639,6 +741,9 @@ Common issues and resolutions:
 - **Enhanced** Theme switching issues: Check CSS custom property definitions and ensure proper media query handling.
 - **Enhanced** Button color variations not working: Verify Tailwind configuration includes the primary color scale.
 - **Enhanced** Card styling inconsistencies: Check component class composition and ensure proper Tailwind utility ordering.
+- **Enhanced** SceneDetection component not rendering: Verify scenes array is populated and duration is greater than zero.
+- **Enhanced** Scene timeline not interactive: Check onSeek prop is properly passed and currentTime state is updating.
+- **Enhanced** Archive page layout broken: Verify grid classes are correctly applied and responsive breakpoints are configured.
 
 **Section sources**
 - [layout.tsx:30-36](file://frontend/src/app/layout.tsx#L30-L36)
@@ -646,8 +751,12 @@ Common issues and resolutions:
 - [globals.css:44-49](file://frontend/src/app/globals.css#L44-L49)
 - [globals.css:13-22](file://frontend/src/app/globals.css#L13-L22)
 - [Button.tsx:17-22](file://frontend/src/components/Button.tsx#L17-L22)
+- [SceneDetection.tsx:43-44](file://frontend/src/components/archive/SceneDetection.tsx#L43-L44)
+- [archive/page.tsx:127-132](file://frontend/src/app/archive/page.tsx#L127-L132)
 
 ## Conclusion
 The layout and navigation system is intentionally minimal and efficient. RootLayout centralizes global structure, fonts, and theme tokens, while the fixed sidebar provides persistent navigation with active-state awareness. Pages render within the main content area, leveraging Tailwind utilities for responsive design. The system supports customization through theme variables, font configuration, and component-level styling, while maintaining strong performance characteristics via Next.js font optimization and utility-first CSS.
 
 **Updated** The enhanced styling system provides comprehensive color palette management with 50-900 shade variations, improved form input accessibility with readable text and placeholder colors, consistent typography through font variable integration, and seamless Tailwind CSS theme customization. These improvements significantly enhance the user experience by providing better visual consistency, accessibility compliance, and performance optimization across all components and pages.
+
+The addition of the SceneDetection component to the archive page demonstrates the system's ability to handle complex, data-driven layouts while maintaining responsive design principles and performance optimization. The component integrates seamlessly with existing panels and provides advanced functionality for video scene analysis and timeline visualization.

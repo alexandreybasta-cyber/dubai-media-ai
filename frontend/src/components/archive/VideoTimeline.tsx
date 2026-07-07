@@ -10,6 +10,8 @@ import {
 
 interface VideoTimelineProps {
   videoRef: RefObject<HTMLVideoElement | null>;
+  /** Seek requested before the media was ready; applied on loadedmetadata */
+  pendingSeekRef?: RefObject<number | null>;
   videoUrl: string | null;
   metadata: VideoMetadata | null;
   currentTime: number;
@@ -25,6 +27,7 @@ function formatTime(seconds: number): string {
 
 export default function VideoTimeline({
   videoRef,
+  pendingSeekRef,
   videoUrl,
   metadata,
   currentTime,
@@ -46,16 +49,31 @@ export default function VideoTimeline({
 
     const handleLoadedMetadata = () => {
       setDuration(video.duration);
+      // Honor a seek requested before the media was ready (e.g. deep links
+      // like ?video=…&t=…, or search-result clicks on a freshly loaded video)
+      const target = pendingSeekRef?.current;
+      if (target != null && pendingSeekRef) {
+        pendingSeekRef.current = null;
+        video.currentTime = target;
+      }
     };
 
     video.addEventListener("timeupdate", handleTimeUpdate);
     video.addEventListener("loadedmetadata", handleLoadedMetadata);
 
+    // The element may mount with metadata already available (or this effect
+    // may re-run after the src arrived) — handle that case directly.
+    if (video.readyState >= 1) {
+      handleLoadedMetadata();
+    }
+
     return () => {
       video.removeEventListener("timeupdate", handleTimeUpdate);
       video.removeEventListener("loadedmetadata", handleLoadedMetadata);
     };
-  }, [videoRef, onTimeUpdate]);
+    // videoUrl is a dep so listeners attach once the <video> element mounts
+    // (it renders conditionally on videoUrl)
+  }, [videoRef, pendingSeekRef, onTimeUpdate, videoUrl]);
 
   const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!timelineRef.current || !duration) return;

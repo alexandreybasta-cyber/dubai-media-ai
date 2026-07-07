@@ -74,7 +74,7 @@ export default function TranscriptPanel({
 
   if (segments.length === 0) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm h-full flex items-center justify-center">
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm min-h-[200px] flex items-center justify-center">
         <div className="text-center">
           <svg
             className="w-10 h-10 text-gray-300 mx-auto mb-2"
@@ -99,7 +99,7 @@ export default function TranscriptPanel({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col h-full">
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col">
       <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-gray-900">Transcript</h3>
         <span className="text-xs text-gray-400">

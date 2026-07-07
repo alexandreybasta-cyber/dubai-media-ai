@@ -1,7 +1,7 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useVideoProcessing } from "@/lib/useVideoProcessing";
 import VideoUpload from "@/components/archive/VideoUpload";
 import PipelineVisualizer from "@/components/archive/PipelineVisualizer";
@@ -11,6 +11,8 @@ import MetadataPanel from "@/components/archive/MetadataPanel";
 import SearchDemo from "@/components/archive/SearchDemo";
 import APITransparencyPanel from "@/components/archive/APITransparencyPanel";
 import SceneDetection from "@/components/archive/SceneDetection";
+import PeoplePanel from "@/components/archive/PeoplePanel";
+import VideoLibrary from "@/components/archive/VideoLibrary";
 
 /** Convert a timestamp (number of seconds, or "MM:SS" / "HH:MM:SS" string) to seconds */
 function parseTimestamp(value: unknown): number {
@@ -32,24 +34,37 @@ function parseTimestamp(value: unknown): number {
 
 function ArchivePageInner() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const {
     state,
     videoRef,
+    pendingSeekRef,
     uploadVideo,
     loadExistingVideo,
     search,
+    renameFace,
     setCurrentTime,
     seekTo,
     reset,
   } = useVideoProcessing();
 
-  // Load video by ID from URL query parameter: ?video=<video_id>
+  // Load video from URL query parameters: ?video=<video_id>&t=<seconds>
+  // Guarded by a ref (not state) so re-renders during loading can't retrigger
+  // the load and reset the player mid-flight.
+  const loadedFromUrlRef = useRef<string | null>(null);
   useEffect(() => {
     const videoId = searchParams.get("video");
-    if (videoId && state.view === "upload" && !state.videoId) {
-      loadExistingVideo(videoId);
+    const t = searchParams.get("t");
+    if (videoId && videoId !== loadedFromUrlRef.current) {
+      loadedFromUrlRef.current = videoId;
+      loadExistingVideo(videoId).then(() => {
+        if (t) seekTo(parseTimestamp(t));
+      });
     }
-  }, [searchParams, state.view, state.videoId, loadExistingVideo]);
+    if (!videoId) {
+      loadedFromUrlRef.current = null;
+    }
+  }, [searchParams, loadExistingVideo, seekTo]);
 
   return (
     <div className="max-w-[1400px] mx-auto">
@@ -66,7 +81,10 @@ function ArchivePageInner() {
         </div>
         {state.view !== "upload" && (
           <button
-            onClick={reset}
+            onClick={() => {
+              router.push("/archive");
+              reset();
+            }}
             className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <svg
@@ -90,7 +108,7 @@ function ArchivePageInner() {
       {/* Upload Section - shown when idle or uploading */}
       {(state.view === "upload" ||
         state.uploadState === "uploading") && (
-        <div className="mb-6">
+        <div className="mb-6 space-y-8">
           <VideoUpload
             uploadState={state.uploadState}
             uploadProgress={state.uploadProgress}
@@ -99,6 +117,11 @@ function ArchivePageInner() {
             error={state.error}
             onUpload={uploadVideo}
           />
+          {state.view === "upload" && (
+            <VideoLibrary
+              onSelect={(videoId) => router.push(`/archive?video=${videoId}`)}
+            />
+          )}
         </div>
       )}
 
@@ -113,11 +136,12 @@ function ArchivePageInner() {
       {state.view === "results" && (
         <div className="mb-6">
           {/* Main content grid: Timeline+Transcript on left, Metadata on right */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
             {/* Left: Video Timeline + Transcript */}
             <div className="lg:col-span-3 space-y-6">
               <VideoTimeline
                 videoRef={videoRef}
+                pendingSeekRef={pendingSeekRef}
                 videoUrl={state.videoUrl}
                 metadata={state.metadata}
                 currentTime={state.currentTime}
@@ -137,8 +161,14 @@ function ArchivePageInner() {
               />
             </div>
 
-            {/* Right: Metadata + API Transparency */}
+            {/* Right: People + Metadata + API Transparency */}
             <div className="lg:col-span-2 space-y-6">
+              <PeoplePanel
+                faces={state.metadata?.faces || []}
+                duration={state.metadata?.duration || 0}
+                onSeek={seekTo}
+                onRename={renameFace}
+              />
               <MetadataPanel metadata={state.metadata} />
               <APITransparencyPanel
                 apiCalls={state.metadata?.api_calls || []}
@@ -156,7 +186,13 @@ function ArchivePageInner() {
           searchQuery={state.searchQuery}
           onSearch={search}
           onResultClick={(result) => {
-            seekTo(parseTimestamp(result.timestamp));
+            const t = parseTimestamp(result.timestamp);
+            if (result.video_id && result.video_id !== state.videoId) {
+              // Result belongs to a different archive video — open it there
+              router.push(`/archive?video=${result.video_id}&t=${Math.floor(t)}`);
+            } else {
+              seekTo(t);
+            }
           }}
         />
       </div>

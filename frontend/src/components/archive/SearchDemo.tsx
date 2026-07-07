@@ -24,9 +24,29 @@ interface SearchDemoProps {
   searchResults: SearchResult[];
   isSearching: boolean;
   searchQuery: string;
-  onSearch: (query: string) => void;
+  onSearch: (query: string, typeFilter?: string) => void;
   onResultClick?: (result: SearchResult) => void;
 }
+
+const TYPE_FILTERS: { id: string | undefined; label: string }[] = [
+  { id: undefined, label: "All" },
+  { id: "scene", label: "Scenes" },
+  { id: "transcript", label: "Speech" },
+  { id: "person", label: "People" },
+];
+
+const TYPE_BADGES: Record<string, { label: string; className: string }> = {
+  scene: { label: "Scene", className: "bg-orange-50 text-orange-700" },
+  transcript: { label: "Speech", className: "bg-blue-50 text-blue-700" },
+  person: { label: "Person", className: "bg-purple-50 text-purple-700" },
+};
+
+const EXAMPLE_QUERIES = [
+  "Aerial views of Dubai skyline",
+  "Sheikh Mohammed bin Rashid",
+  "Interview about economic growth",
+  "Traditional ceremony",
+];
 
 function formatTimestamp(value: unknown): string {
   // Handle string timestamps (e.g., "00:15", "1:30", "01:02:03")
@@ -61,12 +81,17 @@ export default function SearchDemo({
   onResultClick,
 }: SearchDemoProps) {
   const [query, setQuery] = useState(searchQuery);
+  const [typeFilter, setTypeFilter] = useState<string | undefined>(undefined);
 
-  const handleSearch = useCallback(() => {
-    if (query.trim()) {
-      onSearch(query.trim());
-    }
-  }, [query, onSearch]);
+  const handleSearch = useCallback(
+    (overrideFilter?: string | undefined, useOverride?: boolean) => {
+      const filter = useOverride ? overrideFilter : typeFilter;
+      if (query.trim()) {
+        onSearch(query.trim(), filter);
+      }
+    },
+    [query, typeFilter, onSearch]
+  );
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -94,8 +119,11 @@ export default function SearchDemo({
           />
         </svg>
         <h2 className="text-lg font-semibold text-gray-900">
-          Semantic Search
+          Archive Research
         </h2>
+        <span className="text-xs text-gray-400 ml-1 hidden sm:inline">
+          natural-language search across all processed videos
+        </span>
       </div>
 
       {/* Search input */}
@@ -123,7 +151,7 @@ export default function SearchDemo({
             className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-shadow"
           />
         </div>
-        <Button onClick={handleSearch} disabled={isSearching || !query.trim()}>
+        <Button onClick={() => handleSearch()} disabled={isSearching || !query.trim()}>
           {isSearching ? (
             <span className="flex items-center gap-2">
               <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -136,6 +164,30 @@ export default function SearchDemo({
             "Search"
           )}
         </Button>
+      </div>
+
+      {/* Type filters */}
+      <div className="flex items-center gap-2 mt-3">
+        <span className="text-xs text-gray-400">Filter:</span>
+        {TYPE_FILTERS.map((filter) => {
+          const isActive = typeFilter === filter.id;
+          return (
+            <button
+              key={filter.label}
+              onClick={() => {
+                setTypeFilter(filter.id);
+                if (query.trim() && searchQuery) handleSearch(filter.id, true);
+              }}
+              className={`text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${
+                isActive
+                  ? "bg-primary-500 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+            >
+              {filter.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Results */}
@@ -181,6 +233,13 @@ export default function SearchDemo({
                   <p className="text-sm font-medium text-gray-900 truncate">
                     {result.title || result.description?.slice(0, 40) || "Untitled"}
                   </p>
+                  {result.type && TYPE_BADGES[result.type] && (
+                    <span
+                      className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0 ${TYPE_BADGES[result.type].className}`}
+                    >
+                      {TYPE_BADGES[result.type].label}
+                    </span>
+                  )}
                   <span className="text-xs text-gray-400 font-mono flex-shrink-0">
                     @{formatTimestamp(result.timestamp)}
                   </span>
@@ -188,10 +247,9 @@ export default function SearchDemo({
                 <p className="text-xs text-gray-600 mt-1 line-clamp-2">
                   {result.description}
                 </p>
-                {(result as unknown as { persons?: string[] }).persons &&
-                  (result as unknown as { persons: string[] }).persons.length > 0 && (
+                {result.persons && result.persons.length > 0 && (
                   <p className="text-xs text-primary-600 mt-1">
-                    {(result as unknown as { persons: string[] }).persons.join(", ")}
+                    {result.persons.join(", ")}
                   </p>
                 )}
               </div>
@@ -216,12 +274,26 @@ export default function SearchDemo({
         </div>
       )}
 
-      {/* Initial empty state */}
+      {/* Initial empty state with example queries */}
       {searchResults.length === 0 && !searchQuery && (
-        <div className="mt-4 text-center py-6">
-          <p className="text-sm text-gray-400">
-            Process videos to enable semantic search across your archive
+        <div className="mt-4 py-4 text-center">
+          <p className="text-sm text-gray-400 mb-3">
+            Try a natural-language query across your processed archive
           </p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {EXAMPLE_QUERIES.map((example) => (
+              <button
+                key={example}
+                onClick={() => {
+                  setQuery(example);
+                  onSearch(example, typeFilter);
+                }}
+                className="text-xs px-3 py-1.5 rounded-full border border-gray-200 text-gray-600 hover:border-primary-300 hover:text-primary-600 hover:bg-primary-50/50 transition-colors"
+              >
+                {example}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>

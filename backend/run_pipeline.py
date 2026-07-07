@@ -3,11 +3,18 @@ Standalone pipeline runner - executed as a subprocess by the API server.
 This runs in a completely separate process, so it can NEVER block the server.
 """
 import asyncio
+import logging
 import sys
 import os
 
 # Add backend to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Stdout/stderr are redirected to pipeline.log by the API server
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 from pipeline.orchestrator import PipelineOrchestrator
 
