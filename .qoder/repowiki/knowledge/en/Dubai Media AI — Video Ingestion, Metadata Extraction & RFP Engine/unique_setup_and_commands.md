@@ -1,0 +1,1 @@
+Run the server with `uvicorn backend.main:app --host 0.0.0.0 --port 8000` from the repo root; the `.env` file must be placed at the repo root (one level above `backend/`) because `config.Settings` loads `env_file="../.env"`. The Docker setup is driven by `docker-compose.yml` and proxied through `nginx.conf`.

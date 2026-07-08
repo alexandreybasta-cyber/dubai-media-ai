@@ -34,6 +34,45 @@ const SUBTITLE_LANGUAGES: SubtitleLanguage[] = [
   { code: "ru", label: "Русский", rtl: false },
 ];
 
+// Per-speaker caption colors (light shades for readability on dark backdrop).
+const SPEAKER_COLORS: Record<string, string> = {
+  "Speaker 1": "#93c5fd", // blue
+  "Speaker 2": "#6ee7b7", // green
+  "Speaker 3": "#c4b5fd", // purple
+  "Speaker 4": "#fcd34d", // amber
+  "Speaker 5": "#f9a8d4", // pink
+};
+
+/**
+ * Parse a WebVTT cue's raw text, extracting an optional `<v Speaker N>` voice
+ * tag to determine the speaker color. Returns the clean display text and color.
+ */
+function parseCueText(raw: string): { text: string; color: string } {
+  let speaker: string | null = null;
+  let text = raw;
+  const voice = raw.match(/<v\s+([^>]+)>([\s\S]*?)<\/v>/);
+  if (voice) {
+    speaker = voice[1].trim();
+    text = voice[2];
+  } else {
+    // Handle a self-closing / unterminated voice tag: `<v Speaker 1>text`
+    const open = raw.match(/<v\s+([^>]+)>([\s\S]*)$/);
+    if (open) {
+      speaker = open[1].trim();
+      text = open[2];
+    }
+  }
+  // Strip any residual tags and normalise whitespace.
+  text = text.replace(/<\/?[^>]+>/g, "").trim();
+  const color = (speaker && SPEAKER_COLORS[speaker]) || "#ffffff";
+  return { text, color };
+}
+
+interface ActiveCue {
+  text: string;
+  color: string;
+}
+
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
@@ -60,33 +99,81 @@ export default function VideoTimeline({
   const [activeLang, setActiveLang] = useState("en");
   const [showLangMenu, setShowLangMenu] = useState(false);
   const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  // Current caption rendered as a custom overlay (JS-driven, not native).
+  const [activeCue, setActiveCue] = useState<ActiveCue | null>(null);
 
   const subtitleSrc = (lang: string) =>
     videoId
       ? `${API_BASE_URL}/api/video/${videoId}/subtitles?language=${lang}`
       : "";
 
-  // Sync the native TextTrack modes with our CC state so only the selected
-  // language renders (and nothing shows when captions are off).
+  // Drive captions ourselves: keep every native track in "hidden" mode (so the
+  // browser parses cues but never renders them), then read the active track's
+  // cues on `cuechange` and paint them into a custom overlay. This gives full
+  // control over per-speaker colors, which `::cue(v[voice=...])` can't provide
+  // reliably across browsers.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    const applyTrackModes = () => {
+    let activeTrack: TextTrack | null = null;
+
+    const handleCueChange = () => {
+      if (!ccEnabled || !activeTrack) {
+        setActiveCue(null);
+        return;
+      }
+      const cues = activeTrack.activeCues;
+      if (!cues || cues.length === 0) {
+        setActiveCue(null);
+        return;
+      }
+      // Combine any simultaneously-active cues; color from the first speaker.
+      const parsed = Array.from(cues).map((c) =>
+        parseCueText((c as VTTCue).text)
+      );
+      const text = parsed
+        .map((p) => p.text)
+        .filter(Boolean)
+        .join("\n");
+      const color = parsed.find((p) => p.text)?.color || "#ffffff";
+      setActiveCue(text ? { text, color } : null);
+    };
+
+    const applyTracks = () => {
+      if (activeTrack) {
+        activeTrack.removeEventListener("cuechange", handleCueChange);
+        activeTrack = null;
+      }
       const tracks = video.textTracks;
       for (let i = 0; i < tracks.length; i++) {
         const track = tracks[i];
         if (track.kind !== "subtitles" && track.kind !== "captions") continue;
-        track.mode =
-          ccEnabled && track.language === activeLang ? "showing" : "hidden";
+        if (ccEnabled && track.language === activeLang) {
+          // "hidden" => cues are parsed and `cuechange` fires, but the browser
+          // does not draw them (we render our own overlay instead).
+          track.mode = "hidden";
+          activeTrack = track;
+        } else {
+          track.mode = "disabled";
+        }
+      }
+      if (activeTrack) {
+        activeTrack.addEventListener("cuechange", handleCueChange);
+        handleCueChange();
+      } else {
+        setActiveCue(null);
       }
     };
 
-    applyTrackModes();
+    applyTracks();
     // Track list may populate slightly after mount / src change.
-    video.textTracks.addEventListener?.("addtrack", applyTrackModes);
+    video.textTracks.addEventListener?.("addtrack", applyTracks);
     return () => {
-      video.textTracks.removeEventListener?.("addtrack", applyTrackModes);
+      video.textTracks.removeEventListener?.("addtrack", applyTracks);
+      if (activeTrack) {
+        activeTrack.removeEventListener("cuechange", handleCueChange);
+      }
     };
   }, [videoRef, ccEnabled, activeLang, videoUrl, videoId]);
 
@@ -199,13 +286,30 @@ export default function VideoTimeline({
                   src={subtitleSrc(lang.code)}
                   srcLang={lang.code}
                   label={lang.label}
-                  default={lang.code === "en"}
                 />
               ))}
           </video>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <p className="text-gray-400 text-sm">No video loaded</p>
+          </div>
+        )}
+
+        {/* Custom JS-driven caption overlay (per-speaker colored). Sits above
+            the native video controls. */}
+        {ccEnabled && activeCue && activeCue.text && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center px-4">
+            <span
+              dir={activeLang === "ar" ? "rtl" : "ltr"}
+              className="max-w-[92%] whitespace-pre-line rounded px-2 py-1 text-center text-base font-medium leading-snug"
+              style={{
+                color: activeCue.color,
+                backgroundColor: "rgba(0, 0, 0, 0.72)",
+                textShadow: "0 1px 2px rgba(0,0,0,0.9)",
+              }}
+            >
+              {activeCue.text}
+            </span>
           </div>
         )}
       </div>

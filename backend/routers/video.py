@@ -225,7 +225,7 @@ async def get_video_transcript(video_id: str):
 # ── Transcript Translation ──────────────────────────────────────────
 
 _LANGUAGE_NAMES = {
-    "ar": "Arabic",
+    "ar": "Modern Standard Arabic (العربية)",
     "fr": "French",
     "ru": "Russian",
 }
@@ -260,8 +260,17 @@ async def translate_transcript(video_id: str, request: TranslateRequest):
         f"[SEG{i + 1}] {seg.text}" for i, seg in enumerate(request.segments)
     )
 
+    # Qwen may default to Chinese output; be explicit for Arabic.
+    extra = ""
+    if request.language == "ar":
+        extra = (
+            " The target language is Modern Standard Arabic written in Arabic script (العربية). "
+            "Do NOT translate to Chinese or any other language — every translated segment "
+            "MUST be written in Arabic."
+        )
+
     system_prompt = (
-        f"You are a professional translator. Translate the user's text into {lang_name}. "
+        f"You are a professional translator. Translate the user's text into {lang_name}.{extra} "
         f"The text is split into segments, each prefixed with a marker like [SEG1], [SEG2]. "
         f"Translate ONLY the text after each marker into {lang_name}, and keep every marker "
         f"exactly as-is on the same line before its translation. Preserve the number and order "
@@ -534,8 +543,8 @@ async def get_available_languages(video_id: str):
                 available.append(fname[len("video_"):-len(".mp4")])
     return {
         "video_id": video_id,
-        "available": sorted(available),
-        "supported": _supported_dub_languages(),
+        "dubbed_languages": sorted(available),
+        "supported_languages": _supported_dub_languages(),
     }
 
 

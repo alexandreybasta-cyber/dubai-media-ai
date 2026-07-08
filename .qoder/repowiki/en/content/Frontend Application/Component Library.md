@@ -5,6 +5,7 @@
 - [globals.css](file://frontend/src/app/globals.css)
 - [Button.tsx](file://frontend/src/components/Button.tsx)
 - [Card.tsx](file://frontend/src/components/Card.tsx)
+- [DubbingPanel.tsx](file://frontend/src/components/archive/DubbingPanel.tsx)
 - [VideoUpload.tsx](file://frontend/src/components/archive/VideoUpload.tsx)
 - [VideoTimeline.tsx](file://frontend/src/components/archive/VideoTimeline.tsx)
 - [TranscriptPanel.tsx](file://frontend/src/components/archive/TranscriptPanel.tsx)
@@ -24,16 +25,18 @@
 - [api.ts](file://frontend/src/lib/api.ts)
 - [useVideoProcessing.ts](file://frontend/src/lib/useVideoProcessing.ts)
 - [video.py](file://backend/routers/video.py)
+- [dubbing.py](file://backend/pipeline/dubbing.py)
 - [subtitle_generation.py](file://backend/pipeline/subtitle_generation.py)
 - [archive/page.tsx](file://frontend/src/app/archive/page.tsx)
 </cite>
 
 ## Update Summary
 **Changes Made**
-- Enhanced VideoTimeline component with comprehensive closed captioning interface including CC toggle button, language selection menu supporting English/Arabic/French/Russian, native HTML5 track elements, proper RTL support for Arabic subtitles, download functionality for SRT files, and accessibility features with ARIA attributes
-- Added detailed documentation for the new subtitle management system and its integration with backend APIs
-- Updated component props and state management to include closed captioning capabilities
-- Enhanced accessibility features for multilingual subtitle display
+- Added comprehensive documentation for the new DubbingPanel component (337 lines) providing intuitive interface for dubbing operations, target language selection, and real-time progress monitoring with WebSocket integration
+- Updated Archive Components section to include DubbingPanel alongside existing video processing components
+- Enhanced dependency analysis to show DubbingPanel integration with backend dubbing APIs
+- Updated troubleshooting guide with dubbing-specific issues and solutions
+- Added performance considerations for dubbing operations and polling mechanisms
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -54,7 +57,7 @@ This document describes the reusable UI component library used across the Dubai 
 ## Project Structure
 The component library is organized by feature folders under frontend/src/components:
 - Base primitives: Button, Card
-- Archive feature: VideoUpload, VideoTimeline, TranscriptPanel, MetadataPanel, SearchDemo, PipelineVisualizer, SceneDetection, PeoplePanel, VideoLibrary
+- Archive feature: VideoUpload, VideoTimeline, TranscriptPanel, MetadataPanel, SearchDemo, PipelineVisualizer, SceneDetection, PeoplePanel, VideoLibrary, **DubbingPanel**
 - RFP feature: RFPForm, RFPPreview, TimelineEditor
 - Evaluator feature: EvaluationSetup, VendorScorecard, ComparisonMatrix
 - Shared layout: Sidebar
@@ -76,6 +79,7 @@ PV["PipelineVisualizer.tsx"]
 SC["SceneDetection.tsx"]
 PP["PeoplePanel.tsx"]
 VL["VideoLibrary.tsx"]
+DB["DubbingPanel.tsx"]
 end
 subgraph "RFP"
 RF["RFPForm.tsx"]
@@ -95,11 +99,13 @@ VT --> TP
 VT --> MP
 VT --> SC
 VT --> PP
+VT --> DB
 MP --> SD
 PV --> SC
 SC --> SD
 PP --> VT
 VL --> VU
+DB --> VT
 RF --> RP
 TE --> RF
 ES --> VS
@@ -113,6 +119,7 @@ SB --> ES
 **Diagram sources**
 - [Button.tsx:1-30](file://frontend/src/components/Button.tsx#L1-L30)
 - [Card.tsx:1-17](file://frontend/src/components/Card.tsx#L1-L17)
+- [DubbingPanel.tsx:1-338](file://frontend/src/components/archive/DubbingPanel.tsx#L1-L338)
 - [VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
 - [VideoTimeline.tsx:1-469](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L469)
 - [TranscriptPanel.tsx:1-305](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L305)
@@ -133,6 +140,7 @@ SB --> ES
 **Section sources**
 - [Button.tsx:1-30](file://frontend/src/components/Button.tsx#L1-L30)
 - [Card.tsx:1-17](file://frontend/src/components/Card.tsx#L1-L17)
+- [DubbingPanel.tsx:1-338](file://frontend/src/components/archive/DubbingPanel.tsx#L1-L338)
 - [VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
 - [VideoTimeline.tsx:1-469](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L469)
 - [TranscriptPanel.tsx:1-305](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L305)
@@ -192,6 +200,8 @@ participant VU as "VideoUpload"
 participant UV as "useVideoProcessing"
 participant API as "api.video.list/upload"
 participant WS as "WebSocket /ws/pipeline/{id}"
+participant DBP as "DubbingPanel"
+participant DAPI as "Dubbing API"
 U->>VL : Browse archive videos
 VL->>API : GET /api/video/list
 API-->>VL : {videos : LibraryVideo[]}
@@ -203,17 +213,74 @@ UV->>WS : connectWebSocket(/ws/pipeline/{video_id})
 WS-->>UV : stage status updates
 UV-->>VU : stages[], view=processing/results
 UV-->>VU : metadata, transcript when ready
+U->>DBP : Select target language
+DBP->>DAPI : POST /api/video/{id}/dub
+DAPI-->>DBP : Processing started
+DBP->>DAPI : Poll /api/video/{id}/dub/status
+DAPI-->>DBP : Status updates (processing/completed/failed)
+DBP-->>U : Progress bar and completion notification
 ```
 
 **Diagram sources**
 - [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-L50)
-- [VideoUpload.tsx:63-67](file://frontend/src/components/archive/VideoUpload.tsx#L63-L67)
+- [VideoUpload.tsx:63-67](file://frontend/src/components/archive/VideoUpload.tsx#L63-67)
+- [DubbingPanel.tsx:114-138](file://frontend/src/components/archive/DubbingPanel.tsx#L114-138)
+- [DubbingPanel.tsx:75-112](file://frontend/src/components/archive/DubbingPanel.tsx#L75-112)
 - [useVideoProcessing.ts:162-211](file://frontend/src/lib/useVideoProcessing.ts#L162-L211)
-- [api.ts:167-182](file://frontend/src/lib/api.ts#L167-182)
+- [api.ts:167-182](file://frontend/src/lib/api.ts#L167-L182)
+- [api.ts:263-276](file://frontend/src/lib/api.ts#L263-L276)
 
 ## Detailed Component Analysis
 
 ### Archive Components
+
+#### DubbingPanel
+- Purpose: Provides an intuitive interface for video dubbing operations, including target language selection, real-time progress monitoring, and playback of dubbed versions.
+- Props:
+  - videoId: string | null - The ID of the video to be dubbed
+- State Management:
+  - targetLanguage: string - Currently selected target language
+  - dubbedLanguages: string[] - Array of already dubbed languages
+  - isProcessing: boolean - Current dubbing operation status
+  - processingLanguage: string | null - Language currently being processed
+  - progress: number - Progress percentage (0-100)
+  - error: string | null - Error messages during operations
+  - playingLanguage: string | null - Currently playing dubbed language
+- Interactions:
+  - Language selection dropdown supporting 8 languages (Arabic, English, French, Spanish, German, Russian, Hindi, Chinese)
+  - Dubbing request initiation with progress tracking
+  - Real-time status polling every 3 seconds until completion
+  - Inline video player for previewing dubbed content
+  - Download functionality for completed dubbed videos
+- Features:
+  - **Multi-language Support**: Comprehensive language selection with bilingual labels (e.g., "Arabic (العربية)")
+  - **Progress Monitoring**: Animated progress bar with simulated progress updates (5% to 90%)
+  - **Status Tracking**: Backend polling for accurate dubbing status (processing/completed/failed)
+  - **Duplicate Prevention**: Prevents re-dubbing of already processed languages
+  - **Inline Playback**: Embedded video player for immediate preview of dubbed content
+  - **Error Handling**: User-friendly error messages with retry capabilities
+- Styling: Clean card-based design with header icon, responsive layout, color-coded status indicators, and consistent button states
+- Accessibility: Proper ARIA labels for language selection, keyboard navigation support, and screen reader friendly status announcements
+- **Backend Integration**: Seamless connection to dubbing APIs including `/api/video/{videoId}/dub`, `/api/video/{videoId}/dub/status`, and `/api/video/{videoId}/dub/languages`
+- **WebSocket Integration**: Uses polling mechanism instead of WebSocket for dubbing status updates due to backend returning flat status objects
+- **Real-time Progress Simulation**: Implements animated progress bar that simulates realistic progress from 5% to 90% while backend processes the dubbing
+
+**New** Comprehensive documentation for the DubbingPanel component, including:
+- Multi-language dubbing interface with 8 supported languages
+- Real-time progress monitoring with simulated progress bar
+- Backend API integration for dubbing requests and status polling
+- Inline video playback for dubbed content preview
+- Error handling and user feedback mechanisms
+- Responsive design with consistent styling patterns
+
+**Section sources**
+- [DubbingPanel.tsx:6-8](file://frontend/src/components/archive/DubbingPanel.tsx#L6-L8)
+- [DubbingPanel.tsx:27-35](file://frontend/src/components/archive/DubbingPanel.tsx#L27-L35)
+- [DubbingPanel.tsx:50-73](file://frontend/src/components/archive/DubbingPanel.tsx#L50-L73)
+- [DubbingPanel.tsx:75-112](file://frontend/src/components/archive/DubbingPanel.tsx#L75-112)
+- [DubbingPanel.tsx:114-138](file://frontend/src/components/archive/DubbingPanel.tsx#L114-138)
+- [DubbingPanel.tsx:146-337](file://frontend/src/components/archive/DubbingPanel.tsx#L146-337)
+- [api.ts:263-276](file://frontend/src/lib/api.ts#L263-L276)
 
 #### VideoUpload
 - Purpose: Accepts video uploads with drag-and-drop, validates file types/extensions, displays progress, and surfaces errors.
@@ -671,6 +738,17 @@ Components consistently implement null-safe data access patterns to prevent runt
 
 ### Specific Defensive Programming Improvements
 
+#### DubbingPanel Component
+The DubbingPanel component demonstrates key defensive programming practices:
+
+- **Video ID validation**: Checks `if (!videoId)` to prevent rendering when no video is selected
+- **Language code safety**: Uses optional chaining and fallback labels for unsupported languages
+- **API error handling**: Comprehensive try-catch blocks with user-friendly error messages
+- **Timer cleanup**: Proper interval cleanup using refs to prevent memory leaks
+- **State reset on video change**: useEffect cleanup ensures proper state management when video changes
+- **Progress simulation safety**: Validates progress values and prevents infinite loops
+- **Duplicate prevention**: Checks if language is already dubbed before starting new process
+
 #### VideoTimeline Component
 The VideoTimeline component demonstrates key defensive programming practices:
 
@@ -746,7 +824,10 @@ The MetadataPanel component includes enhanced multilingual support with defensiv
 - **Future-proofing**: Components can handle API changes gracefully
 
 **Section sources**
-- [VideoTimeline.tsx:84-86](file://frontend/src/components/archive/VideoTimeline.tsx#L84-L86)
+- [DubbingPanel.tsx:140-142](file://frontend/src/components/archive/DubbingPanel.tsx#L140-142)
+- [DubbingPanel.tsx:114-138](file://frontend/src/components/archive/DubbingPanel.tsx#L114-138)
+- [DubbingPanel.tsx:62-73](file://frontend/src/components/archive/DubbingPanel.tsx#L62-L73)
+- [VideoTimeline.tsx:84-86](file://frontend/src/components/archive/VideoTimeline.tsx#L84-86)
 - [VideoTimeline.tsx:200-201](file://frontend/src/components/archive/VideoTimeline.tsx#L200-L201)
 - [VideoTimeline.tsx:216-219](file://frontend/src/components/archive/VideoTimeline.tsx#L216-L219)
 - [VideoTimeline.tsx:229-239](file://frontend/src/components/archive/VideoTimeline.tsx#L229-L239)
@@ -758,8 +839,8 @@ The MetadataPanel component includes enhanced multilingual support with defensiv
 - [PeoplePanel.tsx:45-59](file://frontend/src/components/archive/PeoplePanel.tsx#L45-L59)
 - [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-50)
 - [VideoLibrary.tsx:17-28](file://frontend/src/components/archive/VideoLibrary.tsx#L17-L28)
-- [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-L21)
-- [TranscriptPanel.tsx:67-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L67-L121)
+- [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-21)
+- [TranscriptPanel.tsx:67-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L67-121)
 - [TranscriptPanel.tsx:286-297](file://frontend/src/components/archive/TranscriptPanel.tsx#L286-L297)
 - [MetadataPanel.tsx:193-198](file://frontend/src/components/archive/MetadataPanel.tsx#L193-L198)
 
@@ -770,6 +851,7 @@ The MetadataPanel component includes enhanced multilingual support with defensiv
   - VideoLibrary depends on api for video listing and metadata retrieval.
   - TranscriptPanel depends on api for translation functionality.
   - **Enhanced**: VideoTimeline now depends on backend subtitle endpoints for WebVTT streaming and SRT downloads.
+  - **New**: DubbingPanel depends on api for dubbing operations including request, status polling, and language listing.
   - RFP components depend on api for creation, regeneration, and evaluation workflows.
   - Evaluator components depend on api for evaluation status/results and exports.
 - External dependencies:
@@ -794,6 +876,7 @@ API --> TP
 API --> MP
 API --> SD
 API --> VL["VideoLibrary.tsx"]
+API --> DBP["DubbingPanel.tsx"]
 API --> RF["RFPForm.tsx"]
 API --> RP["RFPPreview.tsx"]
 API --> ES["EvaluationSetup.tsx"]
@@ -802,11 +885,16 @@ API --> CM["ComparisonMatrix.tsx"]
 SUBT["Backend Subtitle API"] --> VT
 SUBT["/api/video/{id}/subtitles"] --> VT
 SUBT["/api/video/{id}/subtitles/download"] --> VT
+DUB["Backend Dubbing API"] --> DBP
+DUB["/api/video/{id}/dub"] --> DBP
+DUB["/api/video/{id}/dub/status"] --> DBP
+DUB["/api/video/{id}/dub/languages"] --> DBP
 ```
 
 **Diagram sources**
 - [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
 - [api.ts:164-244](file://frontend/src/lib/api.ts#L164-244)
+- [api.ts:263-276](file://frontend/src/lib/api.ts#L263-L276)
 - [VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
 - [VideoTimeline.tsx:1-469](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L469)
 - [TranscriptPanel.tsx:1-305](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L305)
@@ -816,6 +904,7 @@ SUBT["/api/video/{id}/subtitles/download"] --> VT
 - [SceneDetection.tsx:1-181](file://frontend/src/components/archive/SceneDetection.tsx#L1-L181)
 - [PeoplePanel.tsx:1-226](file://frontend/src/components/archive/PeoplePanel.tsx#L1-L226)
 - [VideoLibrary.tsx:1-128](file://frontend/src/components/archive/VideoLibrary.tsx#L1-L128)
+- [DubbingPanel.tsx:1-338](file://frontend/src/components/archive/DubbingPanel.tsx#L1-L338)
 - [RFPForm.tsx:1-411](file://frontend/src/components/rfp/RFPForm.tsx#L1-L411)
 - [RFPPreview.tsx:1-200](file://frontend/src/components/rfp/RFPPreview.tsx#L1-L200)
 - [EvaluationSetup.tsx:1-429](file://frontend/src/components/evaluator/EvaluationSetup.tsx#L1-L429)
@@ -826,6 +915,7 @@ SUBT["/api/video/{id}/subtitles/download"] --> VT
 **Section sources**
 - [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
 - [api.ts:164-244](file://frontend/src/lib/api.ts#L164-244)
+- [api.ts:263-276](file://frontend/src/lib/api.ts#L263-L276)
 
 ## Performance Considerations
 - Virtualization: Not implemented; transcripts and metadata panels render lists. Consider virtualizing long lists if performance becomes an issue.
@@ -837,11 +927,13 @@ SUBT["/api/video/{id}/subtitles/download"] --> VT
   - VideoLibrary renders video grids with thumbnails; lazy loading could improve initial load performance.
   - **TranscriptPanel translation**: Translation requests are batched and cached; consider debouncing rapid language changes.
   - **Enhanced**: VideoTimeline subtitle track management uses efficient TextTrack mode switching without re-rendering entire video elements.
+  - **New**: DubbingPanel uses polling mechanism with 3-second intervals for status updates; consider implementing WebSocket for real-time updates if backend supports it.
 - Network:
   - useVideoProcessing simulates upload progress; real progress requires XHR with onprogress. Consider upgrading upload flow for accurate progress.
   - VideoLibrary fetches video list on mount; consider pagination for large archives.
   - **Translation API**: Single API call translates all segments efficiently; consider caching translations for repeated requests.
   - **Enhanced**: Subtitle streaming uses native HTML5 track elements for optimal browser performance and memory management.
+  - **New**: Dubbing operations involve multiple API calls (request, status polling, language listing); consider implementing request deduplication and caching strategies.
 - Memory:
   - VideoUpload creates object URLs; revoke on reset to prevent leaks.
   - PipelineVisualizer and ComparisonMatrix render charts; unmount components to dispose resources.
@@ -850,6 +942,12 @@ SUBT["/api/video/{id}/subtitles/download"] --> VT
   - VideoLibrary stores video list in component state; consider memoization for large video collections.
   - **Translation state**: Map-based translation storage is efficient but should be cleared when video changes to prevent memory leaks.
   - **Enhanced**: Subtitle track listeners are properly cleaned up using removeEventListener to prevent memory leaks.
+  - **New**: DubbingPanel implements proper timer cleanup using refs to prevent memory leaks from setInterval operations.
+- **Dubbing Operations Performance**:
+  - **Polling Efficiency**: 3-second polling intervals balance responsiveness with server load
+  - **Progress Simulation**: Client-side progress animation reduces perceived latency
+  - **State Management**: Efficient state updates prevent unnecessary re-renders
+  - **Memory Cleanup**: Proper interval cleanup prevents memory leaks during long-running operations
 
 ## Troubleshooting Guide
 - Upload fails:
@@ -916,6 +1014,18 @@ SUBT["/api/video/{id}/subtitles/download"] --> VT
   - **Updated**: Timestamp formatting now handles multiple input formats and edge cases.
   - Verify that transcript segments contain valid start/end time values.
   - Check for malformed timestamp data in the backend response.
+- **DubbingPanel Issues**:
+  - **New**: Verify that videoId is provided and valid before attempting dubbing operations.
+  - Check that backend dubbing endpoints are accessible at `/api/video/{videoId}/dub`, `/api/video/{videoId}/dub/status`, and `/api/video/{videoId}/dub/languages`.
+  - Ensure DASHSCOPE_API_KEY is configured on the backend server for translation services.
+  - Verify that Edge-TTS is properly installed and configured for speech synthesis.
+  - Check that FFmpeg is available on the system for audio assembly and video muxing.
+  - Monitor browser console for API errors during dubbing status polling.
+  - Verify that target language codes are supported (ar, en, fr, es, de, ru, hi, zh).
+  - Check network requests to ensure proper CORS configuration for cross-origin requests.
+  - **Updated**: Progress bar simulation should update every 800ms with realistic progress increments.
+  - **Updated**: Error messages should display user-friendly feedback for failed dubbing operations.
+  - **Updated**: Timer cleanup should prevent memory leaks when component unmounts during long-running operations.
 
 **Section sources**
 - [VideoUpload.tsx:199-217](file://frontend/src/components/archive/VideoUpload.tsx#L199-L217)
@@ -929,23 +1039,31 @@ SUBT["/api/video/{id}/subtitles/download"] --> VT
 - [PeoplePanel.tsx:114](file://frontend/src/components/archive/PeoplePanel.tsx#L114)
 - [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-L50)
 - [MetadataPanel.tsx:193-198](file://frontend/src/components/archive/MetadataPanel.tsx#L193-L198)
-- [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-L21)
-- [TranscriptPanel.tsx:67-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L67-L121)
+- [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-21)
+- [TranscriptPanel.tsx:67-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L67-121)
 - [TranscriptPanel.tsx:286-297](file://frontend/src/components/archive/TranscriptPanel.tsx#L286-L297)
 - [video.py:349-420](file://backend/routers/video.py#L349-L420)
+- [DubbingPanel.tsx:114-138](file://frontend/src/components/archive/DubbingPanel.tsx#L114-138)
+- [DubbingPanel.tsx:75-112](file://frontend/src/components/archive/DubbingPanel.tsx#L75-112)
+- [DubbingPanel.tsx:50-73](file://frontend/src/components/archive/DubbingPanel.tsx#L50-L73)
 
 ## Conclusion
 The component library provides a cohesive, accessible, and extensible foundation for the Dubai Media application. Base components (Button, Card) standardize UI patterns; feature-specific components encapsulate complex workflows while integrating with shared state and APIs. The recent defensive programming improvements ensure reliable operation even with incomplete data, while the accessibility enhancements guarantee consistent text visibility across all form components. 
 
 The enhanced VideoTimeline component represents a significant advancement in multimedia accessibility, providing comprehensive closed captioning capabilities with native HTML5 track elements, multi-language subtitle support, and proper RTL handling for Arabic content. The new subtitle management system seamlessly integrates with backend APIs to deliver WebVTT streams and SRT downloads, while maintaining excellent performance through efficient TextTrack mode management. The enhanced TranscriptPanel component represents another major advancement in multilingual support, providing comprehensive translation capabilities with real-time status indicators, error handling, and proper RTL support for Arabic translations. The new PeoplePanel and VideoLibrary components significantly enhance the Archive feature by providing comprehensive person management and video browsing capabilities. The PeoplePanel offers sophisticated person identification with confidence scoring, source attribution, and inline editing, while the VideoLibrary provides an intuitive browsing interface for archived videos with rich metadata display. Both components integrate seamlessly with the existing video processing pipeline and follow established architectural patterns.
 
+**New** The DubbingPanel component represents a significant advancement in video localization capabilities, providing an intuitive interface for multi-language dubbing operations. With support for 8 languages, real-time progress monitoring, and seamless backend integration, it enables users to create professional-quality dubbed versions of their videos. The component implements robust error handling, proper memory management, and responsive design patterns that align with the established component library standards.
+
 Key improvements include:
 - **Comprehensive Closed Captioning Interface**: VideoTimeline now supports native HTML5 subtitle tracks with CC toggle, language selection menu, and SRT download functionality
 - **Multi-Language Subtitle Support**: Built-in support for English, Arabic, French, and Russian subtitles with proper RTL text direction
 - **Enhanced Multilingual Support**: Automatic language detection, error handling, and user-friendly status indicators for translation requests
+- **New Dubbing Capabilities**: Intuitive dubbing interface with 8 supported languages, real-time progress monitoring, and inline video playback
 - **Robust Error Management**: Comprehensive try-catch blocks with user-friendly error messages and graceful fallbacks
 - **Seamless Backend Integration**: Efficient subtitle streaming and download APIs using WebVTT format with DashScope Qwen model for translations
+- **Advanced Dubbing Pipeline**: Full-stack dubbing solution with translation, speech synthesis, audio assembly, and video muxing
 - **Accessibility Features**: Proper ARIA labels, keyboard navigation, and screen reader support for all multilingual content
 - **Performance Optimization**: Native HTML5 track elements for optimal browser performance and memory management
+- **Memory Management**: Proper timer cleanup and state management to prevent memory leaks in long-running operations
 
 The enhanced VideoTimeline component now provides granular face detection navigation with improved tooltip information, and the MetadataPanel component offers comprehensive multilingual support with proper RTL handling. The SearchDemo component now features robust thumbnail URL resolution that handles various path formats, and the TranscriptPanel provides reliable timestamp formatting across multiple input types. By adhering to the documented props, composition patterns, defensive programming practices, and accessibility guidelines, teams can build consistent experiences across Archive, RFP, and Evaluator features.

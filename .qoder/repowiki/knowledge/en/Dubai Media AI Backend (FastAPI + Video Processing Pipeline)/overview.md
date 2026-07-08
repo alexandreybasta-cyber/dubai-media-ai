@@ -1,1 +1,0 @@
-FastAPI backend that ingests videos, runs a six-stage DashScope-powered metadata extraction pipeline, indexes results for semantic search, and generates/evaluates vendor RFPs.

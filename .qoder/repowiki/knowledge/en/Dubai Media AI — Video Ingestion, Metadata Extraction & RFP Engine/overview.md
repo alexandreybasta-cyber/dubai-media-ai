@@ -1,0 +1,1 @@
+FastAPI service that ingests uploaded videos, runs a six-stage DashScope-powered metadata extraction pipeline with FAISS semantic search, and generates/evaluates vendor RFPs.

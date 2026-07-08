@@ -4,6 +4,7 @@
 **Referenced Files in This Document**
 - [api.ts](file://frontend/src/lib/api.ts)
 - [useVideoProcessing.ts](file://frontend/src/lib/useVideoProcessing.ts)
+- [DubbingPanel.tsx](file://frontend/src/components/archive/DubbingPanel.tsx)
 - [TranscriptPanel.tsx](file://frontend/src/components/archive/TranscriptPanel.tsx)
 - [VideoUpload.tsx](file://frontend/src/components/archive/VideoUpload.tsx)
 - [archive/page.tsx](file://frontend/src/app/archive/page.tsx)
@@ -15,6 +16,7 @@
 - [RFPForm.tsx](file://frontend/src/components/rfp/RFPForm.tsx)
 - [rfp-evaluator/page.tsx](file://frontend/src/app/rfp-evaluator/page.tsx)
 - [video.py](file://backend/routers/video.py)
+- [dubbing.py](file://backend/pipeline/dubbing.py)
 - [face_recognition.py](file://backend/pipeline/face_recognition.py)
 - [reference_faces.json](file://backend/data/reference_faces.json)
 - [visual_analysis.json](file://backend/uploads/19ab5a0f-7c15-4368-933e-c7e2f7ff0c86/visual_analysis.json)
@@ -31,9 +33,12 @@
 - Expanded error handling mechanisms with sophisticated failure counter for polling fallback
 - Integrated thumbnail support throughout the scene detection workflow
 - Added reference database integration for persistent face recognition across videos
-- **NEW** Added transcript translation functionality with `translateTranscript` method in API client
-- **NEW** Integrated real-time translation UI with language selection and segment mapping
-- **NEW** Backend translation service using DashScope Qwen model with multi-language support
+- Added transcript translation functionality with `translateTranscript` method in API client
+- Integrated real-time translation UI with language selection and segment mapping
+- Backend translation service using DashScope Qwen model with multi-language support
+- **NEW** Extended API layer with dubbing functionality including `requestDubbing()`, `getDubbingStatus()`, and `getDubbingLanguages()` methods
+- **NEW** Integrated DubbingPanel component with WebSocket-based progress reporting and real-time status updates
+- **NEW** Backend dubbing pipeline with async task management, caching, and multi-language support
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -47,7 +52,7 @@
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document explains the frontend API integration layer and state management patterns used in the Dubai Media project. It covers the typed HTTP client library, WebSocket integration for real-time progress updates, custom React hooks that orchestrate video processing workflows, and the new transcript translation functionality. It also documents API endpoint mapping, request/response schemas, error handling, and integration patterns with the backend services including AI-powered translation capabilities.
+This document explains the frontend API integration layer and state management patterns used in the Dubai Media project. It covers the typed HTTP client library, WebSocket integration for real-time progress updates, custom React hooks that orchestrate video processing workflows, and the new dubbing functionality. It also documents API endpoint mapping, request/response schemas, error handling, and integration patterns with the backend services including AI-powered translation and dubbing capabilities.
 
 ## Project Structure
 The frontend integrates with two primary backend domains:
@@ -55,7 +60,8 @@ The frontend integrates with two primary backend domains:
 - RFP creation and evaluation: AI-powered proposal generation, regeneration, export, and vendor evaluation workflows
 - Video library management: comprehensive video catalog browsing with thumbnails and metadata
 - Face recognition system: intelligent person identification with reference database integration
-- **NEW** Transcript translation: AI-powered multilingual translation with real-time UI updates
+- Transcript translation: AI-powered multilingual translation with real-time UI updates
+- **NEW** Video dubbing: multi-language audio dubbing with real-time progress tracking and playback
 
 ```mermaid
 graph TB
@@ -64,53 +70,68 @@ A["api.ts<br/>HTTP client + WebSocket"]
 B["useVideoProcessing.ts<br/>React hook"]
 C["Components<br/>Archive, RFP, Evaluator"]
 D["TranscriptPanel.tsx<br/>Translation UI"]
-E["SceneDetection.tsx<br/>Enhanced Scene Boundary"]
-F["VideoLibrary.tsx<br/>Video Catalog Browser"]
+E["DubbingPanel.tsx<br/>Dubbing UI"]
+F["SceneDetection.tsx<br/>Enhanced Scene Boundary"]
+G["VideoLibrary.tsx<br/>Video Catalog Browser"]
 end
 subgraph "Backend"
-G["FastAPI main.py"]
-H["Video Router<br/>video.py"]
-I["RFP Router<br/>rfp.py"]
-J["Face Recognition Pipeline<br/>face_recognition.py"]
-K["Reference Database<br/>reference_faces.json"]
-L["Visual Analysis Results<br/>visual_analysis.json"]
-M["Video Library Manager<br/>New Endpoints"]
-N["Face Naming System<br/>Advanced Features"]
-O["Translation Service<br/>DashScope Qwen"]
+H["FastAPI main.py"]
+I["Video Router<br/>video.py"]
+J["RFP Router<br/>rfp.py"]
+K["Face Recognition Pipeline<br/>face_recognition.py"]
+L["Reference Database<br/>reference_faces.json"]
+M["Visual Analysis Results<br/>visual_analysis.json"]
+N["Video Library Manager<br/>New Endpoints"]
+O["Face Naming System<br/>Advanced Features"]
+P["Translation Service<br/>DashScope Qwen"]
+Q["Dubbing Pipeline<br/>Async Task Management"]
+R["Dubbing Status Tracking<br/>Real-time Updates"]
+S["Multi-language Support<br/>Arabic, French, Spanish, etc."]
 end
-A --> G
+A --> H
 B --> A
 C --> A
 D --> A
-E --> B
-F --> A
-G --> H
-G --> I
+E --> A
+F --> B
+G --> A
+H --> I
 H --> J
-H --> L
-H --> M
-H --> N
-H --> O
-J --> K
-L --> M
+I --> K
+I --> M
+I --> N
+I --> O
+I --> P
+I --> Q
+I --> R
+I --> S
+K --> L
 M --> N
-O --> P["AI Translation Model"]
+N --> O
+P --> T["AI Translation Model"]
+Q --> U["Audio Synthesis"]
+R --> V["Progress Reporting"]
+U --> W["Video Muxing"]
+V --> X["WebSocket Updates"]
 ```
 
 **Diagram sources**
-- [api.ts:1-325](file://frontend/src/lib/api.ts#L1-L325)
+- [api.ts:1-339](file://frontend/src/lib/api.ts#L1-L339)
 - [useVideoProcessing.ts:1-673](file://frontend/src/lib/useVideoProcessing.ts#L1-L673)
+- [DubbingPanel.tsx:1-338](file://frontend/src/components/archive/DubbingPanel.tsx#L1-L338)
 - [TranscriptPanel.tsx:1-305](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L305)
 - [SceneDetection.tsx:1-217](file://frontend/src/components/archive/SceneDetection.tsx#L1-L217)
 - [VideoLibrary.tsx:1-128](file://frontend/src/components/archive/VideoLibrary.tsx#L1-L128)
 - [main.py:1-44](file://backend/main.py#L1-L44)
-- [video.py:1-637](file://backend/routers/video.py#L1-L637)
+- [video.py:1-860](file://backend/routers/video.py#L1-L860)
+- [dubbing.py:1-161](file://backend/pipeline/dubbing.py#L1-L161)
 - [rfp.py:1-385](file://backend/routers/rfp.py#L1-L385)
 - [face_recognition.py:1-660](file://backend/pipeline/face_recognition.py#L1-L660)
 
 **Section sources**
-- [api.ts:1-325](file://frontend/src/lib/api.ts#L1-L325)
+- [api.ts:1-339](file://frontend/src/lib/api.ts#L1-L339)
 - [useVideoProcessing.ts:1-673](file://frontend/src/lib/useVideoProcessing.ts#L1-L673)
+- [DubbingPanel.tsx:1-338](file://frontend/src/components/archive/DubbingPanel.tsx#L1-L338)
 - [TranscriptPanel.tsx:1-305](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L305)
 - [main.py:1-44](file://backend/main.py#L1-L44)
 
@@ -125,8 +146,8 @@ The client provides:
 - WebSocket connection helper with message parsing
 - Strongly typed request/response interfaces for RFP and evaluation workflows
 - Convenience API facade exposing endpoints for video and RFP operations
-- **Updated** New video library management endpoints with comprehensive video catalog access
-- **NEW** Transcript translation endpoint with type-safe request/response handling
+- Enhanced API facade with new video library, face naming, translation, and dubbing endpoints
+- **Updated** New dubbing management endpoints with comprehensive language support and progress tracking
 
 Key capabilities:
 - HTTP request configuration: JSON content-type header, optional query parameters
@@ -135,18 +156,18 @@ Key capabilities:
 - Response processing: JSON parsing with typed return values
 - WebSocket: connects to ws:// base URL derived from http base URL
 
-**Updated** Enhanced API facade with new video library, face naming, and translation endpoints:
-- `api.video.list()`: Retrieves complete video library with thumbnails and metadata
-- `api.video.nameFace()`: Advanced face naming with reference database integration
-- `api.video.translateTranscript()`: AI-powered transcript translation with language support
-- `LibraryVideo` interface: Comprehensive video metadata including scenes, persons, and summaries
+**Updated** Enhanced API facade with new dubbing functionality:
+- `api.video.requestDubbing(videoId, targetLanguage)`: Initiates dubbing process for specified language
+- `api.video.getDubbingStatus(videoId, language)`: Polls dubbing status with real-time updates
+- `api.video.getDubbingLanguages(videoId)`: Retrieves available dubbed languages and supported options
+- `LibraryVideo` interface: Comprehensive video metadata including scenes, persons, summaries, and dubbing status
 
 **Section sources**
 - [api.ts:1-39](file://frontend/src/lib/api.ts#L1-L39)
 - [api.ts:42-64](file://frontend/src/lib/api.ts#L42-L64)
 - [api.ts:66-99](file://frontend/src/lib/api.ts#L66-L99)
 - [api.ts:101-161](file://frontend/src/lib/api.ts#L101-L161)
-- [api.ts:162-325](file://frontend/src/lib/api.ts#L162-L325)
+- [api.ts:162-339](file://frontend/src/lib/api.ts#L162-L339)
 
 ### Real-Time WebSocket Integration
 The WebSocket helper:
@@ -168,7 +189,7 @@ The hook manages:
 - Search: semantic search across processed videos
 - Video timeline synchronization: current time tracking and seeking
 - State cleanup: WebSocket closure and object URL revocation
-- **Updated** Person naming functionality with immediate UI updates and reference database integration
+- Enhanced person naming functionality with immediate UI updates and reference database integration
 
 **Updated** Enhanced error handling with failure counter mechanism that automatically disconnects after 5 consecutive failures.
 
@@ -188,7 +209,7 @@ State structure:
 - [useVideoProcessing.ts:122-673](file://frontend/src/lib/useVideoProcessing.ts#L122-L673)
 
 ## Architecture Overview
-The frontend communicates with backend endpoints through a typed HTTP client and real-time WebSocket channels. The video processing workflow combines asynchronous uploads, background pipeline execution, and live progress updates. The new translation system adds AI-powered multilingual support with real-time UI updates.
+The frontend communicates with backend endpoints through a typed HTTP client and real-time WebSocket channels. The video processing workflow combines asynchronous uploads, background pipeline execution, and live progress updates. The new translation and dubbing systems add AI-powered multilingual support with real-time UI updates and progress tracking.
 
 ```mermaid
 sequenceDiagram
@@ -200,6 +221,7 @@ participant BE as "Backend"
 participant Lib as "Video Library"
 participant Face as "Face Naming"
 participant Trans as "Translation Service"
+participant Dub as "Dubbing Pipeline"
 UI->>Hook : "uploadVideo(file)"
 Hook->>API : "uploadFile('/api/video/upload', file)"
 API-->>Hook : "{video_id, status}"
@@ -227,36 +249,56 @@ UI->>API : "translateTranscript(videoId, lang, segments)"
 API->>Trans : "POST /api/video/{id}/translate-transcript"
 Trans-->>API : "{translations[], language}"
 API-->>UI : "Translated segments"
+UI->>API : "requestDubbing(videoId, language)"
+API->>Dub : "POST /api/video/{id}/dub"
+Dub-->>API : "{status : 'processing'}"
+API-->>UI : "Start polling"
+UI->>API : "getDubbingStatus(videoId, language)"
+API->>Dub : "GET /api/video/{id}/dub/status"
+Dub-->>API : "{status, stage, progress}"
+API-->>UI : "Update progress UI"
+UI->>API : "getDubbingLanguages(videoId)"
+API->>Dub : "GET /api/video/{id}/dub/languages"
+Dub-->>API : "{available, supported}"
+API-->>UI : "Available dubs list"
 ```
 
 **Diagram sources**
-- [useVideoProcessing.ts:162-211](file://frontend/src/lib/useVideoProcessing.ts#L162-L211)
-- [useVideoProcessing.ts:215-276](file://frontend/src/lib/useVideoProcessing.ts#L215-L276)
-- [useVideoProcessing.ts:313-348](file://frontend/src/lib/useVideoProcessing.ts#L313-L348)
+- [useVideoProcessing.ts:162-211](file://frontend/src/lib/useVideoProcessing.ts#L162-211)
+- [useVideoProcessing.ts:215-276](file://frontend/src/lib/useVideoProcessing.ts#L215-276)
+- [useVideoProcessing.ts:313-348](file://frontend/src/lib/useVideoProcessing.ts#L313-348)
 - [useVideoProcessing.ts:280-309](file://frontend/src/lib/useVideoProcessing.ts#L280-309)
 - [api.ts:42-64](file://frontend/src/lib/api.ts#L42-L64)
 - [api.ts:66-99](file://frontend/src/lib/api.ts#L66-L99)
 - [api.ts:222-233](file://frontend/src/lib/api.ts#L222-L233)
-- [TranscriptPanel.tsx:82-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L82-L121)
+- [api.ts:263-276](file://frontend/src/lib/api.ts#L263-L276)
+- [DubbingPanel.tsx:82-121](file://frontend/src/components/archive/DubbingPanel.tsx#L82-121)
 - [video.py:231-315](file://backend/routers/video.py#L231-L315)
 - [video.py:223-274](file://backend/routers/video.py#L223-L274)
 - [video.py:279-365](file://backend/routers/video.py#L279-L365)
+- [video.py:450-501](file://backend/routers/video.py#L450-L501)
+- [video.py:504-523](file://backend/routers/video.py#L504-L523)
+- [video.py:526-539](file://backend/routers/video.py#L526-L539)
 
 ## Detailed Component Analysis
 
 ### API Endpoint Mapping and Schemas
 The frontend exposes convenience methods grouped under an API facade. These map to backend endpoints and models.
 
-**Updated** Enhanced API endpoint coverage with new video library management, face naming, and translation capabilities:
+**Updated** Enhanced API endpoint coverage with new dubbing functionality:
 
 - Video endpoints
   - POST /api/video/upload: uploads a file and starts background processing
   - GET /api/video/{video_id}/status: retrieves pipeline status
   - GET /api/video/{video_id}/metadata: retrieves structured metadata
   - GET /api/video/{video_id}/transcript: retrieves transcript segments
-  - **NEW** POST /api/video/{video_id}/translate-transcript: translates transcript segments to target language
-  - **NEW** GET /api/videos: lists all processed videos with thumbnails and metadata
-  - **NEW** POST /api/video/{video_id}/faces/name: assigns names to detected persons
+  - POST /api/video/{video_id}/translate-transcript: translates transcript segments to target language
+  - GET /api/videos: lists all processed videos with thumbnails and metadata
+  - POST /api/video/{video_id}/faces/name: assigns names to detected persons
+  - POST /api/video/{video_id}/dub: initiates dubbing process for specified language
+  - GET /api/video/{video_id}/dub/status: polls dubbing status with real-time updates
+  - GET /api/video/{video_id}/dub/languages: retrieves available and supported dubbing languages
+  - GET /api/video/{video_id}/dubbed/{language}: streams dubbed video file
   - POST /api/search: performs semantic search across videos
   - WS /api/ws/pipeline/{video_id}: streams progress events
 
@@ -276,13 +318,16 @@ The frontend exposes convenience methods grouped under an API facade. These map 
 - `NameFaceRequest`: face identification with bilingual naming and role assignment
 - `TranslateSegmentInput`: individual transcript segment with text and timing information
 - `TranslateRequest`: translation request with target language and segments array
+- `DubbingRequest`: dubbing initiation with target language specification
+- `DubbingStatusResponse`: real-time dubbing status with stage and progress information
+- `DubbingLanguagesResponse`: available and supported dubbing languages
 - `RFPCreatePayload`: project metadata, evaluation criteria, timeline, budget, compliance, language, tone
 - `RFPCreateResponse`: generated RFP identifier, title, status, sections, language
 - `EvaluationResults`: vendor results, recommendation, follow-up questions
 - `WSMessage`: standardized progress message for pipeline stages
 
 **Section sources**
-- [api.ts:164-325](file://frontend/src/lib/api.ts#L164-L325)
+- [api.ts:164-339](file://frontend/src/lib/api.ts#L164-L339)
 - [api.ts:101-161](file://frontend/src/lib/api.ts#L101-L161)
 - [api.ts:68-74](file://frontend/src/lib/api.ts#L68-L74)
 - [video.py:39-92](file://backend/routers/video.py#L39-L92)
@@ -294,14 +339,88 @@ The frontend exposes convenience methods grouped under an API facade. These map 
 - [video.py:279-365](file://backend/routers/video.py#L279-L365)
 - [video.py:231-315](file://backend/routers/video.py#L231-L315)
 - [video.py:220-314](file://backend/routers/video.py#L220-L314)
+- [video.py:450-501](file://backend/routers/video.py#L450-L501)
+- [video.py:504-523](file://backend/routers/video.py#L504-L523)
+- [video.py:526-539](file://backend/routers/video.py#L526-L539)
+- [video.py:542-558](file://backend/routers/video.py#L542-L558)
 - [rfp.py:97-130](file://backend/routers/rfp.py#L97-L130)
 - [rfp.py:133-167](file://backend/routers/rfp.py#L133-L167)
 - [rfp.py:243-311](file://backend/routers/rfp.py#L243-L311)
 - [rfp.py:314-329](file://backend/routers/rfp.py#L314-L329)
 - [rfp.py:332-346](file://backend/routers/rfp.py#L332-L346)
 
+### NEW Video Dubbing System
+**NEW** Comprehensive video dubbing system with multi-language support and real-time progress tracking.
+
+The dubbing system provides:
+- Multi-language audio dubbing with support for Arabic, English, French, Spanish, German, Russian, Hindi, and Chinese
+- Real-time progress tracking with simulated progress bar and status polling
+- Background async task management with duplicate prevention and caching
+- Inline video playback for dubbed versions with download capability
+- Language availability checking and supported language validation
+- WebSocket-based progress updates integrated with existing pipeline monitoring
+
+**Dubbing Request Schema**:
+```typescript
+interface DubbingRequest {
+  videoId: string;
+  targetLanguage: string; // "ar", "en", "fr", "es", "de", "ru", "hi", "zh"
+}
+
+interface DubbingStatusResponse {
+  status: string; // "processing", "completed", "failed", "not_started"
+  target_language: string;
+  stage?: string;
+  video_id: string;
+  progress?: number;
+}
+
+interface DubbingLanguagesResponse {
+  video_id: string;
+  available: string[];
+  supported: string[];
+}
+```
+
+**Frontend Implementation**:
+The `DubbingPanel` component provides a complete user interface for dubbing:
+- Language selection dropdown with internationalized labels
+- Real-time progress indication with animated progress bar
+- Available dubbed languages display with play/download actions
+- Inline video player for previewing dubbed content
+- Error handling with user-friendly feedback
+- Automatic cleanup of timers and state management
+
+**Backend Dubbing Pipeline**:
+The `/api/video/{video_id}/dub` endpoint orchestrates the dubbing process:
+- Validates target language against supported languages list
+- Checks for existing transcript requirement
+- Implements caching for already-dubbed content
+- Prevents duplicate task launches with active task tracking
+- Creates async tasks with proper garbage collection prevention
+- Returns immediate processing status for polling
+
+**Supported Languages**:
+- Arabic (ar): العربية
+- English (en): English
+- French (fr): Français
+- Spanish (es): Español
+- German (de): Deutsch
+- Russian (ru): Русский
+- Hindi (hi): हिन्दी
+- Chinese (zh): 中文
+
+**Section sources**
+- [api.ts:263-276](file://frontend/src/lib/api.ts#L263-L276)
+- [DubbingPanel.tsx:1-338](file://frontend/src/components/archive/DubbingPanel.tsx#L1-L338)
+- [video.py:450-501](file://backend/routers/video.py#L450-L501)
+- [video.py:504-523](file://backend/routers/video.py#L504-L523)
+- [video.py:526-539](file://backend/routers/video.py#L526-L539)
+- [video.py:542-558](file://backend/routers/video.py#L542-L558)
+- [dubbing.py:109-161](file://backend/pipeline/dubbing.py#L109-L161)
+
 ### Enhanced Video Library Management System
-**Updated** Comprehensive video library management with advanced browsing and discovery capabilities.
+Comprehensive video library management with advanced browsing and discovery capabilities.
 
 The new video library system provides:
 - Complete video catalog browsing with thumbnails and metadata
@@ -343,7 +462,7 @@ The `/api/videos` endpoint scans the upload directory and aggregates metadata fr
 - [VideoLibrary.tsx:1-128](file://frontend/src/components/archive/VideoLibrary.tsx#L1-L128)
 
 ### Advanced Face Naming System
-**Updated** Sophisticated face identification system with reference database integration and bilingual support.
+Sophisticated face identification system with reference database integration and bilingual support.
 
 The face naming system enables users to:
 - Assign names to detected persons with English and Arabic support
@@ -386,8 +505,8 @@ The system maintains a persistent reference database (`reference_faces.json`) co
 - [useVideoProcessing.ts:555-590](file://frontend/src/lib/useVideoProcessing.ts#L555-L590)
 - [api.ts:233-246](file://frontend/src/lib/api.ts#L233-L246)
 
-### NEW Transcript Translation System
-**NEW** AI-powered transcript translation with real-time UI updates and multi-language support.
+### Transcript Translation System
+AI-powered transcript translation with real-time UI updates and multi-language support.
 
 The translation system provides:
 - Support for Arabic, French, and Russian languages
@@ -435,12 +554,12 @@ The `/api/video/{video_id}/translate-transcript` endpoint uses DashScope Qwen mo
 **Section sources**
 - [api.ts:222-233](file://frontend/src/lib/api.ts#L222-L233)
 - [TranscriptPanel.tsx:14-18](file://frontend/src/components/archive/TranscriptPanel.tsx#L14-18)
-- [TranscriptPanel.tsx:82-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L82-L121)
+- [TranscriptPanel.tsx:82-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L82-121)
 - [video.py:51-60](file://backend/routers/video.py#L51-L60)
 - [video.py:231-315](file://backend/routers/video.py#L231-L315)
 
 ### Enhanced SceneBoundary Interface and Data Transformation
-**Updated** The SceneBoundary interface now includes enhanced properties for scene classification and thumbnail support.
+The SceneBoundary interface includes enhanced properties for scene classification and thumbnail support.
 
 The SceneBoundary interface definition:
 ```typescript
@@ -456,7 +575,7 @@ export interface SceneBoundary {
 ```
 
 **Enhanced Scene Classification System**
-The frontend now supports comprehensive scene classification with the following scene types:
+The frontend supports comprehensive scene classification with the following scene types:
 - interview: Formal interviews and conversations
 - b-roll: Background footage and establishing shots  
 - aerial: Drone/camera aerial views
@@ -485,7 +604,7 @@ if (typeof rawTs === "number") {
 ```
 
 **Thumbnail Integration**
-The backend now provides thumbnail paths that are properly mapped to the frontend:
+The backend provides thumbnail paths that are properly mapped to the frontend:
 - Backend ingestion includes `thumbnail_path` field
 - Thumbnail URLs are converted to accessible paths in the orchestrator
 - Scene thumbnails are included in visual analysis results
@@ -499,7 +618,7 @@ The backend now provides thumbnail paths that are properly mapped to the fronten
 - [results.json:1-84](file://backend/uploads/19ab5a0f-7c15-4368-933e-c7e2f7ff0c86/results.json#L1-L84)
 
 ### Enhanced Error Handling with Failure Counter Mechanism
-**Updated** The polling fallback mechanism now includes a sophisticated failure counter that automatically disconnects after 5 consecutive failures.
+The polling fallback mechanism includes a sophisticated failure counter that automatically disconnects after 5 consecutive failures.
 
 The failure counter implementation:
 ```typescript
@@ -558,7 +677,7 @@ const startPollingFallback = useCallback(
 - [useVideoProcessing.ts:460-525](file://frontend/src/lib/useVideoProcessing.ts#L460-L525)
 
 ### Data Transformation Patterns
-**Updated** Comprehensive frontend data transformation layer implementation with detailed mapping logic for backend responses to VideoMetadata interface, including sophisticated face recognition data processing and enhanced scene boundary handling.
+Comprehensive frontend data transformation layer implementation with detailed mapping logic for backend responses to VideoMetadata interface, including sophisticated face recognition data processing and enhanced scene boundary handling.
 
 The data transformation layer in useVideoProcessing.ts implements sophisticated mapping logic to convert backend response structures into frontend-friendly interfaces, with particular emphasis on enhanced scene boundary processing.
 
@@ -600,7 +719,7 @@ The backend returns metadata in a hierarchical structure with enhanced scene det
 ```
 
 #### Enhanced Scene Boundary Transformation
-**Updated** The scene boundary transformation now includes comprehensive scene classification and thumbnail integration:
+The scene boundary transformation includes comprehensive scene classification and thumbnail integration:
 
 ```typescript
 const metadata: VideoMetadata = {
@@ -645,7 +764,7 @@ The face recognition transformation maintains its sophisticated fallback mechani
 5. **Automatic Color Assignment**: Assigns deterministic colors from predefined palette
 
 #### Transformation Implementation Details
-The `fetchResults` function (lines 304-456) orchestrates the complete transformation with enhanced scene processing:
+The `fetchResults` function orchestrates the complete transformation with enhanced scene processing:
 
 ```typescript
 // Enhanced scene transformation with classification and thumbnails
@@ -700,20 +819,22 @@ Simple but effective transformation:
 - Polling: periodic status checks until all stages complete; triggers result fetch when done with failure counter mechanism
 - Search: debounced UI-triggered search with isSearching flag and empty results on failure
 - Evaluation: background submission with periodic status polling; clears intervals on cleanup and error
-- **Updated** Video library loading: efficient thumbnail loading with skeleton placeholders and error handling
-- **Updated** Face naming: optimistic UI updates with immediate feedback and rollback on failure
-- **NEW** Translation: real-time translation with progress indication and error handling
+- Video library loading: efficient thumbnail loading with skeleton placeholders and error handling
+- Face naming: optimistic UI updates with immediate feedback and rollback on failure
+- Translation: real-time translation with progress indication and error handling
+- **NEW** Dubbing: background dubbing with progress polling, duplicate prevention, and inline playback
 
 **Updated** Enhanced polling fallback with automatic failure detection and recovery after 5 consecutive failures.
 
 **Section sources**
-- [useVideoProcessing.ts:162-211](file://frontend/src/lib/useVideoProcessing.ts#L162-L211)
-- [useVideoProcessing.ts:215-276](file://frontend/src/lib/useVideoProcessing.ts#L215-L276)
-- [useVideoProcessing.ts:313-348](file://frontend/src/lib/useVideoProcessing.ts#L313-L348)
-- [useVideoProcessing.ts:352-368](file://frontend/src/lib/useVideoProcessing.ts#L352-L368)
+- [useVideoProcessing.ts:162-211](file://frontend/src/lib/useVideoProcessing.ts#L162-211)
+- [useVideoProcessing.ts:215-276](file://frontend/src/lib/useVideoProcessing.ts#L215-276)
+- [useVideoProcessing.ts:313-348](file://frontend/src/lib/useVideoProcessing.ts#L313-348)
+- [useVideoProcessing.ts:352-368](file://frontend/src/lib/useVideoProcessing.ts#L352-368)
 - [useVideoProcessing.ts:460-525](file://frontend/src/lib/useVideoProcessing.ts#L460-L525)
 - [useVideoProcessing.ts:555-590](file://frontend/src/lib/useVideoProcessing.ts#L555-L590)
 - [TranscriptPanel.tsx:82-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L82-L121)
+- [DubbingPanel.tsx:75-112](file://frontend/src/components/archive/DubbingPanel.tsx#L75-L112)
 - [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-L50)
 - [rfp-evaluator/page.tsx:27-98](file://frontend/src/app/rfp-evaluator/page.tsx#L27-L98)
 
@@ -721,9 +842,10 @@ Simple but effective transformation:
 - Caching: no explicit client-side cache; relies on backend static file serving for exports
 - Optimistic updates: pipeline stage status updates are applied immediately upon receiving WebSocket messages
 - Offline handling: WebSocket fallback to REST polling with enhanced failure counter; search results cleared on error; evaluation polling stops on error and resets UI
-- **Updated** Video library caching: browser-native image caching for thumbnails with lazy loading
-- **Updated** Face naming: immediate UI updates without full refetch, maintaining user experience during network operations
-- **NEW** Translation caching: Map-based segment storage prevents redundant translation requests
+- Video library caching: browser-native image caching for thumbnails with lazy loading
+- Face naming: immediate UI updates without full refetch, maintaining user experience during network operations
+- Translation: Map-based segment storage prevents redundant translation requests
+- **NEW** Dubbing: backend caching for already-dubbed content, duplicate task prevention, and progress persistence
 
 **Updated** Enhanced offline handling with automatic disconnection after 5 consecutive failures.
 
@@ -735,6 +857,7 @@ Simple but effective transformation:
 - [useVideoProcessing.ts:506-521](file://frontend/src/lib/useVideoProcessing.ts#L506-L521)
 - [useVideoProcessing.ts:568-585](file://frontend/src/lib/useVideoProcessing.ts#L568-L585)
 - [TranscriptPanel.tsx:67-80](file://frontend/src/components/archive/TranscriptPanel.tsx#L67-80)
+- [video.py:476-485](file://backend/routers/video.py#L476-L485)
 
 ### Integration with Backend APIs and Real-Time Data Synchronization
 - Backend CORS: configured to allow cross-origin requests
@@ -743,9 +866,10 @@ Simple but effective transformation:
 - Evaluation workflow: background evaluation updates status and results persisted to disk
 - Face recognition pipeline: sophisticated AI-powered face matching with reference database integration
 - Scene detection: enhanced visual analysis with scene classification and thumbnail generation
-- **Updated** Video library management: comprehensive catalog browsing with metadata aggregation
-- **Updated** Face naming system: real-time reference database updates with search index synchronization
-- **NEW** Translation service: AI-powered multilingual translation with DashScope Qwen model integration
+- Video library management: comprehensive catalog browsing with metadata aggregation
+- Face naming system: real-time reference database updates with search index synchronization
+- Translation service: AI-powered multilingual translation with DashScope Qwen model integration
+- **NEW** Dubbing pipeline: async task management with progress tracking and multi-language support
 
 **Updated** Enhanced scene detection pipeline with comprehensive scene classification and thumbnail support.
 
@@ -757,6 +881,9 @@ Simple but effective transformation:
 - [video.py:223-274](file://backend/routers/video.py#L223-L274)
 - [video.py:279-365](file://backend/routers/video.py#L279-L365)
 - [video.py:231-315](file://backend/routers/video.py#L231-L315)
+- [video.py:450-501](file://backend/routers/video.py#L450-L501)
+- [video.py:504-523](file://backend/routers/video.py#L504-L523)
+- [video.py:526-539](file://backend/routers/video.py#L526-L539)
 - [rfp.py:219-238](file://backend/routers/rfp.py#L219-L238)
 - [face_recognition.py:124-188](file://backend/pipeline/face_recognition.py#L124-L188)
 
@@ -771,9 +898,10 @@ UI_C["PipelineVisualizer.tsx"] --> Hook
 UI_D["SceneDetection.tsx"] --> Hook
 UI_E["VideoLibrary.tsx"] --> API["api.ts"]
 UI_F["TranscriptPanel.tsx"] --> API
-UI_G["RFPForm.tsx"] --> API
-UI_H["rfp-creator/page.tsx"] --> API
-UI_I["rfp-evaluator/page.tsx"] --> API
+UI_G["DubbingPanel.tsx"] --> API
+UI_H["RFPForm.tsx"] --> API
+UI_I["rfp-creator/page.tsx"] --> API
+UI_J["rfp-evaluator/page.tsx"] --> API
 Hook --> API
 API --> Backend["Backend Routers"]
 Backend --> FacePipeline["Face Recognition Pipeline"]
@@ -781,33 +909,38 @@ Backend --> ScenePipeline["Enhanced Scene Detection"]
 Backend --> VideoLibrary["Video Library Manager"]
 Backend --> FaceNaming["Face Naming System"]
 Backend --> TranslationService["Translation Service"]
+Backend --> DubbingPipeline["Dubbing Pipeline"]
 FacePipeline --> ReferenceDB["Reference Faces Database"]
 ScenePipeline --> VisualAnalysis["Visual Analysis Results"]
 VideoLibrary --> FaceNaming
 VisualAnalysis --> SceneTypes["Scene Classification"]
 FaceNaming --> SearchIndex["Semantic Search Index"]
 TranslationService --> AIModel["DashScope Qwen Model"]
+DubbingPipeline --> AudioSynth["Audio Synthesis"]
+DubbingPipeline --> VideoMux["Video Muxing"]
 ```
 
 **Diagram sources**
 - [VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
-- [archive/page.tsx:1-129](file://frontend/src/app/archive/page.tsx#L1-L129)
+- [archive/page.tsx:1-214](file://frontend/src/app/archive/page.tsx#L1-L214)
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
 - [SceneDetection.tsx:1-217](file://frontend/src/components/archive/SceneDetection.tsx#L1-L217)
 - [VideoLibrary.tsx:1-128](file://frontend/src/components/archive/VideoLibrary.tsx#L1-L128)
 - [TranscriptPanel.tsx:1-305](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L305)
+- [DubbingPanel.tsx:1-338](file://frontend/src/components/archive/DubbingPanel.tsx#L1-L338)
 - [RFPForm.tsx:1-411](file://frontend/src/components/rfp/RFPForm.tsx#L1-L411)
 - [rfp-creator/page.tsx:1-159](file://frontend/src/app/rfp-creator/page.tsx#L1-L159)
 - [rfp-evaluator/page.tsx:1-178](file://frontend/src/app/rfp-evaluator/page.tsx#L1-L178)
 - [useVideoProcessing.ts:1-673](file://frontend/src/lib/useVideoProcessing.ts#L1-L673)
-- [api.ts:1-325](file://frontend/src/lib/api.ts#L1-L325)
-- [video.py:1-637](file://backend/routers/video.py#L1-L637)
+- [api.ts:1-339](file://frontend/src/lib/api.ts#L1-L339)
+- [video.py:1-860](file://backend/routers/video.py#L1-L860)
 - [rfp.py:1-385](file://backend/routers/rfp.py#L1-L385)
 - [face_recognition.py:1-660](file://backend/pipeline/face_recognition.py#L1-L660)
+- [dubbing.py:1-161](file://backend/pipeline/dubbing.py#L1-L161)
 
 **Section sources**
 - [useVideoProcessing.ts:122-673](file://frontend/src/lib/useVideoProcessing.ts#L122-L673)
-- [api.ts:162-325](file://frontend/src/lib/api.ts#L162-L325)
+- [api.ts:162-339](file://frontend/src/lib/api.ts#L162-L339)
 
 ## Performance Considerations
 - WebSocket vs polling: WebSocket provides real-time updates; polling serves as a robust fallback with enhanced failure handling
@@ -818,12 +951,15 @@ TranslationService --> AIModel["DashScope Qwen Model"]
 - Face recognition optimization: intelligent fallbacks reduce redundant processing for unnamed persons
 - Scene classification optimization: enhanced timestamp parsing minimizes conversion overhead
 - Thumbnail loading: lazy loading of scene thumbnails improves initial render performance
-- **Updated** Video library optimization: efficient thumbnail loading with browser caching and skeleton placeholders
-- **Updated** Face naming optimization: immediate UI updates without full refetch, reducing network overhead
-- **Updated** Reference database optimization: duplicate checking prevents redundant entries and maintains database integrity
-- **NEW** Translation optimization: Map-based segment storage prevents redundant translation requests
-- **NEW** Translation batching: single API call for all segments reduces network overhead
-- **NEW** Translation retry: exponential backoff prevents overwhelming AI service
+- Video library optimization: efficient thumbnail loading with browser caching and skeleton placeholders
+- Face naming optimization: immediate UI updates without full refetch, reducing network overhead
+- Reference database optimization: duplicate checking prevents redundant entries and maintains database integrity
+- Translation optimization: Map-based segment storage prevents redundant translation requests
+- Translation batching: single API call for all segments reduces network overhead
+- Translation retry: exponential backoff prevents overwhelming AI service
+- **NEW** Dubbing optimization: async task management prevents duplicate processing
+- **NEW** Dubbing caching: backend caching for already-dubbed content reduces redundant processing
+- **NEW** Dubbing progress: simulated progress bar provides responsive UI feedback during long-running operations
 
 ## Troubleshooting Guide
 Common issues and resolutions:
@@ -837,13 +973,16 @@ Common issues and resolutions:
 - Scene classification failures: verify scene_type values in backend visual analysis results; check timestamp format consistency
 - Thumbnail loading failures: verify thumbnail paths in backend ingestion results; check file accessibility
 - Polling failures: monitor failure counter; automatic disconnection occurs after 5 consecutive failures
-- **Updated** Video library loading failures: verify upload directory structure and file permissions; check thumbnail file existence
-- **Updated** Face naming failures: validate face index bounds and required fields; check reference database write permissions
-- **Updated** Reference database corruption: verify JSON file integrity and backup restoration procedures
-- **NEW** Translation failures: verify DASHSCOPE_API_KEY configuration; check network connectivity to DashScope service; validate language codes and segment formatting
-- **NEW** Translation timeout: increase timeout settings if dealing with large transcripts; check AI service availability
+- Video library loading failures: verify upload directory structure and file permissions; check thumbnail file existence
+- Face naming failures: validate face index bounds and required fields; check reference database write permissions
+- Reference database corruption: verify JSON file integrity and backup restoration procedures
+- Translation failures: verify DASHSCOPE_API_KEY configuration; check network connectivity to DashScope service; validate language codes and segment formatting
+- Translation timeout: increase timeout settings if dealing with large transcripts; check AI service availability
+- **NEW** Dubbing failures: verify transcript availability before dubbing; check supported language codes; monitor async task status
+- **NEW** Dubbing progress: ensure polling interval is appropriate for dubbing duration; check backend task queue status
+- **NEW** Dubbing playback: verify dubbed video file existence and accessibility; check media type configuration
 
-**Updated** Enhanced troubleshooting guidance for new failure counter mechanism, scene classification features, and translation system.
+**Updated** Enhanced troubleshooting guidance for new failure counter mechanism, scene classification features, translation system, and dubbing functionality.
 
 **Section sources**
 - [useVideoProcessing.ts:202-208](file://frontend/src/lib/useVideoProcessing.ts#L202-L208)
@@ -852,17 +991,22 @@ Common issues and resolutions:
 - [useVideoProcessing.ts:506-521](file://frontend/src/lib/useVideoProcessing.ts#L506-L521)
 - [useVideoProcessing.ts:555-590](file://frontend/src/lib/useVideoProcessing.ts#L555-L590)
 - [TranscriptPanel.tsx:109-118](file://frontend/src/components/archive/TranscriptPanel.tsx#L109-L118)
+- [DubbingPanel.tsx:105-108](file://frontend/src/components/archive/DubbingPanel.tsx#L105-L108)
 - [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-L50)
 - [video.py:288-296](file://backend/routers/video.py#L288-L296)
 - [video.py:321-344](file://backend/routers/video.py#L321-L344)
 - [video.py:248-253](file://backend/routers/video.py#L248-L253)
+- [video.py:463-474](file://backend/routers/video.py#L463-L474)
+- [video.py:504-523](file://backend/routers/video.py#L504-L523)
 - [rfp-evaluator/page.tsx:86-98](file://frontend/src/app/rfp-evaluator/page.tsx#L86-L98)
 
 ## Conclusion
 The frontend API integration layer provides a clean, typed interface to backend services with robust real-time capabilities. The useVideoProcessing hook centralizes state management, error handling, and integration logic, enabling responsive UIs for video processing and RFP workflows. The comprehensive data transformation layer ensures seamless mapping between backend response structures and frontend interface requirements, with particular emphasis on sophisticated face recognition data processing including intelligent fallbacks, automatic numbering for unnamed persons, and appearance synthesis. 
 
-**Updated** The enhanced video processing capabilities now include comprehensive scene classification with scene_type categorization, thumbnail integration for visual scene representation, and sophisticated timestamp parsing supporting both MM:SS and HH:MM:SS formats. The failure counter mechanism provides robust error handling with automatic disconnection after 5 consecutive failures, ensuring graceful degradation and user experience preservation. The SceneDetection component showcases these enhancements with color-coded scene types and thumbnail previews, creating a rich visual experience for video navigation and analysis.
+The enhanced video processing capabilities include comprehensive scene classification with scene_type categorization, thumbnail integration for visual scene representation, and sophisticated timestamp parsing supporting both MM:SS and HH:MM:SS formats. The failure counter mechanism provides robust error handling with automatic disconnection after 5 consecutive failures, ensuring graceful degradation and user experience preservation. The SceneDetection component showcases these enhancements with color-coded scene types and thumbnail previews, creating a rich visual experience for video navigation and analysis.
 
-**Updated** The new video library management system provides comprehensive catalog browsing with thumbnails, metadata aggregation, and smart filtering capabilities. The advanced face naming system enables intelligent person identification with reference database integration, bilingual support, and immediate search index updates. The design balances optimistic updates, fallback mechanisms, and clear separation of concerns between presentation and data access, while the enhanced scene detection pipeline provides reliable scene classification with robust error handling and comprehensive thumbnail support. The integrated reference database system ensures persistent person recognition across video processing sessions, creating a scalable foundation for large-scale media analysis workflows.
+The new video library management system provides comprehensive catalog browsing with thumbnails, metadata aggregation, and smart filtering capabilities. The advanced face naming system enables intelligent person identification with reference database integration, bilingual support, and immediate search index updates. The design balances optimistic updates, fallback mechanisms, and clear separation of concerns between presentation and data access, while the enhanced scene detection pipeline provides reliable scene classification with robust error handling and comprehensive thumbnail support. The integrated reference database system ensures persistent person recognition across video processing sessions, creating a scalable foundation for large-scale media analysis workflows.
 
-**NEW** The transcript translation system adds powerful multilingual capabilities with real-time UI updates, supporting Arabic, French, and Russian languages through AI-powered translation. The system integrates seamlessly with the existing video processing pipeline, providing instant translation feedback while maintaining the original transcript structure and timing information. The translation service leverages DashScope Qwen models with professional translation prompts, retry logic, and marker-based segment parsing to ensure accurate and reliable translations. This enhancement significantly expands the accessibility and internationalization capabilities of the Dubai Media platform, making it suitable for diverse linguistic audiences and global media workflows.
+The transcript translation system adds powerful multilingual capabilities with real-time UI updates, supporting Arabic, French, and Russian languages through AI-powered translation. The system integrates seamlessly with the existing video processing pipeline, providing instant translation feedback while maintaining the original transcript structure and timing information. The translation service leverages DashScope Qwen models with professional translation prompts, retry logic, and marker-based segment parsing to ensure accurate and reliable translations. This enhancement significantly expands the accessibility and internationalization capabilities of the Dubai Media platform, making it suitable for diverse linguistic audiences and global media workflows.
+
+**NEW** The comprehensive video dubbing system represents a major enhancement to the platform's internationalization capabilities. With support for eight languages including Arabic, English, French, Spanish, German, Russian, Hindi, and Chinese, the dubbing system provides professional-grade audio localization. The system features sophisticated background task management with duplicate prevention, caching for already-dubbed content, and real-time progress tracking through polling mechanisms. The DubbingPanel component offers an intuitive user interface with language selection, progress indication, inline playback, and download capabilities. The backend implementation leverages async task management, proper garbage collection prevention, and comprehensive error handling to ensure reliable operation. This enhancement transforms the Dubai Media platform into a truly global media solution capable of serving diverse international audiences with localized audio content.

@@ -14,22 +14,24 @@
 - [backend/pipeline/visual_analysis.py](file://backend/pipeline/visual_analysis.py)
 - [backend/pipeline/face_recognition.py](file://backend/pipeline/face_recognition.py)
 - [backend/pipeline/subtitle_generation.py](file://backend/pipeline/subtitle_generation.py)
+- [backend/pipeline/dubbing.py](file://backend/pipeline/dubbing.py)
 - [frontend/src/lib/api.ts](file://frontend/src/lib/api.ts)
 - [frontend/src/lib/useVideoProcessing.ts](file://frontend/src/lib/useVideoProcessing.ts)
 - [frontend/src/components/archive/VideoUpload.tsx](file://frontend/src/components/archive/VideoUpload.tsx)
 - [frontend/src/components/archive/PeoplePanel.tsx](file://frontend/src/components/archive/PeoplePanel.tsx)
 - [frontend/src/components/archive/TranscriptPanel.tsx](file://frontend/src/components/archive/TranscriptPanel.tsx)
 - [frontend/src/components/archive/VideoTimeline.tsx](file://frontend/src/components/archive/VideoTimeline.tsx)
+- [frontend/src/components/archive/DubbingPanel.tsx](file://frontend/src/components/archive/DubbingPanel.tsx)
 - [README.md](file://README.md)
 </cite>
 
 ## Update Summary
 **Changes Made**
-- Added comprehensive documentation for new subtitle generation API endpoints including GET /api/video/{video_id}/subtitles for WebVTT content and GET /api/video/{video_id}/subtitles/download for downloadable SRT/VTT files
-- Enhanced video processing pipeline integration with automatic subtitle generation after audio transcription completion
-- Updated architecture diagrams to reflect subtitle generation workflow
-- Added detailed examples for subtitle download functionality with curl commands and JavaScript implementations
-- Updated frontend integration examples to demonstrate subtitle track management in VideoTimeline component
+- Added comprehensive documentation for new dubbing API endpoints including POST /api/video/{video_id}/dub for job submission, GET /api/video/{video_id}/dub/status for progress monitoring, and GET /api/video/{video_id}/dub/languages for language availability checks
+- Enhanced video processing pipeline integration with automatic dubbing capabilities using Edge-TTS and DashScope translation services
+- Updated architecture diagrams to reflect dubbing workflow integration
+- Added detailed examples for dubbing functionality with curl commands and JavaScript implementations
+- Updated frontend integration examples to demonstrate dubbing panel management in DubbingPanel component
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -39,12 +41,13 @@
 5. [Detailed Component Analysis](#detailed-component-analysis)
 6. [Enhanced Face Recognition System](#enhanced-face-recognition-system)
 7. [Subtitle Generation System](#subtitle-generation-system)
-8. [Transcript Translation System](#transcript-translation-system)
-9. [Dependency Analysis](#dependency-analysis)
-10. [Performance Considerations](#performance-considerations)
-11. [Troubleshooting Guide](#troubleshooting-guide)
-12. [Conclusion](#conclusion)
-13. [Appendices](#appendices)
+8. [Dubbing System](#dubbing-system)
+9. [Transcript Translation System](#transcript-translation-system)
+10. [Dependency Analysis](#dependency-analysis)
+11. [Performance Considerations](#performance-considerations)
+12. [Troubleshooting Guide](#troubleshooting-guide)
+13. [Conclusion](#conclusion)
+14. [Appendices](#appendices)
 
 ## Introduction
 This document provides comprehensive API documentation for the video processing endpoints that power the AI-powered media archive. It covers:
@@ -52,24 +55,29 @@ This document provides comprehensive API documentation for the video processing 
 - GET /api/video/{video_id}/status for retrieving processing pipeline status with detailed progress information
 - GET /api/video/{video_id}/metadata for accessing structured metadata results from all pipeline stages with enhanced face recognition data
 - GET /api/video/{video_id}/transcript for retrieving speech-to-text transcripts
-- **NEW** GET /api/video/{video_id}/subtitles for retrieving WebVTT subtitle content with multi-language support
-- **NEW** GET /api/video/{video_id}/subtitles/download for downloading subtitles as SRT or VTT files
+- GET /api/video/{video_id}/subtitles for retrieving WebVTT subtitle content with multi-language support
+- GET /api/video/{video_id}/subtitles/download for downloading subtitles as SRT or VTT files
+- **NEW** POST /api/video/{video_id}/dub for submitting dubbing jobs with target language specification
+- **NEW** GET /api/video/{video_id}/dub/status for monitoring dubbing job progress and completion status
+- **NEW** GET /api/video/{video_id}/dub/languages for checking available dubbed languages and supported options
+- **NEW** GET /api/video/{video_id}/dubbed/{language} for streaming or downloading dubbed video content
 - POST /api/video/{video_id}/translate-transcript for real-time transcript translation into Arabic, French, and Russian languages with DashScope Qwen integration
 - POST /api/video/{video_id}/faces/name for assigning names to detected persons with optional reference database integration
 - GET/POST /api/search for semantic search with dual HTTP method support and person-specific filtering
 - POST /api/reindex for rebuilding search indexes from existing processed videos
 
-The documentation includes request/response schemas, error codes, file upload handling, subtitle generation workflows, and practical examples using curl commands and JavaScript implementations.
+The documentation includes request/response schemas, error codes, file upload handling, subtitle generation workflows, dubbing capabilities, and practical examples using curl commands and JavaScript implementations.
 
-**Updated** The system now features comprehensive subtitle generation capabilities with automatic multi-language subtitle creation after audio transcription completion. The subtitle system integrates seamlessly with the existing pipeline, providing instant access to WebVTT and SRT formats while maintaining temporal accuracy and speaker attribution.
+**Updated** The system now features comprehensive dubbing capabilities with automatic multi-language voice synthesis using Edge-TTS and professional translation services. The dubbing system integrates seamlessly with the existing pipeline, providing instant access to dubbed video content while maintaining temporal accuracy and preserving speaker attribution throughout the translation and synthesis process.
 
 ## Project Structure
 The video processing system consists of:
 - FastAPI backend with routers and pipeline orchestration using subprocess-based execution for process isolation
 - Standalone pipeline runner that executes as a separate process for enhanced reliability
 - **Enhanced** AI pipeline stages powered by Alibaba Cloud DashScope models with advanced face recognition and transcript translation
-- Frontend client utilities for uploading, consuming APIs, managing person identification, transcript translation, and subtitle management
+- Frontend client utilities for uploading, consuming APIs, managing person identification, transcript translation, subtitle management, and dubbing operations
 - **New** Subtitle generation module with automatic multi-language subtitle creation and caching
+- **New** Dubbing module with Edge-TTS voice synthesis and FFmpeg audio assembly
 - Reference database system for persistent person recognition across videos
 
 ```mermaid
@@ -81,15 +89,17 @@ FE_UPLOAD["VideoUpload.tsx<br/>UI component"]
 FE_PEOPLE["PeoplePanel.tsx<br/>Person identification UI"]
 FE_TRANSCRIPT["TranscriptPanel.tsx<br/>Translation UI"]
 FE_TIMELINE["VideoTimeline.tsx<br/>Subtitle track management"]
+FE_DUBBING["DubbingPanel.tsx<br/>Dubbing management UI"]
 end
 subgraph "Backend"
 MAIN["main.py<br/>FastAPI app"]
-ROUTER["routers/video.py<br/>Video endpoints + Subtitles"]
+ROUTER["routers/video.py<br/>Video endpoints + Dubbing"]
 RUNNER["run_pipeline.py<br/>Standalone pipeline runner"]
 ORCH["pipeline/orchestrator.py<br/>Pipeline orchestrator"]
 CFG["config.py<br/>Settings"]
 SI["pipeline/search_index.py<br/>Search index"]
 SUBGEN["pipeline/subtitle_generation.py<br/>Subtitle generation"]
+DUBBING["pipeline/dubbing.py<br/>Dubbing pipeline"]
 end
 subgraph "Enhanced Pipeline Stages"
 ING["ingestion.py<br/>FFmpeg extraction"]
@@ -99,6 +109,8 @@ VIS["visual_analysis.py<br/>Qwen-VL visual analysis"]
 FACE["face_recognition.py<br/>Advanced face recognition"]
 REFDB["reference_faces.json<br/>Persistent person database"]
 DASHSCOPE["DashScope Qwen<br/>Translation Service"]
+EDGETTS["Edge-TTS<br/>Voice Synthesis"]
+FFMPEG["FFmpeg<br/>Audio Assembly"]
 end
 FE_API --> ROUTER
 FE_HOOK --> FE_API
@@ -106,9 +118,11 @@ FE_UPLOAD --> FE_HOOK
 FE_PEOPLE --> FE_HOOK
 FE_TRANSCRIPT --> FE_HOOK
 FE_TIMELINE --> FE_API
+FE_DUBBING --> FE_API
 MAIN --> ROUTER
 ROUTER --> RUNNER
 ROUTER --> SUBGEN
+ROUTER --> DUBBING
 ROUTER --> REFDB
 ROUTER --> DASHSCOPE
 RUNNER --> ORCH
@@ -121,18 +135,22 @@ ORCH --> SI
 ORCH --> SUBGEN
 CFG --> ORCH
 FACE --> REFDB
+DUBBING --> DASHSCOPE
+DUBBING --> EDGETTS
+DUBBING --> FFMPEG
 ```
 
 **Diagram sources**
 - [backend/main.py:1-44](file://backend/main.py#L1-L44)
-- [backend/routers/video.py:1-722](file://backend/routers/video.py#L1-L722)
+- [backend/routers/video.py:1-860](file://backend/routers/video.py#L1-L860)
 - [backend/run_pipeline.py:1-29](file://backend/run_pipeline.py#L1-L29)
 - [backend/pipeline/orchestrator.py:1-403](file://backend/pipeline/orchestrator.py#L1-L403)
-- [backend/config.py:1-30](file://backend/config.py#L1-L30)
+- [backend/config.py:1-33](file://backend/config.py#L1-L33)
 - [backend/pipeline/search_index.py:1-333](file://backend/pipeline/search_index.py#L1-L333)
 - [backend/pipeline/face_recognition.py:1-660](file://backend/pipeline/face_recognition.py#L1-L660)
 - [backend/pipeline/subtitle_generation.py:1-383](file://backend/pipeline/subtitle_generation.py#L1-L383)
-- [frontend/src/components/archive/VideoTimeline.tsx:1-469](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L469)
+- [backend/pipeline/dubbing.py:1-508](file://backend/pipeline/dubbing.py#L1-L508)
+- [frontend/src/components/archive/DubbingPanel.tsx:1-338](file://frontend/src/components/archive/DubbingPanel.tsx#L1-L338)
 
 **Section sources**
 - [README.md:148-168](file://README.md#L148-L168)
@@ -141,40 +159,47 @@ FACE --> REFDB
 ## Core Components
 - Video upload router: Handles multipart/form-data uploads, saves files, initializes status, and launches the pipeline as a completely separate subprocess for process isolation and enhanced reliability
 - **Enhanced** Transcript translation router: Provides real-time translation of transcript segments into Arabic, French, and Russian using DashScope Qwen models with exponential backoff retry logic
-- **NEW** Subtitle generation router: Manages WebVTT and SRT subtitle generation with automatic multi-language support and caching
+- **NEW** Dubbing router: Manages dubbing job submission, progress tracking, and dubbed video delivery with Edge-TTS voice synthesis and FFmpeg audio assembly
+- **Enhanced** Subtitle generation router: Manages WebVTT and SRT subtitle generation with automatic multi-language support and caching
 - **Enhanced** Face naming router: Manages person identification with manual naming, reference database integration, and immediate search indexing
 - Standalone pipeline runner: Executes the pipeline in a separate Python process with full isolation from the main API server
 - **Enhanced** Pipeline orchestrator: Coordinates six stages with progress tracking, error handling, integrated face recognition with OCR/transcript context, and automatic subtitle generation
 - **Enhanced** Search index: Manages FAISS-based vector search with DashScope text embeddings, person-specific search, and rebuild capability
 - **Enhanced** Face recognition system: Advanced person identification using batch processing, OCR text analysis, transcript context, and reference database matching
-- **NEW** Subtitle generation system: Automatic WebVTT/SRT generation with multi-language translation support and intelligent caching
-- Frontend API utilities: Provide standard fetch-based upload functionality, typed helpers for uploads, status polling, WebSocket progress streaming, person management, transcript translation, and subtitle track management
+- **NEW** Dubbing system: Automatic voice synthesis with Edge-TTS, professional translation via DashScope Qwen, and FFmpeg audio assembly with timing preservation
+- Frontend API utilities: Provide standard fetch-based upload functionality, typed helpers for uploads, status polling, WebSocket progress streaming, person management, transcript translation, subtitle management, and dubbing operations
 
 Key capabilities:
 - Process isolation through subprocess execution prevents pipeline failures from affecting the main API server
 - Enhanced reliability with automatic process recovery and resource isolation
-- **New** Real-time subtitle generation with automatic multi-language support (English, Arabic, French, Russian)
-- **New** Intelligent subtitle caching system that generates translations on-demand and persists them for future use
-- **New** Seamless subtitle track integration with HTML5 video players via WebVTT format
-- **New** Downloadable subtitle files in both SRT and VTT formats with proper MIME types
+- **New** Real-time dubbing with automatic multi-language voice synthesis (Arabic, English, French, Spanish, German, Russian, Hindi, Chinese)
+- **New** Intelligent dubbing job queue with duplicate prevention and background task management
+- **New** Seamless dubbed video delivery with streaming support and download capabilities
+- **New** Professional translation quality using DashScope Qwen models with exponential backoff retry logic
+- **New** High-quality voice synthesis using Microsoft Edge-TTS neural voices with proper language-specific voices
+- **New** Precise timing preservation during audio assembly using FFmpeg concat operations and silence gaps
 - **Enhanced** Advanced face recognition with OCR text fallback, transcript context, and reference database matching
 - **Enhanced** Structured metadata generation (EBUCore XML, IPTC) with person mentions
 - Speech-to-text with speaker diarization
 - Semantic search with dual HTTP method support and person-specific filtering
 - Batch reindexing from existing processed videos
 
-**Updated** The system now implements comprehensive subtitle generation capabilities with automatic multi-language support. The subtitle system automatically generates WebVTT tracks after audio transcription completion, providing instant access to captions in multiple languages while maintaining temporal accuracy and preserving speaker attribution throughout the translation process.
+**Updated** The system now implements comprehensive dubbing capabilities with automatic multi-language voice synthesis. The dubbing system automatically generates dubbed video tracks after audio transcription completion, providing instant access to professionally translated and synthesized audio in multiple languages while maintaining temporal accuracy and preserving speaker attribution throughout the translation and synthesis process.
 
 **Section sources**
-- [backend/routers/video.py:341-421](file://backend/routers/video.py#L341-L421)
+- [backend/routers/video.py:450-501](file://backend/routers/video.py#L450-L501)
+- [backend/routers/video.py:504-539](file://backend/routers/video.py#L504-L539)
+- [backend/routers/video.py:542-558](file://backend/routers/video.py#L542-L558)
+- [backend/routers/video.py:349-378](file://backend/routers/video.py#L349-L378)
 - [backend/routers/video.py:231-316](file://backend/routers/video.py#L231-L316)
 - [backend/routers/video.py:41-365](file://backend/routers/video.py#L41-L365)
 - [backend/run_pipeline.py:1-29](file://backend/run_pipeline.py#L1-L29)
 - [backend/pipeline/orchestrator.py:131-139](file://backend/pipeline/orchestrator.py#L131-L139)
 - [backend/pipeline/search_index.py:59-333](file://backend/pipeline/search_index.py#L59-L333)
 - [backend/pipeline/face_recognition.py:185-262](file://backend/pipeline/face_recognition.py#L185-L262)
-- [backend/pipeline/subtitle_generation.py:238-280](file://backend/pipeline/subtitle_generation.py#L238-L280)
-- [frontend/src/components/archive/VideoTimeline.tsx:64-114](file://frontend/src/components/archive/VideoTimeline.tsx#L64-L114)
+- [backend/pipeline/subtitle_generation.py:238-280](file://backend/pipeline/subtitle_generation.py#L238-280)
+- [backend/pipeline/dubbing.py:56-161](file://backend/pipeline/dubbing.py#L56-L161)
+- [frontend/src/components/archive/DubbingPanel.tsx:27-138](file://frontend/src/components/archive/DubbingPanel.tsx#L27-L138)
 
 ## Architecture Overview
 The system follows a staged pipeline architecture with subprocess-based execution and process isolation:
@@ -182,13 +207,13 @@ The system follows a staged pipeline architecture with subprocess-based executio
 2. Main API server creates a separate subprocess that runs the pipeline independently
 3. Subprocess executes the orchestrator which runs stages sequentially with optimized status updates
 4. **Enhanced** Audio analysis stage produces transcript segments with timing information
-5. **NEW** Subtitle generation stage automatically creates WebVTT tracks in multiple languages after audio transcription
+5. **NEW** Dubbing system processes on-demand with background task management and progress tracking
 6. **Enhanced** Face recognition stage uses batch processing with OCR text and transcript context for improved person identification
 7. Progress updates are streamed via WebSocket and persisted to status.json
 8. Results are saved as individual JSON artifacts per stage
 9. **Enhanced** Search index is built incrementally during processing with person-specific entries and can be rebuilt via /api/reindex
 
-**Updated** The system now features automatic subtitle generation as an integral part of the processing pipeline. After audio transcription completes, the system automatically generates WebVTT subtitle tracks in English and translates them into Arabic, French, and Russian using DashScope Qwen models. The subtitle generation is non-blocking and resilient - failures don't prevent other pipeline stages from completing.
+**Updated** The system now features comprehensive dubbing capabilities as an on-demand service. When users request dubbing for a specific language, the system creates a background task that translates transcript segments using DashScope Qwen models, synthesizes speech using Edge-TTS neural voices, and assembles the final dubbed video using FFmpeg. The dubbing process maintains precise timing synchronization and provides real-time progress updates through dedicated status endpoints.
 
 ```mermaid
 sequenceDiagram
@@ -199,8 +224,10 @@ participant Subproc as "Subprocess"
 participant Runner as "run_pipeline.py"
 participant Orchestrator as "Pipeline Orchestrator"
 participant AudioStage as "Audio Analysis"
-participant SubtitleGen as "Subtitle Generation"
+participant DubbingTask as "Dubbing Background Task"
 participant Translator as "DashScope Qwen"
+participant TTS as "Edge-TTS"
+participant FFmpeg as "FFmpeg"
 participant Stage as "Pipeline Stage"
 Client->>API : "POST /api/video/upload (multipart/form-data)"
 API->>FS : "Save video file"
@@ -212,10 +239,6 @@ Orchestrator->>Stage : "Run ingestion"
 Stage-->>Orchestrator : "Stage result"
 Orchestrator->>AudioStage : "Run audio analysis"
 AudioStage-->>Orchestrator : "Transcript segments"
-Orchestrator->>SubtitleGen : "Generate subtitles (non-blocking)"
-SubtitleGen->>Translator : "Translate segments (AR/FR/RU)"
-Translator-->>SubtitleGen : "Translated segments"
-SubtitleGen-->>Orchestrator : "WebVTT files cached"
 Orchestrator->>Stage : "Run next stage"
 Stage-->>Orchestrator : "Stage result"
 Orchestrator->>FS : "Write status.json"
@@ -223,18 +246,31 @@ Orchestrator-->>Runner : "Pipeline complete"
 Runner-->>Subproc : "Exit subprocess"
 API-->>Client : "{video_id, status}"
 Note over API : "Server remains unaffected<br/>by subprocess execution"
-Client->>API : "GET /api/video/{id}/subtitles?language=ar"
-API->>SubtitleGen : "ensure_vtt(video_id, language)"
-SubtitleGen-->>API : "Cached or generated VTT content"
-API-->>Client : "text/vtt response"
+Client->>API : "POST /api/video/{id}/dub {target_language : 'ar'}"
+API->>DubbingTask : "asyncio.create_task(_run_dubbing_task)"
+DubbingTask->>Translator : "Translate segments (AR/FR/RU/etc.)"
+Translator-->>DubbingTask : "Translated segments"
+DubbingTask->>TTS : "Synthesize speech (edge-tts)"
+TTS-->>DubbingTask : "Audio segments"
+DubbingTask->>FFmpeg : "Assemble audio track"
+FFmpeg-->>DubbingTask : "Combined audio.mp3"
+DubbingTask->>FFmpeg : "Mux audio into video"
+FFmpeg-->>DubbingTask : "Final dubbed video.mp4"
+DubbingTask-->>API : "Task completed"
+Client->>API : "GET /api/video/{id}/dub/status?language=ar"
+API-->>Client : "{status : 'processing', stage : 'synthesizing'}"
+Client->>API : "GET /api/video/{id}/dubbed/ar"
+API-->>Client : "video/mp4 stream"
 ```
 
 **Diagram sources**
 - [backend/routers/video.py:85-95](file://backend/routers/video.py#L85-L95)
-- [backend/routers/video.py:349-378](file://backend/routers/video.py#L349-L378)
+- [backend/routers/video.py:450-501](file://backend/routers/video.py#L450-L501)
+- [backend/routers/video.py:504-539](file://backend/routers/video.py#L504-L539)
+- [backend/routers/video.py:542-558](file://backend/routers/video.py#L542-L558)
 - [backend/run_pipeline.py:15-28](file://backend/run_pipeline.py#L15-L28)
 - [backend/pipeline/orchestrator.py:131-139](file://backend/pipeline/orchestrator.py#L131-L139)
-- [backend/pipeline/subtitle_generation.py:283-319](file://backend/pipeline/subtitle_generation.py#L283-L319)
+- [backend/pipeline/dubbing.py:56-161](file://backend/pipeline/dubbing.py#L56-L161)
 
 ## Detailed Component Analysis
 
@@ -455,7 +491,206 @@ console.log("segments count:", transcript.segments.length);
 - [backend/routers/video.py:190-206](file://backend/routers/video.py#L190-L206)
 - [backend/pipeline/audio_analysis.py:22-59](file://backend/pipeline/audio_analysis.py#L22-L59)
 
-### **NEW** GET /api/video/{video_id}/subtitles
+### **NEW** POST /api/video/{video_id}/dub
+Purpose: Submit a dubbing job for a video to create a dubbed version in the specified target language.
+
+- Method: POST
+- Path: /api/video/{video_id}/dub
+- Path Parameters:
+  - video_id: UUID of the video
+- Request Body:
+  - target_language: string (optional, default: "ar") - Supported languages: ar, en, fr, es, de, ru, hi, zh
+- Response:
+  - status: "processing" | "completed" (if cached)
+  - video_id: string
+  - target_language: string
+  - cached: boolean (true if already exists)
+  - video_path: string (only if cached)
+
+**Enhanced** Features:
+- **Multi-Language Support**: Supports 8 languages with native neural voices (Arabic, English, French, Spanish, German, Russian, Hindi, Chinese)
+- **Background Processing**: Runs as asynchronous task to prevent blocking the main API server
+- **Duplicate Prevention**: Prevents multiple simultaneous dubbing jobs for the same video/language combination
+- **Caching**: Returns immediately if dubbed version already exists
+- **Professional Translation**: Uses DashScope Qwen models for high-quality translation
+- **Neural Voice Synthesis**: Employs Microsoft Edge-TTS for natural-sounding speech synthesis
+- **Timing Preservation**: Maintains precise timing synchronization with original video using FFmpeg
+
+Behavior:
+- Validates target language against supported languages list from configuration
+- Checks for video existence and transcript availability (required for dubbing)
+- Returns cached result if dubbed video already exists
+- Creates background asyncio task for non-blocking dubbing processing
+- Prevents duplicate job submissions for the same video/language combination
+- Stores strong task reference to prevent garbage collection during processing
+
+Error codes:
+- 400: Unsupported language or transcript not available
+- 404: Video ID not found or source video file not found
+- 500: Internal server error during job initialization
+
+curl example:
+```bash
+curl -X POST "http://localhost:8000/api/video/<video_id>/dub" \
+  -H "Content-Type: application/json" \
+  -d '{"target_language": "ar"}'
+```
+
+JavaScript fetch example:
+```javascript
+const response = await fetch(`http://localhost:8000/api/video/${videoId}/dub`, {
+  method: "POST",
+  headers: {
+    "Content-Type: application/json",
+  },
+  body: JSON.stringify({
+    target_language: "fr"
+  })
+});
+
+const result = await response.json();
+console.log("Job status:", result.status);
+console.log("Target language:", result.target_language);
+```
+
+**Section sources**
+- [backend/routers/video.py:450-501](file://backend/routers/video.py#L450-L501)
+- [backend/pipeline/dubbing.py:56-161](file://backend/pipeline/dubbing.py#L56-L161)
+
+### **NEW** GET /api/video/{video_id}/dub/status
+Purpose: Monitor the progress and status of dubbing jobs for a video.
+
+- Method: GET
+- Path: /api/video/{video_id}/dub/status
+- Path Parameters:
+  - video_id: UUID of the video
+- Query Parameters:
+  - language: string (optional, default: configured default language) - Target language code
+- Response Schema:
+  - video_id: string
+  - target_language: string
+  - status: "not_started" | "processing" | "completed" | "failed"
+  - stage: string (current processing stage)
+  - error: string (error message if failed)
+
+**Enhanced** Features:
+- **Real-time Progress Tracking**: Provides detailed status updates during dubbing processing
+- **Multiple Status Sources**: Reads from both dubbing_{lang}.json and status_{lang}.json files
+- **Active Task Detection**: Integrates with in-memory task tracking for accurate processing status
+- **Graceful Degradation**: Falls back to basic status when detailed information is unavailable
+
+Status progression:
+- "not_started": No dubbing job has been initiated
+- "processing": Dubbing job is currently running
+- "completed": Dubbing job finished successfully
+- "failed": Dubbing job encountered an error
+
+Processing stages:
+- "Loading transcript": Reading and parsing transcript data
+- "Translating segments": Converting text to target language
+- "Synthesizing speech": Generating audio using Edge-TTS
+- "Assembling audio track": Combining audio segments with timing
+- "Muxing audio into video": Creating final dubbed video file
+
+curl example:
+```bash
+curl "http://localhost:8000/api/video/<video_id>/dub/status?language=ar"
+```
+
+JavaScript fetch example:
+```javascript
+const response = await fetch(`http://localhost:8000/api/video/${videoId}/dub/status?language=ru`);
+const status = await response.json();
+console.log("Dubbing status:", status.status);
+console.log("Current stage:", status.stage);
+```
+
+**Section sources**
+- [backend/routers/video.py:504-523](file://backend/routers/video.py#L504-L523)
+- [backend/pipeline/dubbing.py:462-494](file://backend/pipeline/dubbing.py#L462-L494)
+
+### **NEW** GET /api/video/{video_id}/dub/languages
+Purpose: Check available dubbed languages and supported language options for a video.
+
+- Method: GET
+- Path: /api/video/{video_id}/dub/languages
+- Path Parameters:
+  - video_id: UUID of the video
+- Response Schema:
+  - video_id: string
+  - available: array of strings (languages with existing dubbed versions)
+  - supported: array of strings (all supported language codes)
+
+**Enhanced** Features:
+- **Available Languages**: Lists languages for which dubbed versions already exist
+- **Supported Languages**: Shows all languages that can be used for dubbing
+- **Configuration Integration**: Reads supported languages from server configuration
+- **Automatic Discovery**: Scans dubbed directory for existing video files
+
+Language detection:
+- Scans {video_id}/dubbed/ directory for files matching pattern "video_{language}.mp4"
+- Extracts language codes from filenames
+- Compares with configured supported languages list
+
+curl example:
+```bash
+curl "http://localhost:8000/api/video/<video_id>/dub/languages"
+```
+
+JavaScript fetch example:
+```javascript
+const response = await fetch(`http://localhost:8000/api/video/${videoId}/dub/languages`);
+const languages = await response.json();
+console.log("Available dubs:", languages.available);
+console.log("Supported languages:", languages.supported);
+```
+
+**Section sources**
+- [backend/routers/video.py:526-539](file://backend/routers/video.py#L526-L539)
+- [backend/config.py:16-17](file://backend/config.py#L16-L17)
+
+### **NEW** GET /api/video/{video_id}/dubbed/{language}
+Purpose: Stream or download a dubbed video file for the specified language.
+
+- Method: GET
+- Path: /api/video/{video_id}/dubbed/{language}
+- Path Parameters:
+  - video_id: UUID of the video
+  - language: string - Target language code (e.g., "ar", "en", "fr")
+- Response:
+  - Content-Type: video/mp4
+  - Body: MP4 video file with dubbed audio track
+
+**Enhanced** Features:
+- **Streaming Support**: Efficiently streams large video files without loading entire file into memory
+- **Proper MIME Types**: Returns correct video/mp4 content type for browser compatibility
+- **Filename Handling**: Sets appropriate filename for downloads
+- **Direct File Access**: Serves files directly from filesystem for optimal performance
+
+curl example:
+```bash
+curl -o dubbed_video_ar.mp4 "http://localhost:8000/api/video/<video_id>/dubbed/ar"
+```
+
+JavaScript fetch example:
+```javascript
+// For direct download
+window.open(`http://localhost:8000/api/video/${videoId}/dubbed/fr`, '_blank');
+
+// For programmatic handling
+const response = await fetch(`http://localhost:8000/api/video/${videoId}/dubbed/es`);
+const blob = await response.blob();
+const url = URL.createObjectURL(blob);
+const a = document.createElement('a');
+a.href = url;
+a.download = `dubbed_${videoId}_es.mp4`;
+a.click();
+```
+
+**Section sources**
+- [backend/routers/video.py:542-558](file://backend/routers/video.py#L542-L558)
+
+### GET /api/video/{video_id}/subtitles
 Purpose: Retrieve WebVTT subtitle content for a video in the specified language with automatic generation and caching.
 
 - Method: GET
@@ -503,10 +738,10 @@ console.log("VTT length:", vttContent.length);
 ```
 
 **Section sources**
-- [backend/routers/video.py:349-378](file://backend/routers/video.py#L349-L378)
-- [backend/pipeline/subtitle_generation.py:283-319](file://backend/pipeline/subtitle_generation.py#L283-L319)
+- [backend/routers/video.py:349-378](file://backend/routers/video.py#L349-378)
+- [backend/pipeline/subtitle_generation.py:283-319](file://backend/pipeline/subtitle_generation.py#L283-319)
 
-### **NEW** GET /api/video/{video_id}/subtitles/download
+### GET /api/video/{video_id}/subtitles/download
 Purpose: Download subtitles as downloadable SRT or VTT files with proper attachment headers.
 
 - Method: GET
@@ -556,10 +791,78 @@ window.open(url, '_blank');
 ```
 
 **Section sources**
-- [backend/routers/video.py:381-420](file://backend/routers/video.py#L381-L420)
-- [backend/pipeline/subtitle_generation.py:322-345](file://backend/pipeline/subtitle_generation.py#L322-L345)
+- [backend/routers/video.py:381-420](file://backend/routers/video.py#L381-420)
+- [backend/pipeline/subtitle_generation.py:322-345](file://backend/pipeline/subtitle_generation.py#L322-345)
 
-### **NEW** Subtitle Generation System
+### **NEW** Dubbing System
+
+#### On-Demand Dubbing Pipeline
+The dubbing system provides comprehensive video dubbing capabilities with professional translation and voice synthesis:
+
+**Dubbing Workflow:**
+1. **Job Submission**: Accepts dubbing requests with target language specification
+2. **Background Processing**: Runs as asynchronous task to prevent API blocking
+3. **Transcript Loading**: Reads transcript segments with timing information
+4. **Professional Translation**: Translates segments using DashScope Qwen models
+5. **Voice Synthesis**: Generates speech using Edge-TTS neural voices
+6. **Audio Assembly**: Combines segments with precise timing using FFmpeg
+7. **Video Muxing**: Creates final dubbed video with original video track
+8. **Progress Tracking**: Updates status files for real-time monitoring
+
+**Language Support:**
+- **Arabic (ar)**: Saudi Arabian male/female voices with RTL support
+- **English (en)**: US male voices with American pronunciation
+- **French (fr)**: European French male voices with cultural context
+- **Spanish (es)**: Castilian Spanish male voices
+- **German (de)**: German male voices with proper accentuation
+- **Russian (ru)**: Russian male voices with Cyrillic support
+- **Hindi (hi)**: Indian Hindi male voices
+- **Chinese (zh)**: Simplified Chinese male voices
+
+**Quality Assurance:**
+- Professional translator prompts ensure contextual accuracy
+- Temperature control (0.3) balances creativity with fidelity
+- Token limits prevent excessive response sizes
+- Error handling ensures graceful degradation
+- Exponential backoff retry logic for reliability
+
+#### Technical Implementation
+The dubbing system leverages multiple technologies for optimal quality:
+
+**Translation Layer:**
+- Uses DashScope Qwen models for high-quality translation
+- Implements numbered segment markers for precise parsing
+- Maintains timing information throughout translation process
+- Provides fallback mechanisms for API failures
+
+**Speech Synthesis:**
+- Employs Microsoft Edge-TTS for natural-sounding voices
+- Uses language-specific neural voices for authenticity
+- Handles empty segments gracefully with silence insertion
+- Provides robust error handling for synthesis failures
+
+**Audio Processing:**
+- Utilizes FFmpeg for precise audio assembly and timing
+- Maintains exact timing synchronization with original video
+- Inserts appropriate silence gaps between segments
+- Creates seamless audio tracks that match original pacing
+
+#### Frontend Integration
+The DubbingPanel component provides comprehensive dubbing management:
+- Language selection dropdown with native language labels
+- Real-time progress tracking with animated progress bars
+- Available dubbed versions listing with play/download controls
+- Inline video player for previewing dubbed content
+- Automatic polling for job status updates
+- Error state management and user feedback
+
+**Section sources**
+- [backend/pipeline/dubbing.py:56-161](file://backend/pipeline/dubbing.py#L56-L161)
+- [backend/routers/video.py:450-501](file://backend/routers/video.py#L450-L501)
+- [frontend/src/components/archive/DubbingPanel.tsx:27-138](file://frontend/src/components/archive/DubbingPanel.tsx#L27-L138)
+- [frontend/src/components/archive/DubbingPanel.tsx:114-138](file://frontend/src/components/archive/DubbingPanel.tsx#L114-L138)
+
+### Subtitle Generation System
 
 #### Automatic Subtitle Generation Pipeline
 The subtitle generation system provides seamless integration between speech-to-text content and multi-language subtitle creation:
@@ -594,12 +897,12 @@ The VideoTimeline component provides comprehensive subtitle track management:
 - Seamless track switching without page reload
 
 **Section sources**
-- [backend/pipeline/subtitle_generation.py:238-280](file://backend/pipeline/subtitle_generation.py#L238-L280)
+- [backend/pipeline/subtitle_generation.py:238-280](file://backend/pipeline/subtitle_generation.py#L238-280)
 - [backend/pipeline/orchestrator.py:131-139](file://backend/pipeline/orchestrator.py#L131-L139)
 - [frontend/src/components/archive/VideoTimeline.tsx:64-114](file://frontend/src/components/archive/VideoTimeline.tsx#L64-L114)
 - [frontend/src/components/archive/VideoTimeline.tsx:194-204](file://frontend/src/components/archive/VideoTimeline.tsx#L194-L204)
 
-### **NEW** Transcript Translation System
+### Transcript Translation System
 
 #### Real-Time Translation Architecture
 The transcript translation system provides seamless integration between speech-to-text content and multi-language translation services:
@@ -705,7 +1008,7 @@ console.log("Added to reference:", result.added_to_reference);
 ```
 
 **Section sources**
-- [backend/routers/video.py:494-579](file://backend/routers/video.py#L494-579)
+- [backend/routers/video.py:631-717](file://backend/routers/video.py#L631-L717)
 
 ### GET/POST /api/search
 Purpose: Perform semantic search across all indexed videos with dual HTTP method support and enhanced person filtering.
@@ -770,7 +1073,7 @@ console.log("Person appearances:", results.results.filter(r => r.type === "perso
 ```
 
 **Section sources**
-- [backend/routers/video.py:584-626](file://backend/routers/video.py#L584-626)
+- [backend/routers/video.py:722-764](file://backend/routers/video.py#L722-L764)
 
 ### POST /api/reindex
 Purpose: Rebuild the search index from all existing processed video results with enhanced person indexing.
@@ -816,9 +1119,9 @@ console.log("Total vectors:", result.total_vectors);
 ```
 
 **Section sources**
-- [backend/routers/video.py:631-670](file://backend/routers/video.py#L631-670)
-- [backend/pipeline/orchestrator.py:307-367](file://backend/pipeline/orchestrator.py#L307-367)
-- [backend/pipeline/search_index.py:143-213](file://backend/pipeline/search_index.py#L143-213)
+- [backend/routers/video.py:769-800](file://backend/routers/video.py#L769-L800)
+- [backend/pipeline/orchestrator.py:307-367](file://backend/pipeline/orchestrator.py#L307-L367)
+- [backend/pipeline/search_index.py:143-213](file://backend/pipeline/search_index.py#L143-L213)
 
 ## Enhanced Face Recognition System
 
@@ -870,9 +1173,9 @@ Enhanced face objects include:
 ```
 
 **Section sources**
-- [backend/pipeline/face_recognition.py:185-262](file://backend/pipeline/face_recognition.py#L185-262)
-- [backend/pipeline/face_recognition.py:404-499](file://backend/pipeline/face_recognition.py#L404-499)
-- [backend/pipeline/face_recognition.py:121-182](file://backend/pipeline/face_recognition.py#L121-182)
+- [backend/pipeline/face_recognition.py:185-262](file://backend/pipeline/face_recognition.py#L185-L262)
+- [backend/pipeline/face_recognition.py:404-499](file://backend/pipeline/face_recognition.py#L404-L499)
+- [backend/pipeline/face_recognition.py:121-182](file://backend/pipeline/face_recognition.py#L121-L182)
 
 ## Dependency Analysis
 The video processing endpoints depend on:
@@ -884,15 +1187,17 @@ The video processing endpoints depend on:
 - FAISS or numpy for vector search indexing
 - **Enhanced** Reference database system for persistent person recognition
 - **New** Subtitle generation module with automatic multi-language subtitle creation
+- **New** Dubbing module with Edge-TTS voice synthesis and FFmpeg audio assembly
 - **New** DashScope Qwen models for transcript translation services
 
-**Updated** The system now depends on enhanced subtitle generation capabilities with automatic multi-language support, intelligent caching, and robust error handling. The subtitle generation integrates seamlessly with the existing DashScope infrastructure and pipeline orchestration.
+**Updated** The system now depends on enhanced dubbing capabilities with automatic multi-language voice synthesis, intelligent job queuing, and robust error handling. The dubbing system integrates seamlessly with the existing DashScope infrastructure, Edge-TTS service, and FFmpeg tools while maintaining process isolation and resource management.
 
 ```mermaid
 graph LR
 Router["routers/video.py"] --> Runner["run_pipeline.py"]
 Router --> RefDB["reference_faces.json"]
 Router --> DashScope["DashScope Qwen<br/>Translation Service"]
+Router --> DubbingAPI["Dubbing API Endpoints"]
 Router --> SubtitleAPI["Subtitle API Endpoints"]
 Runner --> Orchestrator["pipeline/orchestrator.py"]
 Orchestrator --> Config["config.py"]
@@ -905,24 +1210,29 @@ Orchestrator --> SearchIndex["pipeline/search_index.py"]
 Orchestrator --> SubtitleGen["pipeline/subtitle_generation.py"]
 Face --> RefDB
 SubtitleGen --> DashScope
+DubbingAPI --> DashScope
+DubbingAPI --> EdgeTTS["Edge-TTS<br/>Voice Synthesis"]
+DubbingAPI --> FFmpeg["FFmpeg<br/>Audio Assembly"]
 FrontendAPI["frontend/src/lib/api.ts"] --> Router
 FrontendHook["frontend/src/lib/useVideoProcessing.ts"] --> FrontendAPI
 FrontendUpload["frontend/src/components/archive/VideoUpload.tsx"] --> FrontendHook
 FrontendPeople["frontend/src/components/archive/PeoplePanel.tsx"] --> FrontendHook
 FrontendTranscript["frontend/src/components/archive/TranscriptPanel.tsx"] --> FrontendHook
 FrontendTimeline["frontend/src/components/archive/VideoTimeline.tsx"] --> FrontendAPI
+FrontendDubbing["frontend/src/components/archive/DubbingPanel.tsx"] --> FrontendAPI
 ```
 
 **Diagram sources**
-- [backend/routers/video.py:17-19](file://backend/routers/video.py#L17-L19)
-- [backend/routers/video.py:341-421](file://backend/routers/video.py#L341-L421)
+- [backend/routers/video.py:17-26](file://backend/routers/video.py#L17-L26)
+- [backend/routers/video.py:450-501](file://backend/routers/video.py#L450-L501)
 - [backend/run_pipeline.py:12-17](file://backend/run_pipeline.py#L12-17)
 - [backend/pipeline/orchestrator.py:14-21](file://backend/pipeline/orchestrator.py#L14-21)
-- [backend/config.py:4-12](file://backend/config.py#L4-L12)
+- [backend/config.py:4-17](file://backend/config.py#L4-L17)
 - [backend/pipeline/face_recognition.py:17-18](file://backend/pipeline/face_recognition.py#L17-L18)
 - [backend/pipeline/subtitle_generation.py:15-26](file://backend/pipeline/subtitle_generation.py#L15-26)
-- [frontend/src/lib/api.ts:164-183](file://frontend/src/lib/api.ts#L164-183)
-- [frontend/src/components/archive/VideoTimeline.tsx:30-35](file://frontend/src/components/archive/VideoTimeline.tsx#L30-35)
+- [backend/pipeline/dubbing.py:23-25](file://backend/pipeline/dubbing.py#L23-25)
+- [frontend/src/lib/api.ts:263-276](file://frontend/src/lib/api.ts#L263-L276)
+- [frontend/src/components/archive/DubbingPanel.tsx:4-5](file://frontend/src/components/archive/DubbingPanel.tsx#L4-L5)
 
 **Section sources**
 - [backend/main.py:35-38](file://backend/main.py#L35-L38)
@@ -936,17 +1246,20 @@ FrontendTimeline["frontend/src/components/archive/VideoTimeline.tsx"] --> Fronte
 - **Updated** Standalone pipeline runner eliminates main server resource contention during long-running operations
 - **Enhanced** Face recognition batch processing improves efficiency by processing multiple faces in single API calls
 - **Enhanced** OCR and transcript context analysis provide additional identification sources without significant performance impact
-- **New** Subtitle generation uses intelligent caching to minimize redundant translation API calls
-- **New** Automatic subtitle generation runs non-blocking after audio transcription completion
-- **New** WebVTT caching system provides fast subtitle delivery for subsequent requests
+- **New** Dubbing jobs run asynchronously in background tasks to prevent API blocking
+- **New** Intelligent job queuing prevents duplicate dubbing requests for the same video/language
+- **New** Edge-TTS voice synthesis is optimized for batch processing with parallel segment synthesis
+- **New** FFmpeg audio assembly uses efficient concat operations for minimal processing overhead
+- **Enhanced** Subtitle generation uses intelligent caching to minimize redundant translation API calls
 - **Enhanced** Reference database lookups are cached and optimized for fast person matching
 - **Updated** Process isolation ensures that memory leaks or resource exhaustion in pipeline stages don't affect server stability
 - **Updated** Subprocess execution allows for automatic process recovery and cleanup
 - **Updated** Separate process execution enables better resource monitoring and control
 - **Updated** Improved memory management through process isolation prevents accumulation of memory leaks
-- **New** Subtitle translation uses exponential backoff retry logic to prevent overwhelming translation services
-- **New** Format conversion between SRT and VTT is optimized to reuse cached content
-- **New** HTML5 video player integration provides native subtitle rendering without additional processing overhead
+- **New** Dubbing translation uses exponential backoff retry logic to prevent overwhelming translation services
+- **New** Audio synthesis failures are handled gracefully with silence insertion for missing segments
+- **New** Video muxing operations are optimized with streaming to handle large files efficiently
+- **New** Background task management prevents memory leaks through proper task lifecycle management
 
 ## Troubleshooting Guide
 Common issues and resolutions:
@@ -963,10 +1276,15 @@ Common issues and resolutions:
 - **Enhanced** Face recognition failures: Check reference_faces.json format and DashScope API connectivity
 - **Enhanced** Person naming errors: Verify face indices exist and names are properly formatted
 - **Enhanced** Search indexing issues: Ensure results.json files contain valid face recognition data
-- **New** Subtitle generation failures: Check transcript.json availability and DashScope API connectivity
-- **New** Subtitle caching issues: Verify write permissions in video output directories
+- **New** Dubbing job failures: Check transcript.json availability and Edge-TTS service connectivity
+- **New** Dubbing language errors: Verify target language is in supported languages list
+- **New** Dubbing progress issues: Check dubbing_{lang}.json and status_{lang}.json files for detailed status
+- **New** Voice synthesis failures: Verify Edge-TTS installation and network connectivity
+- **New** Audio assembly errors: Check FFmpeg installation and permissions
+- **New** Video muxing failures: Verify input video format compatibility and output directory permissions
+- **New** Job queue conflicts: Check for duplicate active tasks in _active_dubbing dictionary
 - **New** Translation timeouts: Verify DashScope service availability and adjust timeout settings if needed
-- **New** Language support errors: Ensure target language is one of the supported codes (en, ar, fr, ru)
+- **New** Language support errors: Ensure target language is one of the supported codes (ar, en, fr, es, de, ru, hi, zh)
 - **New** Format conversion errors: Verify subtitle content integrity during SRT/VTT conversion
 - **New** HTML5 player issues: Check WebVTT format compliance and browser subtitle track support
 
@@ -982,10 +1300,13 @@ Error handling patterns:
 - **Updated** Process monitoring helps identify and recover from resource exhaustion scenarios
 - **Enhanced** Face recognition errors include detailed reasoning and confidence scores for debugging
 - **Enhanced** Reference database conflicts are logged and resolved automatically
-- **New** Subtitle generation errors implement exponential backoff retry logic with detailed logging
+- **New** Dubbing errors implement exponential backoff retry logic with detailed logging
 - **New** Network failures trigger automatic retries with increasing delay intervals
 - **New** API rate limiting is handled gracefully with appropriate wait times
-- **New** Subtitle caching failures are logged but don't prevent on-demand generation
+- **New** Dubbing job failures are persisted to status files for easy debugging
+- **New** Background task failures are logged and cleaned up automatically
+- **New** Edge-TTS failures fall back to silence insertion for affected segments
+- **New** FFmpeg errors include detailed stderr output for troubleshooting
 
 **Section sources**
 - [backend/routers/video.py:57-59](file://backend/routers/video.py#L57-L59)
@@ -994,17 +1315,22 @@ Error handling patterns:
 - [backend/routers/video.py:238-253](file://backend/routers/video.py#L238-L253)
 - [backend/routers/video.py:358-376](file://backend/routers/video.py#L358-L376)
 - [backend/routers/video.py:387-413](file://backend/routers/video.py#L387-L413)
+- [backend/routers/video.py:463-474](file://backend/routers/video.py#L463-L474)
+- [backend/routers/video.py:504-523](file://backend/routers/video.py#L504-L523)
 - [backend/pipeline/orchestrator.py:259-282](file://backend/pipeline/orchestrator.py#L259-L282)
+- [backend/pipeline/dubbing.py:485-494](file://backend/pipeline/dubbing.py#L485-L494)
 - [frontend/src/lib/api.ts:43-95](file://frontend/src/lib/api.ts#L43-L95)
 
 ## Conclusion
 The video processing endpoints provide a robust foundation for AI-powered media archive workflows with enhanced reliability through subprocess-based execution and advanced face recognition capabilities. They support efficient uploads, process isolation, real-time progress monitoring, and comprehensive metadata extraction with structured outputs suitable for broadcasting standards and semantic search. 
 
-**Enhanced** The new subtitle generation system provides sophisticated multi-language support with automatic WebVTT creation, intelligent caching, and seamless integration with HTML5 video players. The subtitle system leverages DashScope Qwen models to deliver high-quality translations while maintaining temporal accuracy and preserving speaker attribution throughout the translation process.
+**Enhanced** The new dubbing system provides sophisticated multi-language voice synthesis with automatic translation, professional neural voices, and seamless integration with HTML5 video players. The dubbing system leverages DashScope Qwen models for translation and Edge-TTS for voice synthesis while maintaining temporal accuracy and preserving speaker attribution throughout the translation and synthesis process.
 
 **Enhanced** The enhanced face recognition system provides sophisticated person identification through multi-source analysis including OCR text, transcript context, and reference database matching. The face naming endpoint enables seamless integration between manual and automatic identification, while the reference database grows over time to improve future recognition accuracy.
 
-**New** The subtitle generation workflow automatically creates WebVTT tracks after audio transcription completion, providing instant access to captions in multiple languages. The system intelligently caches generated content and provides both inline playback and downloadable formats, ensuring optimal user experience across different devices and browsers.
+**New** The dubbing workflow automatically processes on-demand requests with background task management, providing instant access to professionally dubbed video content in multiple languages. The system intelligently manages job queues, caches results, and provides both streaming playback and downloadable formats, ensuring optimal user experience across different devices and browsers.
+
+**Enhanced** The subtitle generation system provides sophisticated multi-language support with automatic WebVTT creation, intelligent caching, and seamless integration with HTML5 video players. The subtitle system leverages DashScope Qwen models to deliver high-quality translations while maintaining temporal accuracy and preserving speaker attribution throughout the translation process.
 
 The subprocess-based execution model ensures that pipeline failures never affect server availability, while maintaining backward compatibility with existing API endpoints and response structures. The standalone pipeline runner provides complete process isolation, enabling better resource management, automatic recovery, and improved system stability. This architecture prevents memory leaks and ensures better system stability through complete process isolation and automatic cleanup mechanisms.
 
@@ -1042,11 +1368,37 @@ Transcript response:
 - language: string
 - speaker_count: number
 
-**New** Subtitle response (GET /subtitles):
+**New** Dubbing request (POST /dub):
+- target_language: string (optional, default: "ar") - Supported: ar, en, fr, es, de, ru, hi, zh
+
+**New** Dubbing response (POST /dub):
+- status: "processing" | "completed"
+- video_id: string
+- target_language: string
+- cached: boolean (optional)
+- video_path: string (optional, only if cached)
+
+**New** Dubbing status response (GET /dub/status):
+- video_id: string
+- target_language: string
+- status: "not_started" | "processing" | "completed" | "failed"
+- stage: string (optional)
+- error: string (optional)
+
+**New** Dubbing languages response (GET /dub/languages):
+- video_id: string
+- available: array of strings (existing dubbed languages)
+- supported: array of strings (all supported languages)
+
+**New** Dubbed video response (GET /dubbed/{language}):
+- Content-Type: video/mp4
+- Body: MP4 video file with dubbed audio track
+
+Subtitle response (GET /subtitles):
 - Content-Type: text/vtt
 - Body: WebVTT formatted subtitle content
 
-**New** Subtitle download response (GET /subtitles/download):
+Subtitle download response (GET /subtitles/download):
 - Content-Type: application/x-subrip (SRT) or text/vtt (VTT)
 - Content-Disposition: attachment; filename="{video_id}_{language}.{format}"
 - Body: Subtitle file content for download
@@ -1125,7 +1477,72 @@ ws.onmessage = (event) => {
 };
 ```
 
-**New** JavaScript subtitle retrieval:
+**New** JavaScript dubbing workflow:
+```javascript
+// Start dubbing job
+const response = await fetch(`http://localhost:8000/api/video/${videoId}/dub`, {
+  method: "POST",
+  headers: {
+    "Content-Type: application/json",
+  },
+  body: JSON.stringify({
+    target_language: "ar"
+  })
+});
+
+const result = await response.json();
+console.log("Job started:", result.status);
+
+// Poll for status
+const pollInterval = setInterval(async () => {
+  const status = await fetch(`http://localhost:8000/api/video/${videoId}/dub/status?language=ar`);
+  const statusData = await status.json();
+  
+  if (statusData.status === "completed") {
+    clearInterval(pollInterval);
+    console.log("Dubbing completed!");
+  } else if (statusData.status === "failed") {
+    clearInterval(pollInterval);
+    console.error("Dubbing failed:", statusData.error);
+  }
+}, 3000);
+
+// Get available languages
+const languages = await fetch(`http://localhost:8000/api/video/${videoId}/dub/languages`);
+const langData = await languages.json();
+console.log("Available dubs:", langData.available);
+```
+
+**New** HTML5 video player with dubbed content:
+```html
+<!-- Original video -->
+<video src="/uploads/video-id/original.mp4" controls></video>
+
+<!-- Dubbed video -->
+<video src="/api/video/video-id/dubbed/ar" controls></video>
+
+<!-- Direct download link -->
+<a href="/api/video/video-id/dubbed/fr" download="dubbed_video_fr.mp4">
+  Download French Version
+</a>
+```
+
+**New** Dubbing panel integration:
+```javascript
+// Using the DubbingPanel component
+import DubbingPanel from '@/components/archive/DubbingPanel';
+
+function VideoViewer({ videoId }) {
+  return (
+    <div>
+      <video src={`/uploads/${videoId}/thumbnail.jpg`} controls />
+      <DubbingPanel videoId={videoId} />
+    </div>
+  );
+}
+```
+
+JavaScript subtitle retrieval:
 ```javascript
 // Get WebVTT content for Arabic subtitles
 const response = await fetch(`http://localhost:8000/api/video/${videoId}/subtitles?language=ar`);
@@ -1137,7 +1554,7 @@ const downloadUrl = `http://localhost:8000/api/video/${videoId}/subtitles/downlo
 window.open(downloadUrl, '_blank');
 ```
 
-**New** HTML5 video player with subtitle tracks:
+HTML5 video player with subtitle tracks:
 ```html
 <video src="video.mp4" controls>
   <track kind="subtitles" src="/api/video/video-id/subtitles?language=en" 
@@ -1255,6 +1672,22 @@ The subtitle generation system follows this automated workflow:
 7. **Error Resilience**: Continues processing even if individual language translations fail
 
 This workflow provides automatic multi-language subtitle creation while maintaining temporal accuracy and minimizing API costs through intelligent caching.
+
+### Dubbing Workflow
+
+The dubbing system follows this comprehensive workflow:
+
+1. **Job Submission**: Accepts dubbing requests with target language specification
+2. **Background Task Creation**: Creates asyncio task for non-blocking processing
+3. **Transcript Loading**: Reads transcript segments with timing information
+4. **Professional Translation**: Translates segments using DashScope Qwen models
+5. **Voice Synthesis**: Generates speech using Edge-TTS neural voices
+6. **Audio Assembly**: Combines segments with precise timing using FFmpeg
+7. **Video Muxing**: Creates final dubbed video with original video track
+8. **Progress Tracking**: Updates status files for real-time monitoring
+9. **Result Caching**: Persists dubbed videos for future access
+
+This workflow provides professional-quality dubbing while maintaining temporal accuracy and minimizing processing overhead through intelligent caching and background task management.
 
 ### Transcript Translation Workflow
 

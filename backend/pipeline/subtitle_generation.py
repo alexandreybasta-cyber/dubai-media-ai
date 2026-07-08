@@ -8,7 +8,8 @@ import asyncio
 import json
 import logging
 import os
-from typing import Dict, List, Optional
+import re
+from typing import Dict, List, Optional, Tuple
 
 import httpx
 
@@ -20,10 +21,15 @@ logger = logging.getLogger(__name__)
 SUPPORTED_LANGUAGES = ["en", "ar", "fr", "ru"]
 
 _LANGUAGE_NAMES = {
-    "ar": "Arabic",
+    "ar": "Modern Standard Arabic (العربية)",
     "fr": "French",
     "ru": "Russian",
 }
+
+# Maximum characters per subtitle cue (roughly two lines of on-screen text).
+_MAX_CUE_CHARS = 90
+# Minimum on-screen duration (seconds) for any single sub-cue.
+_MIN_CUE_DURATION = 0.8
 
 
 # ── Timestamp helpers ───────────────────────────────────────────────
@@ -63,6 +69,119 @@ def _format_timestamp(seconds: float, separator: str = ".") -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d}{separator}{millis:03d}"
 
 
+# ── Cue splitting ───────────────────────────────────────────────────
+
+# Sentence-ending / clause boundaries for Latin + Arabic punctuation. Keep the
+# delimiter attached to the preceding text via a look-behind split.
+_BOUNDARY_RE = re.compile(r"(?<=[.!?؟。！？،,;:])\s+")
+
+
+def _split_at_word(text: str, max_chars: int) -> Tuple[str, str]:
+    """Split ``text`` at the last word boundary at/under ``max_chars``.
+
+    Falls back to a hard character cut when a single word exceeds the limit.
+    Returns ``(head, remainder)``.
+    """
+    if len(text) <= max_chars:
+        return text, ""
+    cut = text.rfind(" ", 0, max_chars + 1)
+    if cut <= 0:
+        cut = max_chars
+    return text[:cut].strip(), text[cut:].strip()
+
+
+def _split_text_into_chunks(text: str, max_chars: int = _MAX_CUE_CHARS) -> List[str]:
+    """Break a long segment text into subtitle-sized chunks.
+
+    Splits on sentence/clause boundaries (periods, question marks, commas, etc.)
+    then greedily repacks the pieces so each chunk stays under ``max_chars``
+    while keeping 1-2 sentences together where they fit.
+    """
+    text = " ".join((text or "").split())  # normalise whitespace
+    if not text:
+        return []
+    if len(text) <= max_chars:
+        return [text]
+
+    units = [u.strip() for u in _BOUNDARY_RE.split(text) if u.strip()]
+    chunks: List[str] = []
+    buf = ""
+    for unit in units:
+        # Hard-wrap any single clause that is itself longer than the limit.
+        while len(unit) > max_chars:
+            head, unit = _split_at_word(unit, max_chars)
+            if buf:
+                chunks.append(buf)
+                buf = ""
+            if head:
+                chunks.append(head)
+        if not unit:
+            continue
+        if not buf:
+            buf = unit
+        elif len(buf) + 1 + len(unit) <= max_chars:
+            buf = f"{buf} {unit}"
+        else:
+            chunks.append(buf)
+            buf = unit
+    if buf:
+        chunks.append(buf)
+    return chunks
+
+
+def _expand_segments(
+    segments: List[dict], max_chars: int = _MAX_CUE_CHARS
+) -> List[dict]:
+    """Expand transcript segments into shorter sub-cues.
+
+    Long segments (e.g. a full 25-second transcription chunk) are split into
+    several sub-cues on sentence boundaries. The original time range is divided
+    proportionally to each sub-cue's character length, and the ``speaker_id`` is
+    preserved so speaker colouring still works.
+    """
+    expanded: List[dict] = []
+    for seg in segments:
+        text = (seg.get("text") or "").strip()
+        if not text:
+            continue
+        start = _to_seconds(seg.get("start_time", 0))
+        end = _to_seconds(seg.get("end_time", start))
+        if end <= start:
+            end = start + 1.0
+        speaker_id = seg.get("speaker_id", "unknown")
+
+        chunks = _split_text_into_chunks(text, max_chars)
+        if len(chunks) <= 1:
+            expanded.append({
+                "start_time": start,
+                "end_time": end,
+                "text": text,
+                "speaker_id": speaker_id,
+            })
+            continue
+
+        total_len = sum(len(c) for c in chunks) or 1
+        span = end - start
+        cursor = start
+        for i, chunk in enumerate(chunks):
+            if i == len(chunks) - 1:
+                cue_end = end
+            else:
+                cue_end = cursor + span * (len(chunk) / total_len)
+            if cue_end - cursor < _MIN_CUE_DURATION:
+                cue_end = min(cursor + _MIN_CUE_DURATION, end)
+            if cue_end <= cursor:
+                cue_end = cursor + 0.1
+            expanded.append({
+                "start_time": cursor,
+                "end_time": cue_end,
+                "text": chunk,
+                "speaker_id": speaker_id,
+            })
+            cursor = cue_end
+    return expanded
+
+
 # ── Subtitle formatters ─────────────────────────────────────────────
 
 def _build_speaker_labels(segments: List[dict]) -> Dict[str, str]:
@@ -97,23 +216,26 @@ def _speaker_label(seg: dict, mapping: Dict[str, str]) -> Optional[str]:
 def generate_vtt(segments: List[dict], language: str = "en") -> str:
     """Convert transcript segments into a WebVTT subtitle document.
 
-    When a segment carries a known ``speaker_id`` (not "unknown"), the cue text
-    is wrapped in a WebVTT ``<v Speaker N>`` voice tag.
+    Long segments are first split into shorter sub-cues (see ``_expand_segments``)
+    so on-screen text stays to 1-2 short lines. When a cue carries a known
+    ``speaker_id`` (not "unknown"), the cue text is wrapped in a WebVTT
+    ``<v Speaker N>`` voice tag.
     """
     lines = ["WEBVTT", ""]
-    speaker_map = _build_speaker_labels(segments)
-    for seg in segments:
-        text = (seg.get("text") or "").strip()
+    cues = _expand_segments(segments)
+    speaker_map = _build_speaker_labels(cues)
+    for cue in cues:
+        text = (cue.get("text") or "").strip()
         if not text:
             continue
-        start = _to_seconds(seg.get("start_time", 0))
-        end = _to_seconds(seg.get("end_time", start))
+        start = _to_seconds(cue.get("start_time", 0))
+        end = _to_seconds(cue.get("end_time", start))
         if end <= start:
             end = start + 1.0
         lines.append(
             f"{_format_timestamp(start, '.')} --> {_format_timestamp(end, '.')}"
         )
-        label = _speaker_label(seg, speaker_map)
+        label = _speaker_label(cue, speaker_map)
         if label:
             lines.append(f"<v {label}>{text}</v>")
         else:
@@ -125,25 +247,27 @@ def generate_vtt(segments: List[dict], language: str = "en") -> str:
 def generate_srt(segments: List[dict], language: str = "en") -> str:
     """Convert transcript segments into an SRT subtitle document.
 
-    When a segment carries a known ``speaker_id`` (not "unknown"), the cue text
-    is prefixed with "Speaker N: " (SRT has no voice tag).
+    Long segments are split into shorter sub-cues (see ``_expand_segments``).
+    When a cue carries a known ``speaker_id`` (not "unknown"), the cue text is
+    prefixed with "Speaker N: " (SRT has no voice tag).
     """
     lines = []
     index = 1
-    speaker_map = _build_speaker_labels(segments)
-    for seg in segments:
-        text = (seg.get("text") or "").strip()
+    cues = _expand_segments(segments)
+    speaker_map = _build_speaker_labels(cues)
+    for cue in cues:
+        text = (cue.get("text") or "").strip()
         if not text:
             continue
-        start = _to_seconds(seg.get("start_time", 0))
-        end = _to_seconds(seg.get("end_time", start))
+        start = _to_seconds(cue.get("start_time", 0))
+        end = _to_seconds(cue.get("end_time", start))
         if end <= start:
             end = start + 1.0
         lines.append(str(index))
         lines.append(
             f"{_format_timestamp(start, ',')} --> {_format_timestamp(end, ',')}"
         )
-        label = _speaker_label(seg, speaker_map)
+        label = _speaker_label(cue, speaker_map)
         if label:
             lines.append(f"{label}: {text}")
         else:
@@ -200,13 +324,23 @@ async def translate_segments(
     if not api_key:
         raise RuntimeError("DASHSCOPE_API_KEY is not configured on the server.")
 
+    # Some models (e.g. Qwen) may default to Chinese output; be explicit about
+    # the target script/language to prevent that, especially for Arabic.
+    extra = ""
+    if language == "ar":
+        extra = (
+            " The target language is Modern Standard Arabic written in Arabic script (العربية). "
+            "Do NOT translate to Chinese or any other language — every translated segment "
+            "MUST be written in Arabic."
+        )
+
     joined = "\n".join(
         f"[SEG{i + 1}] {(seg.get('text') or '').strip()}"
         for i, seg in enumerate(segments)
     )
 
     system_prompt = (
-        f"You are a professional translator. Translate the user's text into {lang_name}. "
+        f"You are a professional translator. Translate the user's text into {lang_name}.{extra} "
         f"The text is split into segments, each prefixed with a marker like [SEG1], [SEG2]. "
         f"Translate ONLY the text after each marker into {lang_name}, and keep every marker "
         f"exactly as-is on the same line before its translation. Preserve the number and order "
