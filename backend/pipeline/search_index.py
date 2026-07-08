@@ -211,6 +211,58 @@ class SearchIndex:
 
         logger.info("Added %d segments for video %s to search index", len(texts), video_id)
 
+    def remove_video(self, video_id: str):
+        """
+        Remove all indexed segments belonging to a video and rebuild the index.
+
+        Filters out every metadata entry whose ``video_id`` matches, rebuilds
+        the FAISS index (or numpy fallback) from the remaining vectors, and
+        persists the result. If no entry matches, this is a no-op.
+
+        Args:
+            video_id: Unique identifier of the video to purge from the index.
+        """
+        if self.index is None or not self.metadata:
+            return
+
+        # Indices to keep (everything not belonging to the removed video)
+        keep_indices = [
+            i for i, meta in enumerate(self.metadata)
+            if meta.get("video_id") != video_id
+        ]
+
+        # Nothing matched -> silently return without touching the index
+        if len(keep_indices) == len(self.metadata):
+            return
+
+        try:
+            if self._use_faiss:
+                # Reconstruct surviving vectors from the existing FAISS index
+                new_index = _faiss.IndexFlatIP(EMBEDDING_DIM)
+                if keep_indices:
+                    kept_vectors = np.array(
+                        [self.index.reconstruct(i) for i in keep_indices],
+                        dtype=np.float32,
+                    )
+                    new_index.add(kept_vectors)
+                self.index = new_index
+            else:
+                # Numpy fallback: rebuild the vectors array without removed rows
+                new_index = _NumpyFlatIP(EMBEDDING_DIM)
+                if keep_indices and self.index._vectors is not None:
+                    new_index.add(self.index._vectors[keep_indices])
+                self.index = new_index
+
+            # Keep metadata parallel to the rebuilt vector store
+            self.metadata = [self.metadata[i] for i in keep_indices]
+            self._save_index()
+            logger.info(
+                "Removed video %s from search index (%d vectors remaining)",
+                video_id, self.index.ntotal,
+            )
+        except Exception as e:
+            logger.error("Failed to remove video %s from search index: %s", video_id, e)
+
     async def search(
         self,
         query: str,

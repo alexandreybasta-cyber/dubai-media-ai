@@ -7,6 +7,7 @@ import json
 import logging
 import asyncio
 import os
+import shutil
 import subprocess
 import sys
 import uuid
@@ -633,6 +634,54 @@ async def list_videos():
 
     videos.sort(key=lambda v: v.get("created_at", ""), reverse=True)
     return {"videos": videos, "total": len(videos)}
+
+
+class DeleteVideosRequest(BaseModel):
+    video_ids: List[str]
+
+
+@router.delete("/videos")
+async def delete_videos(request: DeleteVideosRequest):
+    """
+    Batch-delete one or more videos.
+
+    For each video_id, removes both the uploaded ``{video_id}.mp4`` file and the
+    ``{video_id}/`` output directory, then purges the video from the search
+    index. Returns which IDs were deleted and which failed (with a reason).
+    """
+    deleted: List[str] = []
+    failed: List[dict] = []
+
+    for video_id in request.video_ids:
+        video_file = os.path.join(settings.UPLOAD_DIR, f"{video_id}.mp4")
+        video_dir = os.path.join(settings.UPLOAD_DIR, video_id)
+
+        file_exists = os.path.isfile(video_file)
+        dir_exists = os.path.isdir(video_dir)
+
+        # Nothing on disk for this ID -> report as a failure
+        if not file_exists and not dir_exists:
+            failed.append({"video_id": video_id, "error": "Not found"})
+            continue
+
+        try:
+            if file_exists:
+                os.remove(video_file)
+            if dir_exists:
+                shutil.rmtree(video_dir)
+            deleted.append(video_id)
+        except Exception as e:
+            logger.error("Failed to delete video %s: %s", video_id, e)
+            failed.append({"video_id": video_id, "error": str(e)})
+
+    # Purge successfully deleted videos from the search index
+    for video_id in deleted:
+        try:
+            _orchestrator.search_index.remove_video(video_id)
+        except Exception as e:
+            logger.error("Failed to remove video %s from search index: %s", video_id, e)
+
+    return {"deleted": deleted, "failed": failed}
 
 
 # ── Person Naming ───────────────────────────────────────────────────
