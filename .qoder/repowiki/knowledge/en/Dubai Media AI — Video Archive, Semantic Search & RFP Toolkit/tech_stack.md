@@ -1,0 +1,1 @@
+Alibaba Cloud DashScope (Qwen-VL-Max, Paraformer-v2 ASR, Qwen-Max text, text-embedding-v3 vectors) for multimodal processing; FAISS CPU for vector similarity search; python-docx/reportlab/openpyxl for multi-format RFP export; FastAPI + Uvicorn, Next.js 16 with Tailwind CSS v4 and Recharts, orchestrated via docker-compose with nginx:alpine.

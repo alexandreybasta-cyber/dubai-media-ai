@@ -1,4 +1,0 @@
-- Asynchronous pipeline execution: Long-running video processing tasks are launched as background `asyncio.create_task` instances to prevent blocking the main API event loop.
-- Stage-based progress tracking: The processing pipeline uses a standardized status dictionary with per-stage states (pending, running, completed, failed) persisted to `status.json` for client-side polling or WebSocket updates.
-- UUID-based resource isolation: Each uploaded video is assigned a UUIDv4, creating a dedicated directory in `uploads/` to store all associated artifacts (audio, transcripts, metadata, and thumbnails).
-- Typed API integration: The frontend utilizes a centralized `api.ts` module with TypeScript interfaces for all request/response payloads, ensuring type safety across the Next.js and FastAPI boundary.

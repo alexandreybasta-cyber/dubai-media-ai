@@ -5,14 +5,16 @@ Handles upload, status tracking, metadata retrieval, search, and WebSocket progr
 
 import json
 import logging
+import asyncio
 import os
 import subprocess
 import sys
 import uuid
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import aiofiles
+import httpx
 from fastapi import APIRouter, UploadFile, File, WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel
 
@@ -44,6 +46,17 @@ class NameFaceRequest(BaseModel):
     name_ar: Optional[str] = None
     role: Optional[str] = None
     add_to_reference: bool = False
+
+
+class TranslateSegmentInput(BaseModel):
+    text: str
+    start_time: float
+    end_time: float
+
+
+class TranslateRequest(BaseModel):
+    language: str  # "ar", "fr", "ru"
+    segments: List[TranslateSegmentInput]
 
 
 # ── Upload ──────────────────────────────────────────────────────────
@@ -204,6 +217,122 @@ async def get_video_transcript(video_id: str):
     except Exception as e:
         logger.error("Failed to read transcript for %s: %s", video_id, e)
         raise HTTPException(status_code=500, detail="Failed to read transcript")
+
+
+# ── Transcript Translation ──────────────────────────────────────────
+
+_LANGUAGE_NAMES = {
+    "ar": "Arabic",
+    "fr": "French",
+    "ru": "Russian",
+}
+
+
+@router.post("/video/{video_id}/translate-transcript")
+async def translate_transcript(video_id: str, request: TranslateRequest):
+    """
+    Translate transcript segments into a target language (ar/fr/ru) using
+    the DashScope Qwen text model. All segments are translated in a single
+    API call by joining them with numbered markers, then splitting back.
+    """
+    lang_name = _LANGUAGE_NAMES.get(request.language)
+    if not lang_name:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported language '{request.language}'. Use 'ar', 'fr', or 'ru'.",
+        )
+
+    if not request.segments:
+        return {"translations": [], "language": request.language}
+
+    api_key = settings.DASHSCOPE_API_KEY
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="DASHSCOPE_API_KEY is not configured on the server.",
+        )
+
+    # Join all segment texts with numbered markers for a single API call.
+    joined = "\n".join(
+        f"[SEG{i + 1}] {seg.text}" for i, seg in enumerate(request.segments)
+    )
+
+    system_prompt = (
+        f"You are a professional translator. Translate the user's text into {lang_name}. "
+        f"The text is split into segments, each prefixed with a marker like [SEG1], [SEG2]. "
+        f"Translate ONLY the text after each marker into {lang_name}, and keep every marker "
+        f"exactly as-is on the same line before its translation. Preserve the number and order "
+        f"of segments. Return ONLY the translated segments with their markers, nothing else."
+    )
+
+    payload = {
+        "model": settings.MODEL_TEXT,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": joined},
+        ],
+        "temperature": 0.3,
+        "max_tokens": 4096,
+    }
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    api_url = f"{settings.DASHSCOPE_BASE_URL}/chat/completions"
+
+    content = None
+    last_error = None
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(api_url, json=payload, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                content = data["choices"][0]["message"]["content"]
+                break
+            last_error = f"status {resp.status_code}: {resp.text[:300]}"
+            logger.warning("Translation attempt %d failed: %s", attempt + 1, last_error)
+        except Exception as e:
+            last_error = str(e)
+            logger.warning("Translation attempt %d error: %s", attempt + 1, last_error)
+        await asyncio.sleep(2 ** attempt)
+
+    if content is None:
+        raise HTTPException(status_code=502, detail=f"Translation failed: {last_error}")
+
+    # Parse the translated text back into segments using the markers.
+    parsed = _parse_marked_segments(content, len(request.segments))
+
+    translations = []
+    for i, seg in enumerate(request.segments):
+        text = parsed.get(i)
+        translations.append({
+            "start_time": seg.start_time,
+            "end_time": seg.end_time,
+            "text": (text if text else seg.text),
+        })
+
+    return {"translations": translations, "language": request.language}
+
+
+def _parse_marked_segments(content: str, count: int) -> Dict[int, str]:
+    """
+    Split model output back into per-segment translations using [SEGn] markers.
+    Returns a dict mapping zero-based segment index -> translated text.
+    """
+    import re
+
+    result: Dict[int, str] = {}
+    # Find each marker and capture text until the next marker or end of string.
+    matches = list(re.finditer(r"\[SEG(\d+)\]", content))
+    for idx, m in enumerate(matches):
+        seg_num = int(m.group(1))
+        start = m.end()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(content)
+        text = content[start:end].strip()
+        if 1 <= seg_num <= count:
+            result[seg_num - 1] = text
+    return result
 
 
 # ── Video Library ───────────────────────────────────────────────────

@@ -9,6 +9,7 @@
 - [PipelineVisualizer.tsx](file://frontend/src/components/archive/PipelineVisualizer.tsx)
 - [SceneDetection.tsx](file://frontend/src/components/archive/SceneDetection.tsx)
 - [VideoTimeline.tsx](file://frontend/src/components/archive/VideoTimeline.tsx)
+- [VideoLibrary.tsx](file://frontend/src/components/archive/VideoLibrary.tsx)
 - [rfp-creator/page.tsx](file://frontend/src/app/rfp-creator/page.tsx)
 - [RFPForm.tsx](file://frontend/src/components/rfp/RFPForm.tsx)
 - [rfp-evaluator/page.tsx](file://frontend/src/app/rfp-evaluator/page.tsx)
@@ -23,12 +24,12 @@
 
 ## Update Summary
 **Changes Made**
-- Enhanced SceneBoundary interface documentation with new scene_type and thumbnail properties
-- Updated timestamp parsing section with improved HH:MM:SS and MM:SS format handling
-- Added comprehensive failure counter mechanism documentation for enhanced error handling
-- Documented thumbnail integration from backend visual analysis results
-- Updated data transformation patterns with enhanced scene boundary mapping
-- Added SceneDetection component integration showcasing new scene_type and thumbnail features
+- Added comprehensive video library management API endpoints with `/api/videos` listing functionality
+- Implemented advanced face naming system with `/api/video/{video_id}/faces/name` endpoint
+- Enhanced TypeScript interfaces with `LibraryVideo` type and improved `SceneBoundary` properties
+- Expanded error handling mechanisms with sophisticated failure counter for polling fallback
+- Integrated thumbnail support throughout the scene detection workflow
+- Added reference database integration for persistent face recognition across videos
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -48,6 +49,8 @@ This document explains the frontend API integration layer and state management p
 The frontend integrates with two primary backend domains:
 - Video processing pipeline: upload, status tracking, metadata retrieval, transcripts, search, and WebSocket progress streaming
 - RFP creation and evaluation: AI-powered proposal generation, regeneration, export, and vendor evaluation workflows
+- Video library management: comprehensive video catalog browsing with thumbnails and metadata
+- Face recognition system: intelligent person identification with reference database integration
 
 ```mermaid
 graph TB
@@ -56,41 +59,47 @@ A["api.ts<br/>HTTP client + WebSocket"]
 B["useVideoProcessing.ts<br/>React hook"]
 C["Components<br/>Archive, RFP, Evaluator"]
 D["SceneDetection.tsx<br/>Enhanced Scene Boundary"]
+E["VideoLibrary.tsx<br/>Video Catalog Browser"]
 end
 subgraph "Backend"
-E["FastAPI main.py"]
-F["Video Router<br/>video.py"]
-G["RFP Router<br/>rfp.py"]
-H["Face Recognition Pipeline<br/>face_recognition.py"]
-I["Reference Database<br/>reference_faces.json"]
-J["Visual Analysis Results<br/>visual_analysis.json"]
-K["Scene Detection<br/>scene_type + thumbnail"]
+F["FastAPI main.py"]
+G["Video Router<br/>video.py"]
+H["RFP Router<br/>rfp.py"]
+I["Face Recognition Pipeline<br/>face_recognition.py"]
+J["Reference Database<br/>reference_faces.json"]
+K["Visual Analysis Results<br/>visual_analysis.json"]
+L["Video Library Manager<br/>New Endpoints"]
+M["Face Naming System<br/>Advanced Features"]
 end
-A --> E
+A --> F
 B --> A
 C --> A
 D --> B
-E --> F
-E --> G
+E --> A
+F --> G
 F --> H
-F --> J
-H --> I
-J --> K
+G --> I
+G --> K
+G --> L
+G --> M
+I --> J
+K --> L
+L --> M
 ```
 
 **Diagram sources**
-- [api.ts:1-277](file://frontend/src/lib/api.ts#L1-L277)
-- [useVideoProcessing.ts:1-583](file://frontend/src/lib/useVideoProcessing.ts#L1-L583)
-- [SceneDetection.tsx:1-180](file://frontend/src/components/archive/SceneDetection.tsx#L1-L180)
+- [api.ts:1-313](file://frontend/src/lib/api.ts#L1-L313)
+- [useVideoProcessing.ts:1-673](file://frontend/src/lib/useVideoProcessing.ts#L1-L673)
+- [SceneDetection.tsx:1-217](file://frontend/src/components/archive/SceneDetection.tsx#L1-L217)
+- [VideoLibrary.tsx:1-128](file://frontend/src/components/archive/VideoLibrary.tsx#L1-L128)
 - [main.py:1-44](file://backend/main.py#L1-L44)
-- [video.py:1-314](file://backend/routers/video.py#L1-L314)
+- [video.py:1-508](file://backend/routers/video.py#L1-L508)
 - [rfp.py:1-385](file://backend/routers/rfp.py#L1-L385)
-- [face_recognition.py:1-319](file://backend/pipeline/face_recognition.py#L1-L319)
-- [visual_analysis.json:1-286](file://backend/uploads/19ab5a0f-7c15-4368-933e-c7e2f7ff0c86/visual_analysis.json#L1-L286)
+- [face_recognition.py:1-660](file://backend/pipeline/face_recognition.py#L1-L660)
 
 **Section sources**
-- [api.ts:1-277](file://frontend/src/lib/api.ts#L1-L277)
-- [useVideoProcessing.ts:1-583](file://frontend/src/lib/useVideoProcessing.ts#L1-L583)
+- [api.ts:1-313](file://frontend/src/lib/api.ts#L1-L313)
+- [useVideoProcessing.ts:1-673](file://frontend/src/lib/useVideoProcessing.ts#L1-L673)
 - [main.py:1-44](file://backend/main.py#L1-L44)
 
 ## Core Components
@@ -104,6 +113,7 @@ The client provides:
 - WebSocket connection helper with message parsing
 - Strongly typed request/response interfaces for RFP and evaluation workflows
 - Convenience API facade exposing endpoints for video and RFP operations
+- **Updated** New video library management endpoints with comprehensive video catalog access
 
 Key capabilities:
 - HTTP request configuration: JSON content-type header, optional query parameters
@@ -112,12 +122,17 @@ Key capabilities:
 - Response processing: JSON parsing with typed return values
 - WebSocket: connects to ws:// base URL derived from http base URL
 
+**Updated** Enhanced API facade with new video library and face naming endpoints:
+- `api.video.list()`: Retrieves complete video library with thumbnails and metadata
+- `api.video.nameFace()`: Advanced face naming with reference database integration
+- `LibraryVideo` interface: Comprehensive video metadata including scenes, persons, and summaries
+
 **Section sources**
 - [api.ts:1-39](file://frontend/src/lib/api.ts#L1-L39)
 - [api.ts:42-64](file://frontend/src/lib/api.ts#L42-L64)
 - [api.ts:66-99](file://frontend/src/lib/api.ts#L66-L99)
 - [api.ts:101-161](file://frontend/src/lib/api.ts#L101-L161)
-- [api.ts:162-277](file://frontend/src/lib/api.ts#L162-L277)
+- [api.ts:162-313](file://frontend/src/lib/api.ts#L162-313)
 
 ### Real-Time WebSocket Integration
 The WebSocket helper:
@@ -139,6 +154,7 @@ The hook manages:
 - Search: semantic search across processed videos
 - Video timeline synchronization: current time tracking and seeking
 - State cleanup: WebSocket closure and object URL revocation
+- **Updated** Person naming functionality with immediate UI updates and reference database integration
 
 **Updated** Enhanced error handling with failure counter mechanism that automatically disconnects after 5 consecutive failures.
 
@@ -155,7 +171,7 @@ State structure:
 **Section sources**
 - [useVideoProcessing.ts:88-104](file://frontend/src/lib/useVideoProcessing.ts#L88-L104)
 - [useVideoProcessing.ts:106-113](file://frontend/src/lib/useVideoProcessing.ts#L106-L113)
-- [useVideoProcessing.ts:122-583](file://frontend/src/lib/useVideoProcessing.ts#L122-L583)
+- [useVideoProcessing.ts:122-673](file://frontend/src/lib/useVideoProcessing.ts#L122-673)
 
 ## Architecture Overview
 The frontend communicates with backend endpoints through a typed HTTP client and real-time WebSocket channels. The video processing workflow combines asynchronous uploads, background pipeline execution, and live progress updates.
@@ -167,11 +183,13 @@ participant Hook as "useVideoProcessing"
 participant API as "api.ts"
 participant WS as "WebSocket"
 participant BE as "Backend"
+participant Lib as "Video Library"
+participant Face as "Face Naming"
 UI->>Hook : "uploadVideo(file)"
 Hook->>API : "uploadFile('/api/video/upload', file)"
 API-->>Hook : "{video_id, status}"
 Hook->>Hook : "updateState(uploading, progress)"
-Hook->>API : "connectWebSocket('/ws/pipeline/' + video_id)"
+Hook->>API : "connectWebSocket('/api/ws/pipeline/' + video_id)"
 API->>WS : "new WebSocket()"
 WS-->>Hook : "onmessage {stage,status,message,progress}"
 Hook->>Hook : "setState(stages, view)"
@@ -182,6 +200,14 @@ Hook->>API : "getMetadata/getTranscript"
 API-->>Hook : "metadata, transcript"
 Hook->>Hook : "setState(results)"
 Note over Hook : "Enhanced : Failure counter tracks 5 consecutive failures"
+UI->>API : "list() - Video Library"
+API->>Lib : "GET /api/videos"
+Lib-->>API : "videos[] with thumbnails"
+API-->>UI : "LibraryVideo[]"
+UI->>API : "nameFace(videoId, data)"
+API->>Face : "POST /api/video/{id}/faces/name"
+Face-->>API : "{status, face, added_to_reference}"
+API-->>UI : "Updated face data"
 ```
 
 **Diagram sources**
@@ -191,19 +217,25 @@ Note over Hook : "Enhanced : Failure counter tracks 5 consecutive failures"
 - [useVideoProcessing.ts:280-309](file://frontend/src/lib/useVideoProcessing.ts#L280-L309)
 - [api.ts:42-64](file://frontend/src/lib/api.ts#L42-L64)
 - [api.ts:66-99](file://frontend/src/lib/api.ts#L66-L99)
+- [video.py:223-274](file://backend/routers/video.py#L223-L274)
+- [video.py:279-365](file://backend/routers/video.py#L279-L365)
 
 ## Detailed Component Analysis
 
 ### API Endpoint Mapping and Schemas
 The frontend exposes convenience methods grouped under an API facade. These map to backend endpoints and models.
 
+**Updated** Enhanced API endpoint coverage with new video library management and face naming capabilities:
+
 - Video endpoints
   - POST /api/video/upload: uploads a file and starts background processing
   - GET /api/video/{video_id}/status: retrieves pipeline status
   - GET /api/video/{video_id}/metadata: retrieves structured metadata
   - GET /api/video/{video_id}/transcript: retrieves transcript segments
+  - **NEW** GET /api/videos: lists all processed videos with thumbnails and metadata
+  - **NEW** POST /api/video/{video_id}/faces/name: assigns names to detected persons
   - POST /api/search: performs semantic search across videos
-  - WS /ws/pipeline/{video_id}: streams progress events
+  - WS /api/ws/pipeline/{video_id}: streams progress events
 
 - RFP endpoints
   - POST /api/rfp/create: generates an RFP from structured input
@@ -216,14 +248,16 @@ The frontend exposes convenience methods grouped under an API facade. These map 
   - GET /api/rfp/evaluation/{eval_id}/export/xlsx: exports evaluation as XLSX
   - GET /api/rfp/evaluation/{eval_id}/export/pdf: exports evaluation as PDF
 
-Typed request/response models:
-- RFPCreatePayload: project metadata, evaluation criteria, timeline, budget, compliance, language, tone
-- RFPCreateResponse: generated RFP identifier, title, status, sections, language
-- EvaluationResults: vendor results, recommendation, follow-up questions
-- WSMessage: standardized progress message for pipeline stages
+**Updated** Enhanced typed request/response models:
+- `LibraryVideo`: comprehensive video metadata including thumbnails, scene counts, and person lists
+- `NameFaceRequest`: face identification with bilingual naming and role assignment
+- `RFPCreatePayload`: project metadata, evaluation criteria, timeline, budget, compliance, language, tone
+- `RFPCreateResponse`: generated RFP identifier, title, status, sections, language
+- `EvaluationResults`: vendor results, recommendation, follow-up questions
+- `WSMessage`: standardized progress message for pipeline stages
 
 **Section sources**
-- [api.ts:164-277](file://frontend/src/lib/api.ts#L164-L277)
+- [api.ts:164-313](file://frontend/src/lib/api.ts#L164-L313)
 - [api.ts:101-161](file://frontend/src/lib/api.ts#L101-L161)
 - [api.ts:68-74](file://frontend/src/lib/api.ts#L68-L74)
 - [video.py:39-92](file://backend/routers/video.py#L39-L92)
@@ -231,12 +265,100 @@ Typed request/response models:
 - [video.py:143-174](file://backend/routers/video.py#L143-L174)
 - [video.py:179-195](file://backend/routers/video.py#L179-L195)
 - [video.py:200-215](file://backend/routers/video.py#L200-L215)
+- [video.py:223-274](file://backend/routers/video.py#L223-L274)
+- [video.py:279-365](file://backend/routers/video.py#L279-L365)
 - [video.py:220-314](file://backend/routers/video.py#L220-L314)
 - [rfp.py:97-130](file://backend/routers/rfp.py#L97-L130)
 - [rfp.py:133-167](file://backend/routers/rfp.py#L133-L167)
 - [rfp.py:243-311](file://backend/routers/rfp.py#L243-L311)
 - [rfp.py:314-329](file://backend/routers/rfp.py#L314-L329)
 - [rfp.py:332-346](file://backend/routers/rfp.py#L332-L346)
+
+### Enhanced Video Library Management System
+**Updated** Comprehensive video library management with advanced browsing and discovery capabilities.
+
+The new video library system provides:
+- Complete video catalog browsing with thumbnails and metadata
+- Smart filtering by processing status and completion state
+- Rich metadata display including scene counts, duration, and identified persons
+- Thumbnail optimization with lazy loading and fallback handling
+- Integration with the broader video processing pipeline
+
+**LibraryVideo Interface**:
+```typescript
+export interface LibraryVideo {
+  video_id: string;
+  filename: string;
+  title: string;
+  status: string;
+  progress: number;
+  created_at: string;
+  duration: number;
+  thumbnail: string;
+  scene_count: number;
+  persons: string[];
+  summary: string;
+}
+```
+
+**Backend Implementation**:
+The `/api/videos` endpoint scans the upload directory and aggregates metadata from multiple sources:
+- Status information from `status.json`
+- Ingestion details from `ingestion.json` 
+- Visual analysis results from `visual_analysis.json`
+- Face recognition data from `faces.json`
+- Thumbnail files (`thumbnail.jpg`)
+- IPTC metadata for headlines and descriptions
+
+**Section sources**
+- [api.ts:134-146](file://frontend/src/lib/api.ts#L134-L146)
+- [api.ts:231-232](file://frontend/src/lib/api.ts#L231-L232)
+- [video.py:223-274](file://backend/routers/video.py#L223-L274)
+- [VideoLibrary.tsx:1-128](file://frontend/src/components/archive/VideoLibrary.tsx#L1-L128)
+
+### Advanced Face Naming System
+**Updated** Sophisticated face identification system with reference database integration and bilingual support.
+
+The face naming system enables users to:
+- Assign names to detected persons with English and Arabic support
+- Add individuals to the reference database for future recognition
+- Maintain role information and confidence scores
+- Update search indexing immediately after naming
+- Persist changes across video processing sessions
+
+**NameFaceRequest Interface**:
+```typescript
+interface NameFaceRequest {
+  face_index: number;
+  name_en: str;
+  name_ar: Optional[str] = None;
+  role: Optional[str] = None;
+  add_to_reference: bool = False;
+}
+```
+
+**Backend Processing Flow**:
+1. Validates face index and required fields
+2. Updates face metadata with identification status
+3. Synchronizes changes to both `faces.json` and `results.json`
+4. Optionally adds to reference database with duplicate checking
+5. Updates semantic search index for immediate discoverability
+6. Returns confirmation with reference database update status
+
+**Reference Database Integration**:
+The system maintains a persistent reference database (`reference_faces.json`) containing:
+- Unique identifiers for each known person
+- Bilingual names (English and Arabic)
+- Role descriptions and contextual information
+- Physical descriptions for matching algorithms
+- Automatic ID generation and duplicate prevention
+
+**Section sources**
+- [video.py:41-47](file://backend/routers/video.py#L41-L47)
+- [video.py:279-365](file://backend/routers/video.py#L279-L365)
+- [face_recognition.py:17-32](file://backend/pipeline/face_recognition.py#L17-L32)
+- [useVideoProcessing.ts:555-590](file://frontend/src/lib/useVideoProcessing.ts#L555-L590)
+- [api.ts:233-246](file://frontend/src/lib/api.ts#L233-L246)
 
 ### Enhanced SceneBoundary Interface and Data Transformation
 **Updated** The SceneBoundary interface now includes enhanced properties for scene classification and thumbnail support.
@@ -245,7 +367,10 @@ The SceneBoundary interface definition:
 ```typescript
 export interface SceneBoundary {
   timestamp: number;
+  start?: number;
+  end?: number;
   description: string;
+  description_ar?: string;
   scene_type?: string;
   thumbnail?: string;
 }
@@ -259,6 +384,7 @@ The frontend now supports comprehensive scene classification with the following 
 - ceremony: Official ceremonies and events
 - documentary: Historical or archival footage
 - sport: Sports and athletic activities
+- news-anchor: News broadcasting segments
 - other: Default category for unrecognized scenes
 
 **Improved Timestamp Parsing**
@@ -284,14 +410,14 @@ The backend now provides thumbnail paths that are properly mapped to the fronten
 - Backend ingestion includes `thumbnail_path` field
 - Thumbnail URLs are converted to accessible paths in the orchestrator
 - Scene thumbnails are included in visual analysis results
-- Frontend displays thumbnails alongside scene descriptions
+- Frontend displays thumbnails alongside scene descriptions with lazy loading
 
 **Section sources**
 - [useVideoProcessing.ts:30-42](file://frontend/src/lib/useVideoProcessing.ts#L30-L42)
-- [useVideoProcessing.ts:345-365](file://frontend/src/lib/useVideoProcessing.ts#L345-L365)
+- [useVideoProcessing.ts:366-390](file://frontend/src/lib/useVideoProcessing.ts#L366-L390)
+- [SceneDetection.tsx:1-217](file://frontend/src/components/archive/SceneDetection.tsx#L1-L217)
 - [visual_analysis.json:1-75](file://backend/uploads/19ab5a0f-7c15-4368-933e-c7e2f7ff0c86/visual_analysis.json#L1-L75)
 - [results.json:1-84](file://backend/uploads/19ab5a0f-7c15-4368-933e-c7e2f7ff0c86/results.json#L1-L84)
-- [orchestrator.py:317-341](file://backend/pipeline/orchestrator.py#L317-L341)
 
 ### Enhanced Error Handling with Failure Counter Mechanism
 **Updated** The polling fallback mechanism now includes a sophisticated failure counter that automatically disconnects after 5 consecutive failures.
@@ -350,7 +476,7 @@ const startPollingFallback = useCallback(
 
 **Section sources**
 - [useVideoProcessing.ts:144](file://frontend/src/lib/useVideoProcessing.ts#L144)
-- [useVideoProcessing.ts:428-493](file://frontend/src/lib/useVideoProcessing.ts#L428-L493)
+- [useVideoProcessing.ts:460-525](file://frontend/src/lib/useVideoProcessing.ts#L460-L525)
 
 ### Data Transformation Patterns
 **Updated** Comprehensive frontend data transformation layer implementation with detailed mapping logic for backend responses to VideoMetadata interface, including sophisticated face recognition data processing and enhanced scene boundary handling.
@@ -440,7 +566,7 @@ The face recognition transformation maintains its sophisticated fallback mechani
 5. **Automatic Color Assignment**: Assigns deterministic colors from predefined palette
 
 #### Transformation Implementation Details
-The `fetchResults` function (lines 289-424) orchestrates the complete transformation with enhanced scene processing:
+The `fetchResults` function (lines 304-456) orchestrates the complete transformation with enhanced scene processing:
 
 ```typescript
 // Enhanced scene transformation with classification and thumbnails
@@ -481,12 +607,11 @@ Simple but effective transformation:
 - Handles missing segments gracefully with empty array fallback
 
 **Section sources**
-- [useVideoProcessing.ts:289-424](file://frontend/src/lib/useVideoProcessing.ts#L289-L424)
-- [useVideoProcessing.ts:291-316](file://frontend/src/lib/useVideoProcessing.ts#L291-L316)
-- [useVideoProcessing.ts:318-325](file://frontend/src/lib/useVideoProcessing.ts#L318-L325)
-- [useVideoProcessing.ts:327-329](file://frontend/src/lib/useVideoProcessing.ts#L327-L329)
-- [useVideoProcessing.ts:115-118](file://frontend/src/lib/useVideoProcessing.ts#L115-L118)
-- [face_recognition.py:191-210](file://backend/pipeline/face_recognition.py#L191-L210)
+- [useVideoProcessing.ts:304-456](file://frontend/src/lib/useVideoProcessing.ts#L304-L456)
+- [useVideoProcessing.ts:366-390](file://frontend/src/lib/useVideoProcessing.ts#L366-L390)
+- [useVideoProcessing.ts:409-438](file://frontend/src/lib/useVideoProcessing.ts#L409-L438)
+- [useVideoProcessing.ts:128-131](file://frontend/src/lib/useVideoProcessing.ts#L128-L131)
+- [face_recognition.py:185-200](file://backend/pipeline/face_recognition.py#L185-L200)
 - [reference_faces.json:1-101](file://backend/data/reference_faces.json#L1-L101)
 - [visual_analysis.json:1-75](file://backend/uploads/19ab5a0f-7c15-4368-933e-c7e2f7ff0c86/visual_analysis.json#L1-L75)
 
@@ -496,6 +621,8 @@ Simple but effective transformation:
 - Polling: periodic status checks until all stages complete; triggers result fetch when done with failure counter mechanism
 - Search: debounced UI-triggered search with isSearching flag and empty results on failure
 - Evaluation: background submission with periodic status polling; clears intervals on cleanup and error
+- **Updated** Video library loading: efficient thumbnail loading with skeleton placeholders and error handling
+- **Updated** Face naming: optimistic UI updates with immediate feedback and rollback on failure
 
 **Updated** Enhanced polling fallback with automatic failure detection and recovery after 5 consecutive failures.
 
@@ -504,13 +631,17 @@ Simple but effective transformation:
 - [useVideoProcessing.ts:215-276](file://frontend/src/lib/useVideoProcessing.ts#L215-L276)
 - [useVideoProcessing.ts:313-348](file://frontend/src/lib/useVideoProcessing.ts#L313-L348)
 - [useVideoProcessing.ts:352-368](file://frontend/src/lib/useVideoProcessing.ts#L352-L368)
-- [useVideoProcessing.ts:428-493](file://frontend/src/lib/useVideoProcessing.ts#L428-L493)
+- [useVideoProcessing.ts:460-525](file://frontend/src/lib/useVideoProcessing.ts#L460-L525)
+- [useVideoProcessing.ts:555-590](file://frontend/src/lib/useVideoProcessing.ts#L555-L590)
+- [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-L50)
 - [rfp-evaluator/page.tsx:27-98](file://frontend/src/app/rfp-evaluator/page.tsx#L27-L98)
 
 ### Caching Strategies, Optimistic Updates, and Offline Handling
 - Caching: no explicit client-side cache; relies on backend static file serving for exports
 - Optimistic updates: pipeline stage status updates are applied immediately upon receiving WebSocket messages
 - Offline handling: WebSocket fallback to REST polling with enhanced failure counter; search results cleared on error; evaluation polling stops on error and resets UI
+- **Updated** Video library caching: browser-native image caching for thumbnails with lazy loading
+- **Updated** Face naming: immediate UI updates without full refetch, maintaining user experience during network operations
 
 **Updated** Enhanced offline handling with automatic disconnection after 5 consecutive failures.
 
@@ -519,7 +650,8 @@ Simple but effective transformation:
 - [useVideoProcessing.ts:263-271](file://frontend/src/lib/useVideoProcessing.ts#L263-L271)
 - [useVideoProcessing.ts:343-348](file://frontend/src/lib/useVideoProcessing.ts#L343-L348)
 - [useVideoProcessing.ts:365-368](file://frontend/src/lib/useVideoProcessing.ts#L365-L368)
-- [useVideoProcessing.ts:475-489](file://frontend/src/lib/useVideoProcessing.ts#L475-L489)
+- [useVideoProcessing.ts:506-521](file://frontend/src/lib/useVideoProcessing.ts#L506-L521)
+- [useVideoProcessing.ts:568-585](file://frontend/src/lib/useVideoProcessing.ts#L568-L585)
 
 ### Integration with Backend APIs and Real-Time Data Synchronization
 - Backend CORS: configured to allow cross-origin requests
@@ -528,6 +660,8 @@ Simple but effective transformation:
 - Evaluation workflow: background evaluation updates status and results persisted to disk
 - Face recognition pipeline: sophisticated AI-powered face matching with reference database integration
 - Scene detection: enhanced visual analysis with scene classification and thumbnail generation
+- **Updated** Video library management: comprehensive catalog browsing with metadata aggregation
+- **Updated** Face naming system: real-time reference database updates with search index synchronization
 
 **Updated** Enhanced scene detection pipeline with comprehensive scene classification and thumbnail support.
 
@@ -536,9 +670,10 @@ Simple but effective transformation:
 - [main.py:35-44](file://backend/main.py#L35-L44)
 - [video.py:95-120](file://backend/routers/video.py#L95-L120)
 - [video.py:218-314](file://backend/routers/video.py#L218-L314)
+- [video.py:223-274](file://backend/routers/video.py#L223-L274)
+- [video.py:279-365](file://backend/routers/video.py#L279-L365)
 - [rfp.py:219-238](file://backend/routers/rfp.py#L219-L238)
 - [face_recognition.py:124-188](file://backend/pipeline/face_recognition.py#L124-L188)
-- [orchestrator.py:317-341](file://backend/pipeline/orchestrator.py#L317-L341)
 
 ## Dependency Analysis
 The frontend components depend on the API client and the video processing hook. The hook encapsulates all integration logic, while components remain presentation-focused.
@@ -549,36 +684,41 @@ UI_A["VideoUpload.tsx"] --> Hook["useVideoProcessing.ts"]
 UI_B["archive/page.tsx"] --> Hook
 UI_C["PipelineVisualizer.tsx"] --> Hook
 UI_D["SceneDetection.tsx"] --> Hook
-UI_E["RFPForm.tsx"] --> API["api.ts"]
-UI_F["rfp-creator/page.tsx"] --> API
-UI_G["rfp-evaluator/page.tsx"] --> API
+UI_E["VideoLibrary.tsx"] --> API["api.ts"]
+UI_F["RFPForm.tsx"] --> API
+UI_G["rfp-creator/page.tsx"] --> API
+UI_H["rfp-evaluator/page.tsx"] --> API
 Hook --> API
 API --> Backend["Backend Routers"]
 Backend --> FacePipeline["Face Recognition Pipeline"]
 Backend --> ScenePipeline["Enhanced Scene Detection"]
+Backend --> VideoLibrary["Video Library Manager"]
+Backend --> FaceNaming["Face Naming System"]
 FacePipeline --> ReferenceDB["Reference Faces Database"]
 ScenePipeline --> VisualAnalysis["Visual Analysis Results"]
+VideoLibrary --> FaceNaming
 VisualAnalysis --> SceneTypes["Scene Classification"]
+FaceNaming --> SearchIndex["Semantic Search Index"]
 ```
 
 **Diagram sources**
 - [VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
 - [archive/page.tsx:1-129](file://frontend/src/app/archive/page.tsx#L1-L129)
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
-- [SceneDetection.tsx:1-180](file://frontend/src/components/archive/SceneDetection.tsx#L1-L180)
+- [SceneDetection.tsx:1-217](file://frontend/src/components/archive/SceneDetection.tsx#L1-L217)
+- [VideoLibrary.tsx:1-128](file://frontend/src/components/archive/VideoLibrary.tsx#L1-L128)
 - [RFPForm.tsx:1-411](file://frontend/src/components/rfp/RFPForm.tsx#L1-L411)
 - [rfp-creator/page.tsx:1-159](file://frontend/src/app/rfp-creator/page.tsx#L1-L159)
 - [rfp-evaluator/page.tsx:1-178](file://frontend/src/app/rfp-evaluator/page.tsx#L1-L178)
-- [useVideoProcessing.ts:1-583](file://frontend/src/lib/useVideoProcessing.ts#L1-L583)
-- [api.ts:1-277](file://frontend/src/lib/api.ts#L1-L277)
-- [video.py:1-314](file://backend/routers/video.py#L1-L314)
+- [useVideoProcessing.ts:1-673](file://frontend/src/lib/useVideoProcessing.ts#L1-L673)
+- [api.ts:1-313](file://frontend/src/lib/api.ts#L1-L313)
+- [video.py:1-508](file://backend/routers/video.py#L1-L508)
 - [rfp.py:1-385](file://backend/routers/rfp.py#L1-L385)
-- [face_recognition.py:1-319](file://backend/pipeline/face_recognition.py#L1-L319)
-- [visual_analysis.json:1-286](file://backend/uploads/19ab5a0f-7c15-4368-933e-c7e2f7ff0c86/visual_analysis.json#L1-L286)
+- [face_recognition.py:1-660](file://backend/pipeline/face_recognition.py#L1-L660)
 
 **Section sources**
-- [useVideoProcessing.ts:122-583](file://frontend/src/lib/useVideoProcessing.ts#L122-L583)
-- [api.ts:162-277](file://frontend/src/lib/api.ts#L162-L277)
+- [useVideoProcessing.ts:122-673](file://frontend/src/lib/useVideoProcessing.ts#L122-L673)
+- [api.ts:162-313](file://frontend/src/lib/api.ts#L162-L313)
 
 ## Performance Considerations
 - WebSocket vs polling: WebSocket provides real-time updates; polling serves as a robust fallback with enhanced failure handling
@@ -589,6 +729,9 @@ VisualAnalysis --> SceneTypes["Scene Classification"]
 - Face recognition optimization: intelligent fallbacks reduce redundant processing for unnamed persons
 - Scene classification optimization: enhanced timestamp parsing minimizes conversion overhead
 - Thumbnail loading: lazy loading of scene thumbnails improves initial render performance
+- **Updated** Video library optimization: efficient thumbnail loading with browser caching and skeleton placeholders
+- **Updated** Face naming optimization: immediate UI updates without full refetch, reducing network overhead
+- **Updated** Reference database optimization: duplicate checking prevents redundant entries and maintains database integrity
 
 ## Troubleshooting Guide
 Common issues and resolutions:
@@ -602,6 +745,9 @@ Common issues and resolutions:
 - Scene classification failures: verify scene_type values in backend visual analysis results; check timestamp format consistency
 - Thumbnail loading failures: verify thumbnail paths in backend ingestion results; check file accessibility
 - Polling failures: monitor failure counter; automatic disconnection occurs after 5 consecutive failures
+- **Updated** Video library loading failures: verify upload directory structure and file permissions; check thumbnail file existence
+- **Updated** Face naming failures: validate face index bounds and required fields; check reference database write permissions
+- **Updated** Reference database corruption: verify JSON file integrity and backup restoration procedures
 
 **Updated** Enhanced troubleshooting guidance for new failure counter mechanism and scene classification features.
 
@@ -609,10 +755,16 @@ Common issues and resolutions:
 - [useVideoProcessing.ts:202-208](file://frontend/src/lib/useVideoProcessing.ts#L202-L208)
 - [useVideoProcessing.ts:263-271](file://frontend/src/lib/useVideoProcessing.ts#L263-L271)
 - [useVideoProcessing.ts:343-348](file://frontend/src/lib/useVideoProcessing.ts#L343-L348)
-- [useVideoProcessing.ts:475-489](file://frontend/src/lib/useVideoProcessing.ts#L475-L489)
+- [useVideoProcessing.ts:506-521](file://frontend/src/lib/useVideoProcessing.ts#L506-L521)
+- [useVideoProcessing.ts:555-590](file://frontend/src/lib/useVideoProcessing.ts#L555-L590)
+- [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-L50)
+- [video.py:288-296](file://backend/routers/video.py#L288-L296)
+- [video.py:321-344](file://backend/routers/video.py#L321-L344)
 - [rfp-evaluator/page.tsx:86-98](file://frontend/src/app/rfp-evaluator/page.tsx#L86-L98)
 
 ## Conclusion
 The frontend API integration layer provides a clean, typed interface to backend services with robust real-time capabilities. The useVideoProcessing hook centralizes state management, error handling, and integration logic, enabling responsive UIs for video processing and RFP workflows. The comprehensive data transformation layer ensures seamless mapping between backend response structures and frontend interface requirements, with particular emphasis on sophisticated face recognition data processing including intelligent fallbacks, automatic numbering for unnamed persons, and appearance synthesis. 
 
-**Updated** The enhanced video processing capabilities now include comprehensive scene classification with scene_type categorization, thumbnail integration for visual scene representation, and sophisticated timestamp parsing supporting both MM:SS and HH:MM:SS formats. The failure counter mechanism provides robust error handling with automatic disconnection after 5 consecutive failures, ensuring graceful degradation and user experience preservation. The SceneDetection component showcases these enhancements with color-coded scene types and thumbnail previews, creating a rich visual experience for video navigation and analysis. The design balances optimistic updates, fallback mechanisms, and clear separation of concerns between presentation and data access, while the enhanced scene detection pipeline provides reliable scene classification with robust error handling and comprehensive thumbnail support.
+**Updated** The enhanced video processing capabilities now include comprehensive scene classification with scene_type categorization, thumbnail integration for visual scene representation, and sophisticated timestamp parsing supporting both MM:SS and HH:MM:SS formats. The failure counter mechanism provides robust error handling with automatic disconnection after 5 consecutive failures, ensuring graceful degradation and user experience preservation. The SceneDetection component showcases these enhancements with color-coded scene types and thumbnail previews, creating a rich visual experience for video navigation and analysis.
+
+**Updated** The new video library management system provides comprehensive catalog browsing with thumbnails, metadata aggregation, and smart filtering capabilities. The advanced face naming system enables intelligent person identification with reference database integration, bilingual support, and immediate search index updates. The design balances optimistic updates, fallback mechanisms, and clear separation of concerns between presentation and data access, while the enhanced scene detection pipeline provides reliable scene classification with robust error handling and comprehensive thumbnail support. The integrated reference database system ensures persistent person recognition across video processing sessions, creating a scalable foundation for large-scale media analysis workflows.

@@ -219,6 +219,18 @@ export const api = {
       apiFetch(`/api/video/${videoId}/metadata`),
     getTranscript: (videoId: string) =>
       apiFetch(`/api/video/${videoId}/transcript`),
+    translateTranscript: (
+      videoId: string,
+      language: string,
+      segments: Array<{ text: string; start_time: number; end_time: number }>
+    ) =>
+      apiFetch<{
+        translations: Array<{ start_time: number; end_time: number; text: string }>;
+        language: string;
+      }>(`/api/video/${videoId}/translate-transcript`, {
+        method: "POST",
+        body: JSON.stringify({ language, segments }),
+      }),
     search: (query: string, topK: number = 5, typeFilter?: string) =>
       apiFetch("/api/search", {
         method: "POST",

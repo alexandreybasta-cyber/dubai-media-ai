@@ -1,1 +1,0 @@
-A hybrid Next.js and FastAPI system for AI-driven video metadata extraction, semantic search, and automated RFP creation and evaluation.

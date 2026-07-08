@@ -1,4 +1,0 @@
-- Hybrid architecture: Next.js frontend (port 3000) communicates with a FastAPI backend (port 8000), orchestrated by Nginx (port 8080) for reverse proxying API/WebSocket traffic and serving static media uploads.
-- Backend layering: `routers/` define HTTP/WebSocket endpoints, delegating business logic to `services/` (RFP generation/evaluation) and `pipeline/` (asynchronous video processing orchestrator).
-- Pipeline design: The `PipelineOrchestrator` executes a sequential 6-stage workflow (Ingestion, Visual Analysis, Audio Transcription, Face Recognition, Metadata Structuring, Search Indexing) using Alibaba Cloud DashScope models, with real-time progress broadcast via WebSockets.
-- Data persistence: Uses local file-system storage for video artifacts and JSON status tracking, combined with an in-memory FAISS index for semantic search capabilities.

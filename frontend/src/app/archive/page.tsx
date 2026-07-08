@@ -155,6 +155,7 @@ function ArchivePageInner() {
                 onSeek={seekTo}
               />
               <TranscriptPanel
+                videoId={state.videoId}
                 segments={state.transcript}
                 currentTime={state.currentTime}
                 onSeek={seekTo}

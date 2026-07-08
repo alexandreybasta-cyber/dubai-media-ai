@@ -12,6 +12,8 @@
 - [SearchDemo.tsx](file://frontend/src/components/archive/SearchDemo.tsx)
 - [PipelineVisualizer.tsx](file://frontend/src/components/archive/PipelineVisualizer.tsx)
 - [SceneDetection.tsx](file://frontend/src/components/archive/SceneDetection.tsx)
+- [PeoplePanel.tsx](file://frontend/src/components/archive/PeoplePanel.tsx)
+- [VideoLibrary.tsx](file://frontend/src/components/archive/VideoLibrary.tsx)
 - [RFPForm.tsx](file://frontend/src/components/rfp/RFPForm.tsx)
 - [RFPPreview.tsx](file://frontend/src/components/rfp/RFPPreview.tsx)
 - [TimelineEditor.tsx](file://frontend/src/components/rfp/TimelineEditor.tsx)
@@ -26,11 +28,12 @@
 
 ## Update Summary
 **Changes Made**
-- Added comprehensive documentation for the new SceneDetection component
-- Integrated SceneDetection into the Archive Components section with detailed analysis
-- Updated component architecture diagrams to include SceneDetection
-- Enhanced defensive programming practices section with SceneDetection examples
-- Updated troubleshooting guide with SceneDetection-specific guidance
+- Added comprehensive documentation for the new PeoplePanel component for person management
+- Added comprehensive documentation for the new VideoLibrary component for video browsing interface
+- Updated Archive Components section with detailed analysis of both new components
+- Enhanced component architecture diagrams to include PeoplePanel and VideoLibrary
+- Updated defensive programming practices section with new component examples
+- Updated troubleshooting guide with component-specific guidance
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -51,7 +54,7 @@ This document describes the reusable UI component library used across the Dubai 
 ## Project Structure
 The component library is organized by feature folders under frontend/src/components:
 - Base primitives: Button, Card
-- Archive feature: VideoUpload, VideoTimeline, TranscriptPanel, MetadataPanel, SearchDemo, PipelineVisualizer, SceneDetection
+- Archive feature: VideoUpload, VideoTimeline, TranscriptPanel, MetadataPanel, SearchDemo, PipelineVisualizer, SceneDetection, PeoplePanel, VideoLibrary
 - RFP feature: RFPForm, RFPPreview, TimelineEditor
 - Evaluator feature: EvaluationSetup, VendorScorecard, ComparisonMatrix
 - Shared layout: Sidebar
@@ -71,6 +74,8 @@ MP["MetadataPanel.tsx"]
 SD["SearchDemo.tsx"]
 PV["PipelineVisualizer.tsx"]
 SC["SceneDetection.tsx"]
+PP["PeoplePanel.tsx"]
+VL["VideoLibrary.tsx"]
 end
 subgraph "RFP"
 RF["RFPForm.tsx"]
@@ -89,14 +94,18 @@ VU --> VT
 VT --> TP
 VT --> MP
 VT --> SC
+VT --> PP
 MP --> SD
 PV --> SC
 SC --> SD
+PP --> VT
+VL --> VU
 RF --> RP
 TE --> RF
 ES --> VS
 ES --> CM
 SB --> VU
+SB --> VL
 SB --> RF
 SB --> ES
 ```
@@ -111,6 +120,8 @@ SB --> ES
 - [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
 - [SceneDetection.tsx:1-181](file://frontend/src/components/archive/SceneDetection.tsx#L1-L181)
+- [PeoplePanel.tsx:1-226](file://frontend/src/components/archive/PeoplePanel.tsx#L1-L226)
+- [VideoLibrary.tsx:1-128](file://frontend/src/components/archive/VideoLibrary.tsx#L1-L128)
 - [RFPForm.tsx:1-411](file://frontend/src/components/rfp/RFPForm.tsx#L1-L411)
 - [RFPPreview.tsx:1-200](file://frontend/src/components/rfp/RFPPreview.tsx#L1-L200)
 - [TimelineEditor.tsx:1-111](file://frontend/src/components/rfp/TimelineEditor.tsx#L1-L111)
@@ -129,6 +140,8 @@ SB --> ES
 - [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
 - [SceneDetection.tsx:1-181](file://frontend/src/components/archive/SceneDetection.tsx#L1-L181)
+- [PeoplePanel.tsx:1-226](file://frontend/src/components/archive/PeoplePanel.tsx#L1-L226)
+- [VideoLibrary.tsx:1-128](file://frontend/src/components/archive/VideoLibrary.tsx#L1-L128)
 - [RFPForm.tsx:1-411](file://frontend/src/components/rfp/RFPForm.tsx#L1-L411)
 - [RFPPreview.tsx:1-200](file://frontend/src/components/rfp/RFPPreview.tsx#L1-L200)
 - [TimelineEditor.tsx:1-111](file://frontend/src/components/rfp/TimelineEditor.tsx#L1-L111)
@@ -174,13 +187,17 @@ The component library integrates with shared state and APIs:
 ```mermaid
 sequenceDiagram
 participant U as "User"
+participant VL as "VideoLibrary"
 participant VU as "VideoUpload"
 participant UV as "useVideoProcessing"
-participant API as "api.video.upload"
+participant API as "api.video.list/upload"
 participant WS as "WebSocket /ws/pipeline/{id}"
-U->>VU : Select video file
-VU->>UV : uploadVideo(file)
-UV->>API : POST /api/video/upload
+U->>VL : Browse archive videos
+VL->>API : GET /api/video/list
+API-->>VL : {videos : LibraryVideo[]}
+U->>VL : Select video
+VL->>UV : loadExistingVideo(videoId)
+UV->>API : POST /api/video/load
 API-->>UV : {video_id, status}
 UV->>WS : connectWebSocket(/ws/pipeline/{video_id})
 WS-->>UV : stage status updates
@@ -189,6 +206,7 @@ UV-->>VU : metadata, transcript when ready
 ```
 
 **Diagram sources**
+- [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-L50)
 - [VideoUpload.tsx:63-67](file://frontend/src/components/archive/VideoUpload.tsx#L63-L67)
 - [useVideoProcessing.ts:162-211](file://frontend/src/lib/useVideoProcessing.ts#L162-L211)
 - [api.ts:167-182](file://frontend/src/lib/api.ts#L167-L182)
@@ -246,7 +264,7 @@ UV-->>VU : metadata, transcript when ready
 - [VideoTimeline.tsx:11-58](file://frontend/src/components/archive/VideoTimeline.tsx#L11-L58)
 - [VideoTimeline.tsx:200-201](file://frontend/src/components/archive/VideoTimeline.tsx#L200-L201)
 - [VideoTimeline.tsx:216-219](file://frontend/src/components/archive/VideoTimeline.tsx#L216-L219)
-- [useVideoProcessing.ts:370-381](file://frontend/src/lib/useVideoProcessing.ts#L370-L381)
+- [useVideoProcessing.ts:370-381](file://frontend/src/lib/useVideoProcessing.ts#L370-381)
 
 #### TranscriptPanel
 - Purpose: Displays speech transcript segments with speaker identity, timestamps, and language indicators; auto-scrolls to active segment.
@@ -365,10 +383,86 @@ UV-->>VU : metadata, transcript when ready
 
 **Section sources**
 - [SceneDetection.tsx:6-40](file://frontend/src/components/archive/SceneDetection.tsx#L6-L40)
-- [SceneDetection.tsx:14-27](file://frontend/src/components/archive/SceneDetection.tsx#L14-L27)
-- [SceneDetection.tsx:74-101](file://frontend/src/components/archive/SceneDetection.tsx#L74-L101)
-- [SceneDetection.tsx:119-176](file://frontend/src/components/archive/SceneDetection.tsx#L119-L176)
+- [SceneDetection.tsx:14-27](file://frontend/src/components/archive/SceneDetection.tsx#L14-27)
+- [SceneDetection.tsx:74-101](file://frontend/src/components/archive/SceneDetection.tsx#L74-101)
+- [SceneDetection.tsx:119-176](file://frontend/src/components/archive/SceneDetection.tsx#L119-176)
 - [useVideoProcessing.ts:30-35](file://frontend/src/lib/useVideoProcessing.ts#L30-L35)
+
+#### PeoplePanel
+- Purpose: Provides comprehensive person management interface for identifying and managing detected faces in videos with confidence scoring and source attribution.
+- Props:
+  - faces: DetectedFace[] - Array of detected face objects with identification status, names, roles, and appearance timestamps
+  - duration: number - Total video duration in seconds for accurate time range calculations
+  - onSeek: (time: number) => void - Callback function to navigate to specific timestamps
+  - onRename: (faceIndex: number, data: { name_en: string; name_ar?: string; role?: string; add_to_reference?: boolean }) => Promise<unknown> - Async callback for updating person information
+- Features:
+  - Person identification status tracking with confidence percentages
+  - Source attribution labels (AI match, OCR, transcript, AI suggestion, manual)
+  - Inline editing interface for person names, roles, and reference database inclusion
+  - Appearance timeline chips showing exact time ranges for each person's presence
+  - Bilingual name support with Arabic name display
+  - Real-time save confirmation feedback
+- Interactions:
+  - Click "Name person" button to open inline editing form
+  - Click appearance time chips to jump to specific timestamps
+  - Edit existing person information with validation
+  - Toggle option to add person to reference database for future videos
+- Styling: White card container with rounded corners and subtle shadow; color-coded avatar circles; source attribution badges with distinct colors; responsive layout with scrollable person list.
+- Accessibility: Keyboard navigable editing forms; clear visual hierarchy with identified vs unidentified persons; descriptive tooltips for time ranges; proper ARIA labels for interactive elements.
+- **Enhanced Source Attribution System**: Implements comprehensive labeling system for 5 different person identification sources with distinct color coding and descriptive labels for better user understanding of identification confidence.
+- **Inline Editing Interface**: Provides contextual editing experience with validation, loading states, and success feedback without leaving the main interface.
+- **Appearance Timeline Integration**: Seamlessly connects with video timeline by providing clickable time range chips that navigate directly to person appearances.
+- **Reference Database Management**: Enables persistent person identification across videos through optional reference database integration.
+
+**New** Comprehensive documentation for the PeoplePanel component, including:
+- Person identification workflow with confidence scoring
+- Inline editing interface with validation and feedback
+- Source attribution system with visual indicators
+- Appearance timeline integration with timestamp navigation
+- Reference database management for cross-video person recognition
+
+**Section sources**
+- [PeoplePanel.tsx:6-14](file://frontend/src/components/archive/PeoplePanel.tsx#L6-L14)
+- [PeoplePanel.tsx:22-28](file://frontend/src/components/archive/PeoplePanel.tsx#L22-L28)
+- [PeoplePanel.tsx:30-108](file://frontend/src/components/archive/PeoplePanel.tsx#L30-L108)
+- [PeoplePanel.tsx:110-226](file://frontend/src/components/archive/PeoplePanel.tsx#L110-L226)
+- [useVideoProcessing.ts:555-566](file://frontend/src/lib/useVideoProcessing.ts#L555-L566)
+
+#### VideoLibrary
+- Purpose: Provides browsable video interface for archive library with metadata display and quick access controls for completed videos.
+- Props:
+  - onSelect: (videoId: string) => void - Callback function triggered when user selects a video from the library
+- Features:
+  - Responsive grid layout displaying video thumbnails with metadata
+  - Automatic filtering of only completed videos from the archive
+  - Duration overlay display on video thumbnails
+  - Creation date formatting and scene count display
+  - Person names display for videos with identified people
+  - Loading skeleton animation during data fetch
+  - Empty state handling when no videos are available
+- Interactions:
+  - Click any video card to select and navigate to that video
+  - Hover effects with scale animation and shadow enhancement
+  - Responsive grid adapts from 2 columns on mobile to 4 columns on large screens
+- Styling: Clean card-based layout with consistent spacing; aspect-ratio maintained thumbnails; gradient overlays for duration badges; typography hierarchy for metadata display.
+- Accessibility: Semantic button elements for video selection; proper alt text handling; keyboard navigation support; screen reader friendly metadata presentation.
+- **Enhanced Thumbnail Resolution**: Utilizes API_BASE_URL configuration for proper thumbnail URL resolution across different deployment environments.
+- **Robust Data Filtering**: Filters videos by status prefix to ensure only fully processed videos are displayed in the library.
+- **Responsive Design Pattern**: Implements modern CSS Grid with responsive breakpoints for optimal viewing across device sizes.
+- **Loading State Management**: Provides skeleton loading animation for improved user experience during data fetching.
+
+**New** Comprehensive documentation for the VideoLibrary component, including:
+- Video browsing interface with metadata display
+- Responsive grid layout with thumbnail previews
+- Archive filtering and status-based video selection
+- Integration with API for video listing and metadata retrieval
+- User interaction patterns for video selection and navigation
+
+**Section sources**
+- [VideoLibrary.tsx:6-8](file://frontend/src/components/archive/VideoLibrary.tsx#L6-L8)
+- [VideoLibrary.tsx:30-50](file://frontend/src/components/archive/VideoLibrary.tsx#L30-L50)
+- [VideoLibrary.tsx:68-127](file://frontend/src/components/archive/VideoLibrary.tsx#L68-L127)
+- [api.ts:134-146](file://frontend/src/lib/api.ts#L134-L146)
 
 ### RFP Components
 
@@ -569,6 +663,24 @@ The SceneDetection component implements comprehensive defensive programming patt
 - **Scene type color mapping**: Provides fallback color mapping for unknown scene types
 - **Expandable description handling**: Uses conditional rendering for truncated descriptions with proper state management
 
+#### PeoplePanel Component
+The PeoplePanel component includes robust defensive programming for person management:
+
+- **Empty faces handling**: Returns null when faces array is empty or undefined to prevent rendering issues
+- **Source label safety**: Uses optional chaining and fallback labels for unknown source types
+- **Confidence calculation safety**: Validates confidence values before percentage conversion
+- **Role and name validation**: Trims whitespace and validates required fields before saving
+- **Async error handling**: Wraps rename operations in try-catch blocks with user-friendly error messages
+
+#### VideoLibrary Component
+The VideoLibrary component implements comprehensive defensive programming for video browsing:
+
+- **API response validation**: Checks for videos array existence and filters by status prefix
+- **Duration formatting safety**: Validates duration values before formatting to prevent NaN outputs
+- **Date parsing error handling**: Wraps date formatting in try-catch blocks with fallback empty strings
+- **Thumbnail URL safety**: Uses API_BASE_URL concatenation with proper null checking
+- **Component cleanup**: Implements proper useEffect cleanup to prevent memory leaks
+
 #### SearchDemo Component
 The SearchDemo component includes enhanced defensive programming for thumbnail handling:
 
@@ -595,6 +707,7 @@ The MetadataPanel component includes enhanced multilingual support with defensiv
 - **Early returns**: Functions return early when required data is missing
 - **Safe calculations**: Percentage calculations include bounds checking
 - **Graceful degradation**: Components render partial content when data is incomplete
+- **Async operation safety**: All async operations wrapped in try-catch blocks with appropriate error states
 
 ### Benefits of Defensive Programming
 - **Improved reliability**: Components continue functioning even with incomplete data
@@ -610,6 +723,10 @@ The MetadataPanel component includes enhanced multilingual support with defensiv
 - [SceneDetection.tsx:43](file://frontend/src/components/archive/SceneDetection.tsx#L43)
 - [SceneDetection.tsx:52-55](file://frontend/src/components/archive/SceneDetection.tsx#L52-L55)
 - [SceneDetection.tsx:25-27](file://frontend/src/components/archive/SceneDetection.tsx#L25-L27)
+- [PeoplePanel.tsx:114](file://frontend/src/components/archive/PeoplePanel.tsx#L114)
+- [PeoplePanel.tsx:45-59](file://frontend/src/components/archive/PeoplePanel.tsx#L45-L59)
+- [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-L50)
+- [VideoLibrary.tsx:17-28](file://frontend/src/components/archive/VideoLibrary.tsx#L17-L28)
 - [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-L21)
 - [TranscriptPanel.tsx:30-48](file://frontend/src/components/archive/TranscriptPanel.tsx#L30-L48)
 - [MetadataPanel.tsx:193-198](file://frontend/src/components/archive/MetadataPanel.tsx#L193-L198)
@@ -617,6 +734,8 @@ The MetadataPanel component includes enhanced multilingual support with defensiv
 ## Dependency Analysis
 - Component coupling:
   - Archive components depend on useVideoProcessing for state and on api for REST/WebSocket calls.
+  - PeoplePanel depends on useVideoProcessing for face renaming functionality.
+  - VideoLibrary depends on api for video listing and metadata retrieval.
   - RFP components depend on api for creation, regeneration, and evaluation workflows.
   - Evaluator components depend on api for evaluation status/results and exports.
 - External dependencies:
@@ -634,10 +753,12 @@ UV --> MP["MetadataPanel.tsx"]
 UV --> SD["SearchDemo.tsx"]
 UV --> PV["PipelineVisualizer.tsx"]
 UV --> SC["SceneDetection.tsx"]
+UV --> PP["PeoplePanel.tsx"]
 API["api.ts"] --> VU
 API --> VT
 API --> MP
 API --> SD
+API --> VL["VideoLibrary.tsx"]
 API --> RF["RFPForm.tsx"]
 API --> RP["RFPPreview.tsx"]
 API --> ES["EvaluationSetup.tsx"]
@@ -655,6 +776,8 @@ API --> CM["ComparisonMatrix.tsx"]
 - [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
 - [SceneDetection.tsx:1-181](file://frontend/src/components/archive/SceneDetection.tsx#L1-L181)
+- [PeoplePanel.tsx:1-226](file://frontend/src/components/archive/PeoplePanel.tsx#L1-L226)
+- [VideoLibrary.tsx:1-128](file://frontend/src/components/archive/VideoLibrary.tsx#L1-L128)
 - [RFPForm.tsx:1-411](file://frontend/src/components/rfp/RFPForm.tsx#L1-L411)
 - [RFPPreview.tsx:1-200](file://frontend/src/components/rfp/RFPPreview.tsx#L1-L200)
 - [EvaluationSetup.tsx:1-429](file://frontend/src/components/evaluator/EvaluationSetup.tsx#L1-L429)
@@ -671,12 +794,17 @@ API --> CM["ComparisonMatrix.tsx"]
   - VideoTimeline updates on timeupdate; throttle if needed.
   - SceneDetection renders scene lists with expandable descriptions; consider virtualization for videos with many scenes.
   - MetadataPanel JSON tree renders deeply nested structures; keep expansion defaults minimal.
+  - PeoplePanel renders person lists with inline editing; consider limiting visible faces for very large datasets.
+  - VideoLibrary renders video grids with thumbnails; lazy loading could improve initial load performance.
 - Network:
   - useVideoProcessing simulates upload progress; real progress requires XHR with onprogress. Consider upgrading upload flow for accurate progress.
+  - VideoLibrary fetches video list on mount; consider pagination for large archives.
 - Memory:
   - VideoUpload creates object URLs; revoke on reset to prevent leaks.
   - PipelineVisualizer and ComparisonMatrix render charts; unmount components to dispose resources.
   - SceneDetection maintains expanded state for individual scenes; consider limiting expanded scenes to improve performance.
+  - PeoplePanel maintains editing state for individual faces; clean up state on component unmount.
+  - VideoLibrary stores video list in component state; consider memoization for large video collections.
 
 ## Troubleshooting Guide
 - Upload fails:
@@ -702,6 +830,18 @@ API --> CM["ComparisonMatrix.tsx"]
   - Ensure duration is greater than 0 to prevent timeline calculation errors.
   - Verify that onSeek callback properly handles timestamp values.
   - **Updated**: Scene detection now includes comprehensive defensive programming to handle missing or incomplete scene data gracefully.
+- **PeoplePanel rendering issues**:
+  - **New**: Verify that faces array contains valid DetectedFace objects with proper structure.
+  - Check that face.index values are unique and properly incrementing.
+  - Ensure onRename callback is properly bound and handles async operations.
+  - Verify that duration value is provided for accurate time range calculations.
+  - **Updated**: Person identification and editing should work correctly even with incomplete face data.
+- **VideoLibrary rendering issues**:
+  - **New**: Verify that API endpoint `/api/video/list` is accessible and returns proper response format.
+  - Check that video status values start with "completed" prefix for proper filtering.
+  - Ensure API_BASE_URL environment variable is properly configured.
+  - Verify that thumbnail URLs are accessible and properly formatted.
+  - **Updated**: Video library should gracefully handle empty archives and API failures.
 - **MetadataPanel display issues**:
   - **Updated**: Arabic names should now display properly alongside English names with proper RTL directionality.
   - Check if face.name_ar property exists in the metadata structure.
@@ -723,6 +863,8 @@ API --> CM["ComparisonMatrix.tsx"]
 - [VideoTimeline.tsx:200-201](file://frontend/src/components/archive/VideoTimeline.tsx#L200-L201)
 - [SceneDetection.tsx:43](file://frontend/src/components/archive/SceneDetection.tsx#L43)
 - [SceneDetection.tsx:52-55](file://frontend/src/components/archive/SceneDetection.tsx#L52-L55)
+- [PeoplePanel.tsx:114](file://frontend/src/components/archive/PeoplePanel.tsx#L114)
+- [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-L50)
 - [MetadataPanel.tsx:193-198](file://frontend/src/components/archive/MetadataPanel.tsx#L193-L198)
 - [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-L21)
 - [TranscriptPanel.tsx:30-48](file://frontend/src/components/archive/TranscriptPanel.tsx#L30-L48)
@@ -730,13 +872,13 @@ API --> CM["ComparisonMatrix.tsx"]
 ## Conclusion
 The component library provides a cohesive, accessible, and extensible foundation for the Dubai Media application. Base components (Button, Card) standardize UI patterns; feature-specific components encapsulate complex workflows while integrating with shared state and APIs. The recent defensive programming improvements ensure reliable operation even with incomplete data, while the accessibility enhancements guarantee consistent text visibility across all form components. 
 
-The new SceneDetection component significantly enhances the Archive feature by providing sophisticated video scene analysis capabilities. It offers both timeline visualization and detailed scene listing with interactive navigation, making video content exploration more intuitive and efficient. The component integrates seamlessly with the existing VideoTimeline component and shares the same SceneBoundary interface from useVideoProcessing, ensuring consistency across the video analysis ecosystem.
+The new PeoplePanel and VideoLibrary components significantly enhance the Archive feature by providing comprehensive person management and video browsing capabilities. The PeoplePanel offers sophisticated person identification with confidence scoring, source attribution, and inline editing, while the VideoLibrary provides an intuitive browsing interface for archived videos with rich metadata display. Both components integrate seamlessly with the existing video processing pipeline and follow established architectural patterns.
 
 Key improvements include:
-- **Comprehensive Scene Type Categorization**: Eight predefined scene types with consistent color mapping for visual differentiation
-- **Interactive Timeline Visualization**: Precise scene segmentation with hover effects and active scene highlighting
-- **Responsive Design**: Expandable scene descriptions with show more/show less functionality
-- **Robust Error Handling**: Defensive programming patterns to handle incomplete or missing scene data gracefully
-- **Accessibility Features**: Keyboard navigation, descriptive tooltips, and clear visual hierarchy
+- **Comprehensive Person Management**: PeoplePanel enables detailed person identification with confidence scoring, source attribution, and reference database integration
+- **Intuitive Video Browsing**: VideoLibrary provides responsive grid layout with thumbnail previews and metadata display for archive navigation
+- **Enhanced Defensive Programming**: Both new components implement robust error handling and null-safe data access patterns
+- **Seamless Integration**: New components follow established patterns and integrate with existing state management and API layers
+- **Accessibility Features**: Both components include proper ARIA labels, keyboard navigation, and screen reader support
 
 The enhanced VideoTimeline component now provides granular face detection navigation with improved tooltip information, and the MetadataPanel component offers comprehensive multilingual support with proper RTL handling. The SearchDemo component now features robust thumbnail URL resolution that handles various path formats, and the TranscriptPanel provides reliable timestamp formatting across multiple input types. By adhering to the documented props, composition patterns, defensive programming practices, and accessibility guidelines, teams can build consistent experiences across Archive, RFP, and Evaluator features.
