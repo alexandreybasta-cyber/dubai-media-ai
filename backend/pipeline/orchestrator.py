@@ -14,7 +14,7 @@ from typing import Callable, Optional
 from config import settings
 from pipeline.ingestion import ingest_video
 from pipeline.visual_analysis import analyze_video_visually
-from pipeline.audio_analysis import transcribe_audio
+from pipeline.audio_analysis import transcribe_audio, transcribe_with_diarization
 from pipeline.face_recognition import identify_faces
 from pipeline.metadata_structuring import structure_metadata
 from pipeline.search_index import SearchIndex
@@ -120,10 +120,17 @@ class PipelineOrchestrator:
             output_dir=output_dir,
             results=results,
             ws_callback=ws_callback,
-            coro_fn=lambda: transcribe_audio(
-                audio_path=audio_path,
-                api_key=settings.DASHSCOPE_API_KEY,
-                model=settings.MODEL_ASR,
+            coro_fn=lambda: (
+                transcribe_with_diarization(
+                    audio_path=audio_path,
+                    api_key=settings.DASHSCOPE_API_KEY,
+                )
+                if settings.ENABLE_SPEAKER_DIARIZATION
+                else transcribe_audio(
+                    audio_path=audio_path,
+                    api_key=settings.DASHSCOPE_API_KEY,
+                    model=settings.MODEL_ASR,
+                )
             ),
             result_key="transcript",
         )

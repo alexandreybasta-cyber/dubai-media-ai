@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     BASE_URL: str = "http://localhost:8000"
     DUBBING_DEFAULT_LANGUAGE: str = "ar"
     DUBBING_SUPPORTED_LANGUAGES: str = "ar,en,fr,es,de,ru,hi,zh"  # comma-separated
+    ENABLE_SPEAKER_DIARIZATION: bool = True
 
     model_config = {
         "env_file": "../.env",

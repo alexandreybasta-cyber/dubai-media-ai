@@ -65,9 +65,43 @@ def _format_timestamp(seconds: float, separator: str = ".") -> str:
 
 # ── Subtitle formatters ─────────────────────────────────────────────
 
+def _build_speaker_labels(segments: List[dict]) -> Dict[str, str]:
+    """Map distinct non-'unknown' speaker_id values to "Speaker N" labels.
+
+    Labels are assigned in order of first appearance, matching the frontend's
+    speaker-numbering behaviour.
+    """
+    mapping: Dict[str, str] = {}
+    counter = 0
+    for seg in segments:
+        sid = seg.get("speaker_id")
+        if sid is None:
+            continue
+        sid = str(sid).strip()
+        if not sid or sid.lower() == "unknown":
+            continue
+        if sid not in mapping:
+            counter += 1
+            mapping[sid] = f"Speaker {counter}"
+    return mapping
+
+
+def _speaker_label(seg: dict, mapping: Dict[str, str]) -> Optional[str]:
+    """Return the display label for a segment's speaker, or None if unknown."""
+    sid = seg.get("speaker_id")
+    if sid is None:
+        return None
+    return mapping.get(str(sid).strip())
+
+
 def generate_vtt(segments: List[dict], language: str = "en") -> str:
-    """Convert transcript segments into a WebVTT subtitle document."""
+    """Convert transcript segments into a WebVTT subtitle document.
+
+    When a segment carries a known ``speaker_id`` (not "unknown"), the cue text
+    is wrapped in a WebVTT ``<v Speaker N>`` voice tag.
+    """
     lines = ["WEBVTT", ""]
+    speaker_map = _build_speaker_labels(segments)
     for seg in segments:
         text = (seg.get("text") or "").strip()
         if not text:
@@ -79,15 +113,24 @@ def generate_vtt(segments: List[dict], language: str = "en") -> str:
         lines.append(
             f"{_format_timestamp(start, '.')} --> {_format_timestamp(end, '.')}"
         )
-        lines.append(text)
+        label = _speaker_label(seg, speaker_map)
+        if label:
+            lines.append(f"<v {label}>{text}</v>")
+        else:
+            lines.append(text)
         lines.append("")
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
 def generate_srt(segments: List[dict], language: str = "en") -> str:
-    """Convert transcript segments into an SRT subtitle document."""
+    """Convert transcript segments into an SRT subtitle document.
+
+    When a segment carries a known ``speaker_id`` (not "unknown"), the cue text
+    is prefixed with "Speaker N: " (SRT has no voice tag).
+    """
     lines = []
     index = 1
+    speaker_map = _build_speaker_labels(segments)
     for seg in segments:
         text = (seg.get("text") or "").strip()
         if not text:
@@ -100,7 +143,11 @@ def generate_srt(segments: List[dict], language: str = "en") -> str:
         lines.append(
             f"{_format_timestamp(start, ',')} --> {_format_timestamp(end, ',')}"
         )
-        lines.append(text)
+        label = _speaker_label(seg, speaker_map)
+        if label:
+            lines.append(f"{label}: {text}")
+        else:
+            lines.append(text)
         lines.append("")
         index += 1
     return "\n".join(lines).rstrip("\n") + "\n"

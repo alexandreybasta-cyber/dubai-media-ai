@@ -29,6 +29,20 @@ TRANSCRIPTION_PROMPT = (
     "Return ONLY the transcribed text, nothing else."
 )
 
+# Prompt variant that asks the model to differentiate speakers inline.
+DIARIZATION_PROMPT = (
+    "Transcribe this audio completely and accurately. "
+    "Include all speech in the original language (English and/or Arabic). "
+    "If multiple speakers are present, identify each distinct speaker and "
+    "prefix their dialogue with a marker like [Speaker 1], [Speaker 2], etc. "
+    "Always use the same speaker number for the same voice. "
+    "If only one speaker is present, prefix everything with [Speaker 1]. "
+    "Return ONLY the transcribed text with speaker markers, nothing else."
+)
+
+# Matches inline speaker markers such as "[Speaker 1]", "[speaker 2]:", "[SPEAKER 3]".
+SPEAKER_MARKER_RE = re.compile(r"\[\s*speaker\s*(\d+)\s*\]\s*:?", re.IGNORECASE)
+
 
 async def transcribe_audio(
     audio_path: str,
@@ -113,6 +127,148 @@ async def transcribe_audio(
     }
 
 
+async def transcribe_with_diarization(audio_path: str, api_key: str = "") -> dict:
+    """
+    Transcribe a local audio file with speaker diarization.
+
+    Reuses the chunk-based Qwen-Omni-Turbo transcription, but asks the model to
+    prefix each speaker's dialogue with an inline ``[Speaker N]`` marker. The
+    markers are parsed into per-speaker sub-segments with consistent integer
+    ``speaker_id`` values ("0", "1", "2" ...) that the frontend maps to
+    "Speaker N" labels.
+
+    Falls back to :func:`transcribe_audio` (with ``speaker_id: "unknown"``) when
+    no speaker markers are detected or the diarization pass produces no speech.
+
+    Args:
+        audio_path: Local path to the audio file (WAV).
+        api_key: DashScope API key.
+
+    Returns:
+        dict with segments, full_text, language, and speaker_count.
+    """
+    api_key = api_key or settings.DASHSCOPE_API_KEY
+    if not api_key:
+        logger.warning("No API key provided, returning empty transcription")
+        return _empty_result("No API key configured")
+
+    if not os.path.exists(audio_path):
+        logger.error("Audio file not found: %s", audio_path)
+        return _empty_result(f"Audio file not found: {audio_path}")
+
+    logger.info("Starting diarized audio transcription for %s", audio_path)
+
+    duration = await _get_audio_duration(audio_path)
+    if duration <= 0:
+        return _empty_result("Could not determine audio duration")
+
+    logger.info("Audio duration: %.1f seconds", duration)
+
+    chunks = await _split_audio(audio_path, duration, CHUNK_DURATION)
+    if not chunks:
+        return _empty_result("Failed to split audio into chunks")
+
+    logger.info(
+        "Split audio into %d chunks of ~%ds each (diarization)",
+        len(chunks), CHUNK_DURATION,
+    )
+
+    segments: List[dict] = []
+    full_text_parts: List[str] = []
+    speaker_ids = set()
+    saw_any_marker = False
+
+    for i, (chunk_path, chunk_start, chunk_end) in enumerate(chunks):
+        logger.info(
+            "Transcribing chunk %d/%d with diarization (%.1fs - %.1fs)",
+            i + 1, len(chunks), chunk_start, chunk_end,
+        )
+
+        text = await _transcribe_chunk(chunk_path, api_key, prompt=DIARIZATION_PROMPT)
+
+        try:
+            os.remove(chunk_path)
+        except OSError:
+            pass
+
+        if not text or not text.strip() or text.strip() in ("[Music]", "[music]"):
+            continue
+
+        parsed = _parse_speaker_segments(text)
+        if parsed:
+            saw_any_marker = True
+            chunk_dur = max(chunk_end - chunk_start, 0.0)
+            total_chars = sum(len(t) for _, t in parsed) or 1
+            cursor = chunk_start
+            for spk_num, spk_text in parsed:
+                # 1-based markers -> 0-based speaker_id for the frontend.
+                speaker_id = str(max(spk_num - 1, 0))
+                frac = len(spk_text) / total_chars
+                seg_end = min(cursor + chunk_dur * frac, chunk_end)
+                if seg_end <= cursor:
+                    seg_end = chunk_end
+                segments.append({
+                    "start_time": cursor,
+                    "end_time": seg_end,
+                    "text": spk_text,
+                    "speaker_id": speaker_id,
+                    "language": "unknown",
+                    "words": [],
+                })
+                full_text_parts.append(spk_text)
+                speaker_ids.add(speaker_id)
+                cursor = seg_end
+        else:
+            # No markers in this chunk — keep the text with an unknown speaker.
+            clean = text.strip()
+            segments.append({
+                "start_time": chunk_start,
+                "end_time": chunk_end,
+                "text": clean,
+                "speaker_id": "unknown",
+                "language": "unknown",
+                "words": [],
+            })
+            full_text_parts.append(clean)
+
+    if not segments:
+        return _empty_result("No speech detected in audio")
+
+    # If the model never produced a single speaker marker, diarization did not
+    # work; fall back to the plain transcription so behaviour is unchanged.
+    if not saw_any_marker:
+        logger.info("No speaker markers detected; falling back to plain transcription")
+        return await transcribe_audio(audio_path, api_key)
+
+    return {
+        "segments": segments,
+        "full_text": " ".join(full_text_parts),
+        "language": "mixed",
+        "speaker_count": len(speaker_ids),
+    }
+
+
+def _parse_speaker_segments(text: str) -> List[tuple]:
+    """Split diarized transcription text into ``(speaker_num, text)`` tuples.
+
+    Uses inline ``[Speaker N]`` markers. Returns an empty list when no marker
+    is present so callers can fall back to single-speaker handling.
+    """
+    matches = list(SPEAKER_MARKER_RE.finditer(text))
+    if not matches:
+        return []
+
+    result: List[tuple] = []
+    for idx, m in enumerate(matches):
+        speaker_num = int(m.group(1))
+        start = m.end()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
+        seg_text = text[start:end].strip()
+        if seg_text:
+            result.append((speaker_num, seg_text))
+    return result
+
+
 async def _get_audio_duration(audio_path: str) -> float:
     """Get audio duration in seconds using ffprobe."""
     try:
@@ -189,7 +345,9 @@ async def _split_audio(
     return chunks
 
 
-async def _transcribe_chunk(chunk_path: str, api_key: str) -> Optional[str]:
+async def _transcribe_chunk(
+    chunk_path: str, api_key: str, prompt: str = TRANSCRIPTION_PROMPT
+) -> Optional[str]:
     """
     Transcribe a single audio chunk using qwen-omni-turbo via the
     native DashScope multimodal generation API.
@@ -217,7 +375,7 @@ async def _transcribe_chunk(chunk_path: str, api_key: str) -> Optional[str]:
                     "role": "user",
                     "content": [
                         {"audio": f"data:audio/wav;base64,{audio_b64}"},
-                        {"text": TRANSCRIPTION_PROMPT},
+                        {"text": prompt},
                     ],
                 }
             ]
