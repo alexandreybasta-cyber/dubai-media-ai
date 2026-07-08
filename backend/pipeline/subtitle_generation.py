@@ -257,6 +257,7 @@ async def translate_segments(
             "start_time": seg.get("start_time", 0),
             "end_time": seg.get("end_time", 0),
             "text": (text if text else (seg.get("text") or "")),
+            "speaker_id": seg.get("speaker_id", "unknown"),
         })
     return translated
 
@@ -417,8 +418,20 @@ def _segments_from_vtt(vtt_content: str) -> List[dict]:
         start = _vtt_ts_to_seconds(m.group(1))
         end = _vtt_ts_to_seconds(m.group(2))
         text = "\n".join(lines[timing_idx + 1:]).strip()
+        # Recover a WebVTT <v Speaker N> voice tag back into speaker_id so that
+        # SRT conversion can re-apply the label without duplicating it.
+        speaker_id = "unknown"
+        vm = re.match(r"<v\s+([^>]+)>(.*)</v>\s*$", text, re.DOTALL)
+        if vm:
+            speaker_id = vm.group(1).strip()
+            text = vm.group(2).strip()
         if text:
-            segments.append({"start_time": start, "end_time": end, "text": text})
+            segments.append({
+                "start_time": start,
+                "end_time": end,
+                "text": text,
+                "speaker_id": speaker_id,
+            })
     return segments
 
 
