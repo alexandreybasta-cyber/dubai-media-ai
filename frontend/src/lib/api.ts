@@ -265,8 +265,11 @@ export const api = {
         `/api/video/${videoId}/dub`,
         { method: "POST", body: JSON.stringify({ target_language: targetLanguage }) }
       ),
-    getDubbingStatus: (videoId: string) =>
-      apiFetch<{ status: string; languages: Record<string, unknown> }>(`/api/video/${videoId}/dub/status`),
+    getDubbingStatus: (videoId: string, language?: string) =>
+      apiFetch<{ status: string; target_language: string; stage: string; video_id: string }>(
+        `/api/video/${videoId}/dub/status`,
+        language ? { params: { language } } : undefined
+      ),
     getDubbingLanguages: (videoId: string) =>
       apiFetch<{ video_id: string; dubbed_languages: string[]; supported_languages: string[] }>(
         `/api/video/${videoId}/dub/languages`

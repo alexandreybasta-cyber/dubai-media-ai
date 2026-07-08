@@ -422,8 +422,10 @@ async def download_subtitles(video_id: str, language: str = "en", format: str = 
 
 # ── Dubbing ─────────────────────────────────────────────────────────
 
-# Track in-flight dubbing tasks to avoid launching duplicates: {(video_id, lang)}
-_active_dubbing: set = set()
+# Track in-flight dubbing tasks to avoid launching duplicates AND to hold a
+# strong reference to each asyncio.Task so it is not garbage-collected while
+# still running: {(video_id, lang): asyncio.Task}
+_active_dubbing: Dict = {}
 
 
 def _supported_dub_languages() -> List[str]:
@@ -442,7 +444,7 @@ async def _run_dubbing_task(video_id: str, video_path: str, output_dir: str, lan
     except Exception as e:
         logger.error("Dubbing task failed for %s (%s): %s", video_id, lang, e)
     finally:
-        _active_dubbing.discard((video_id, lang))
+        _active_dubbing.pop((video_id, lang), None)
 
 
 @router.post("/video/{video_id}/dub")
@@ -491,8 +493,10 @@ async def request_dubbing(video_id: str, request: Request):
         raise HTTPException(status_code=404, detail=f"Source video file for {video_id} not found")
     video_path = os.path.join(settings.UPLOAD_DIR, video_file)
 
-    _active_dubbing.add((video_id, lang))
-    asyncio.create_task(_run_dubbing_task(video_id, video_path, output_dir, lang))
+    # Store a strong reference to the task to prevent it being garbage-collected
+    # before it finishes (asyncio only keeps a weak reference otherwise).
+    task = asyncio.create_task(_run_dubbing_task(video_id, video_path, output_dir, lang))
+    _active_dubbing[(video_id, lang)] = task
 
     return {"status": "processing", "video_id": video_id, "target_language": lang}
 

@@ -77,3 +77,21 @@ video::cue(:lang(ar)) {
   direction: rtl;
   unicode-bidi: bidi-override;
 }
+
+/* Speaker-specific subtitle colors (matches TranscriptPanel speaker colors,
+   using lighter 300-shade variants for readability on the dark cue background) */
+video::cue(v[voice="Speaker 1"]) {
+  color: #93c5fd; /* blue-300 */
+}
+video::cue(v[voice="Speaker 2"]) {
+  color: #6ee7b7; /* green-300 */
+}
+video::cue(v[voice="Speaker 3"]) {
+  color: #c4b5fd; /* purple-300 */
+}
+video::cue(v[voice="Speaker 4"]) {
+  color: #fcd34d; /* amber-300 */
+}
+video::cue(v[voice="Speaker 5"]) {
+  color: #f9a8d4; /* pink-300 */
+}

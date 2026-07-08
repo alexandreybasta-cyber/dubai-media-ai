@@ -84,26 +84,24 @@ export default function DubbingPanel({ videoId }: DubbingPanelProps) {
 
       pollRef.current = setInterval(async () => {
         try {
-          const status = await api.video.getDubbingStatus(videoId);
-          const langs = status.languages || {};
-          const entry = langs[language] as
-            | { status?: string; ready?: boolean; completed?: boolean }
-            | undefined;
+          // Backend returns a FLAT object: { status, target_language, stage, video_id }
+          const status = await api.video.getDubbingStatus(videoId, language);
 
-          const done =
-            entry?.status === "completed" ||
-            entry?.ready === true ||
-            entry?.completed === true ||
-            // Fallback: language now appears in the languages map with truthy value
-            (entry !== undefined && entry !== null && typeof entry !== "object");
-
-          if (done) {
+          if (status.status === "completed") {
             clearTimers();
             setProgress(100);
             setIsProcessing(false);
             setProcessingLanguage(null);
+            setError(null);
             await loadLanguages();
+          } else if (status.status === "failed") {
+            clearTimers();
+            setProgress(0);
+            setIsProcessing(false);
+            setProcessingLanguage(null);
+            setError(status.stage || "Dubbing failed. Please try again.");
           }
+          // status === "processing" (or anything else) → keep polling
         } catch (err) {
           // Keep polling on transient errors, but surface persistent ones
           console.error("Dubbing status poll failed:", err);
