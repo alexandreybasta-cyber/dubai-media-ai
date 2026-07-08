@@ -23,15 +23,17 @@
 - [Sidebar.tsx](file://frontend/src/components/Sidebar.tsx)
 - [api.ts](file://frontend/src/lib/api.ts)
 - [useVideoProcessing.ts](file://frontend/src/lib/useVideoProcessing.ts)
+- [video.py](file://backend/routers/video.py)
+- [subtitle_generation.py](file://backend/pipeline/subtitle_generation.py)
 - [archive/page.tsx](file://frontend/src/app/archive/page.tsx)
 </cite>
 
 ## Update Summary
 **Changes Made**
-- Enhanced TranscriptPanel component with comprehensive translation interface including language selection dropdown, real-time status indicators, error handling, RTL support for Arabic translations, and translated segment display alongside original text
-- Added detailed documentation for the new translation functionality and its integration with backend APIs
-- Updated component props and state management to include translation capabilities
-- Enhanced accessibility features for multilingual content display
+- Enhanced VideoTimeline component with comprehensive closed captioning interface including CC toggle button, language selection menu supporting English/Arabic/French/Russian, native HTML5 track elements, proper RTL support for Arabic subtitles, download functionality for SRT files, and accessibility features with ARIA attributes
+- Added detailed documentation for the new subtitle management system and its integration with backend APIs
+- Updated component props and state management to include closed captioning capabilities
+- Enhanced accessibility features for multilingual subtitle display
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -112,7 +114,7 @@ SB --> ES
 - [Button.tsx:1-30](file://frontend/src/components/Button.tsx#L1-L30)
 - [Card.tsx:1-17](file://frontend/src/components/Card.tsx#L1-L17)
 - [VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
-- [VideoTimeline.tsx:1-245](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L245)
+- [VideoTimeline.tsx:1-469](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L469)
 - [TranscriptPanel.tsx:1-305](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L305)
 - [MetadataPanel.tsx:1-380](file://frontend/src/components/archive/MetadataPanel.tsx#L1-L380)
 - [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
@@ -132,7 +134,7 @@ SB --> ES
 - [Button.tsx:1-30](file://frontend/src/components/Button.tsx#L1-L30)
 - [Card.tsx:1-17](file://frontend/src/components/Card.tsx#L1-L17)
 - [VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
-- [VideoTimeline.tsx:1-245](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L245)
+- [VideoTimeline.tsx:1-469](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L469)
 - [TranscriptPanel.tsx:1-305](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L305)
 - [MetadataPanel.tsx:1-380](file://frontend/src/components/archive/MetadataPanel.tsx#L1-L380)
 - [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
@@ -235,9 +237,11 @@ UV-->>VU : metadata, transcript when ready
 - [useVideoProcessing.ts:162-211](file://frontend/src/lib/useVideoProcessing.ts#L162-L211)
 
 #### VideoTimeline
-- Purpose: Renders a video player with a scrubber timeline, scene markers, detected objects, and per-face appearance bars.
+- Purpose: Renders a video player with a scrubber timeline, scene markers, detected objects, per-face appearance bars, and comprehensive closed captioning interface with multi-language subtitle support.
 - Props:
   - videoRef: RefObject<HTMLVideoElement | null>
+  - pendingSeekRef?: RefObject<number | null>
+  - videoId: string | null
   - videoUrl: string | null
   - metadata: VideoMetadata | null
   - currentTime: number
@@ -247,22 +251,34 @@ UV-->>VU : metadata, transcript when ready
   - Timeline click seeks to computed timestamp.
   - Hover shows tooltip for nearby scene.
   - Clicking markers or face bars seeks to target time.
-- Styling: Dark video container, progress overlay, blue scene markers, yellow object dots, primary-position indicator.
-- Accessibility: Keyboard-accessible scrubber; tooltips provide context.
-- State integration: Subscribes to video timeupdate and loadedmetadata; syncs with current time prop.
-- **Enhanced Face Appearance Handling**: Implements null-safe face appearances mapping with fallback to empty array to prevent crashes when metadata is incomplete. Each face appearance now includes individual click handlers that seek to the start time of the appearance range, providing granular control over face detection navigation.
+  - **Enhanced**: CC toggle button enables/disables captions with language selection dropdown.
+  - **Enhanced**: Language selection menu supports English, Arabic, French, and Russian with RTL support.
+  - **Enhanced**: SRT download functionality for offline subtitle access.
+- Styling: Dark video container, progress overlay, blue scene markers, yellow object dots, primary-position indicator, CC control bar with active state indicators.
+- Accessibility: Keyboard-accessible scrubber; tooltips provide context; ARIA attributes for CC controls; proper RTL text direction for Arabic subtitles; screen reader friendly language selection menus.
+- State integration: Subscribes to video timeupdate and loadedmetadata; syncs with current time prop; manages CC state and subtitle track modes.
+- **Enhanced Closed Captioning Interface**: Comprehensive subtitle management system with native HTML5 track elements, real-time language switching, and proper RTL support for Arabic content.
 
-**Updated** Enhanced defensive programming improvements have been implemented to enhance the reliability and interactivity of face appearance rendering. The component now includes:
+**Updated** Enhanced closed captioning capabilities have been implemented to provide comprehensive multilingual subtitle support:
 
-- **Null-safe face appearances mapping**: Uses `(face.appearances || []).map()` to safely handle cases where face appearances data might be missing or undefined
-- **Individual appearance click handlers**: Each face appearance bar now has its own click handler that seeks to the specific start time of the appearance range
-- **Improved tooltip information**: Tooltips now display face names along with formatted time ranges (e.g., "John Doe: 2:15 - 3:45")
+- **CC Toggle Button**: Integrated caption control with visual feedback showing enabled/disabled state using `aria-pressed` attribute for accessibility
+- **Language Selection Menu**: Dropdown menu supporting four languages (English, العربية, Français, Русский) with proper RTL directionality for Arabic text
+- **Native HTML5 Track Elements**: Utilizes `<track>` elements for WebVTT subtitle format with automatic browser-native caption rendering
+- **Real-time Track Mode Management**: Synchronizes TextTrack modes with CC state, automatically showing/hiding tracks based on user preferences
+- **SRT Download Functionality**: Dedicated download button with language-specific SRT file generation and proper filename formatting
+- **RTL Support**: Automatic right-to-left text direction for Arabic subtitles using `dir="rtl"` attribute on language menu items
+- **Accessibility Features**: Comprehensive ARIA attributes including `aria-pressed`, `title` attributes, and keyboard navigation support
+- **Backend Integration**: Seamless connection to `/api/video/{videoId}/subtitles` endpoint for WebVTT streaming and `/api/video/{videoId}/subtitles/download` for SRT downloads
 
 **Section sources**
-- [VideoTimeline.tsx:11-58](file://frontend/src/components/archive/VideoTimeline.tsx#L11-L58)
+- [VideoTimeline.tsx:12-22](file://frontend/src/components/archive/VideoTimeline.tsx#L12-L22)
+- [VideoTimeline.tsx:24-35](file://frontend/src/components/archive/VideoTimeline.tsx#L24-L35)
+- [VideoTimeline.tsx:58-114](file://frontend/src/components/archive/VideoTimeline.tsx#L58-L114)
+- [VideoTimeline.tsx:194-204](file://frontend/src/components/archive/VideoTimeline.tsx#L194-L204)
+- [VideoTimeline.tsx:214-330](file://frontend/src/components/archive/VideoTimeline.tsx#L214-L330)
 - [VideoTimeline.tsx:200-201](file://frontend/src/components/archive/VideoTimeline.tsx#L200-L201)
 - [VideoTimeline.tsx:216-219](file://frontend/src/components/archive/VideoTimeline.tsx#L216-L219)
-- [useVideoProcessing.ts:370-381](file://frontend/src/lib/useVideoProcessing.ts#L370-381)
+- [useVideoProcessing.ts:370-381](file://frontend/src/lib/useVideoProcessing.ts#L370-L381)
 
 #### TranscriptPanel
 - Purpose: Displays speech transcript segments with speaker identity, timestamps, and language indicators; auto-scrolls to active segment; supports real-time translation into multiple languages.
@@ -294,7 +310,7 @@ UV-->>VU : metadata, transcript when ready
 **Section sources**
 - [TranscriptPanel.tsx:7-12](file://frontend/src/components/archive/TranscriptPanel.tsx#L7-L12)
 - [TranscriptPanel.tsx:67-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L67-L121)
-- [TranscriptPanel.tsx:175-231](file://frontend/src/components/archive/TranscriptPanel.tsx#L175-L231)
+- [TranscriptPanel.tsx:175-231](file://frontend/src/components/archive/TranscriptPanel.tsx#L175-231)
 - [TranscriptPanel.tsx:286-297](file://frontend/src/components/archive/TranscriptPanel.tsx#L286-L297)
 - [api.ts:222-233](file://frontend/src/lib/api.ts#L222-233)
 
@@ -391,7 +407,7 @@ UV-->>VU : metadata, transcript when ready
 - Responsive design patterns and accessibility features
 
 **Section sources**
-- [SceneDetection.tsx:6-40](file://frontend/src/components/archive/SceneDetection.tsx#L6-L40)
+- [SceneDetection.tsx:6-40](file://frontend/src/components/archive/SceneDetection.tsx#L6-40)
 - [SceneDetection.tsx:14-27](file://frontend/src/components/archive/SceneDetection.tsx#L14-27)
 - [SceneDetection.tsx:74-101](file://frontend/src/components/archive/SceneDetection.tsx#L74-101)
 - [SceneDetection.tsx:119-176](file://frontend/src/components/archive/SceneDetection.tsx#L119-176)
@@ -431,7 +447,7 @@ UV-->>VU : metadata, transcript when ready
 - Reference database management for cross-video person recognition
 
 **Section sources**
-- [PeoplePanel.tsx:6-14](file://frontend/src/components/archive/PeoplePanel.tsx#L6-L14)
+- [PeoplePanel.tsx:6-14](file://frontend/src/components/archive/PeoplePanel.tsx#L6-14)
 - [PeoplePanel.tsx:22-28](file://frontend/src/components/archive/PeoplePanel.tsx#L22-28)
 - [PeoplePanel.tsx:30-108](file://frontend/src/components/archive/PeoplePanel.tsx#L30-108)
 - [PeoplePanel.tsx:110-226](file://frontend/src/components/archive/PeoplePanel.tsx#L110-226)
@@ -468,10 +484,10 @@ UV-->>VU : metadata, transcript when ready
 - User interaction patterns for video selection and navigation
 
 **Section sources**
-- [VideoLibrary.tsx:6-8](file://frontend/src/components/archive/VideoLibrary.tsx#L6-L8)
-- [VideoLibrary.tsx:30-50](file://frontend/src/components/archive/VideoLibrary.tsx#L30-L50)
-- [VideoLibrary.tsx:68-127](file://frontend/src/components/archive/VideoLibrary.tsx#L68-L127)
-- [api.ts:134-146](file://frontend/src/lib/api.ts#L134-L146)
+- [VideoLibrary.tsx:6-8](file://frontend/src/components/archive/VideoLibrary.tsx#L6-8)
+- [VideoLibrary.tsx:30-50](file://frontend/src/components/archive/VideoLibrary.tsx#L30-50)
+- [VideoLibrary.tsx:68-127](file://frontend/src/components/archive/VideoLibrary.tsx#L68-127)
+- [api.ts:134-146](file://frontend/src/lib/api.ts#L134-146)
 
 ### RFP Components
 
@@ -561,7 +577,7 @@ UV-->>VU : metadata, transcript when ready
 - Styling: Color-coded score badges; SVG radial progress; responsive grid for summary cards.
 
 **Section sources**
-- [VendorScorecard.tsx:70-239](file://frontend/src/components/evaluator/VendorScorecard.tsx#L70-L239)
+- [VendorScorecard.tsx:70-239](file://frontend/src/components/evaluator/VendorScorecard.tsx#L70-239)
 
 #### ComparisonMatrix
 - Purpose: Compares vendors across criteria with a matrix table, radar chart, and mandatory compliance checks; exports to XLSX/PDF.
@@ -662,6 +678,8 @@ The VideoTimeline component demonstrates key defensive programming practices:
 - **Duration validation**: Checks `duration > 0` before calculating percentages to prevent division by zero
 - **Metadata fallbacks**: Provides default empty arrays for scenes, faces, and objects when metadata is unavailable
 - **Individual appearance click handlers**: Each face appearance now has its own click handler that seeks to the specific start time of the appearance range
+- **Subtitle track safety**: Implements null-safe event listener attachment with optional chaining for `addEventListener` and `removeEventListener` methods
+- **CC state validation**: Validates video element availability before manipulating TextTrack modes
 
 #### SceneDetection Component
 The SceneDetection component implements comprehensive defensive programming patterns:
@@ -732,12 +750,13 @@ The MetadataPanel component includes enhanced multilingual support with defensiv
 - [VideoTimeline.tsx:200-201](file://frontend/src/components/archive/VideoTimeline.tsx#L200-L201)
 - [VideoTimeline.tsx:216-219](file://frontend/src/components/archive/VideoTimeline.tsx#L216-L219)
 - [VideoTimeline.tsx:229-239](file://frontend/src/components/archive/VideoTimeline.tsx#L229-L239)
+- [VideoTimeline.tsx:71-91](file://frontend/src/components/archive/VideoTimeline.tsx#L71-L91)
 - [SceneDetection.tsx:43](file://frontend/src/components/archive/SceneDetection.tsx#L43)
 - [SceneDetection.tsx:52-55](file://frontend/src/components/archive/SceneDetection.tsx#L52-L55)
 - [SceneDetection.tsx:25-27](file://frontend/src/components/archive/SceneDetection.tsx#L25-L27)
 - [PeoplePanel.tsx:114](file://frontend/src/components/archive/PeoplePanel.tsx#L114)
 - [PeoplePanel.tsx:45-59](file://frontend/src/components/archive/PeoplePanel.tsx#L45-L59)
-- [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-L50)
+- [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-50)
 - [VideoLibrary.tsx:17-28](file://frontend/src/components/archive/VideoLibrary.tsx#L17-L28)
 - [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-L21)
 - [TranscriptPanel.tsx:67-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L67-L121)
@@ -750,6 +769,7 @@ The MetadataPanel component includes enhanced multilingual support with defensiv
   - PeoplePanel depends on useVideoProcessing for face renaming functionality.
   - VideoLibrary depends on api for video listing and metadata retrieval.
   - TranscriptPanel depends on api for translation functionality.
+  - **Enhanced**: VideoTimeline now depends on backend subtitle endpoints for WebVTT streaming and SRT downloads.
   - RFP components depend on api for creation, regeneration, and evaluation workflows.
   - Evaluator components depend on api for evaluation status/results and exports.
 - External dependencies:
@@ -779,13 +799,16 @@ API --> RP["RFPPreview.tsx"]
 API --> ES["EvaluationSetup.tsx"]
 API --> VS["VendorScorecard.tsx"]
 API --> CM["ComparisonMatrix.tsx"]
+SUBT["Backend Subtitle API"] --> VT
+SUBT["/api/video/{id}/subtitles"] --> VT
+SUBT["/api/video/{id}/subtitles/download"] --> VT
 ```
 
 **Diagram sources**
 - [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
 - [api.ts:164-244](file://frontend/src/lib/api.ts#L164-244)
 - [VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
-- [VideoTimeline.tsx:1-245](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L245)
+- [VideoTimeline.tsx:1-469](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L469)
 - [TranscriptPanel.tsx:1-305](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L305)
 - [MetadataPanel.tsx:1-380](file://frontend/src/components/archive/MetadataPanel.tsx#L1-L380)
 - [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
@@ -798,6 +821,7 @@ API --> CM["ComparisonMatrix.tsx"]
 - [EvaluationSetup.tsx:1-429](file://frontend/src/components/evaluator/EvaluationSetup.tsx#L1-L429)
 - [VendorScorecard.tsx:1-241](file://frontend/src/components/evaluator/VendorScorecard.tsx#L1-L241)
 - [ComparisonMatrix.tsx:1-318](file://frontend/src/components/evaluator/ComparisonMatrix.tsx#L1-L318)
+- [video.py:349-420](file://backend/routers/video.py#L349-L420)
 
 **Section sources**
 - [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
@@ -812,10 +836,12 @@ API --> CM["ComparisonMatrix.tsx"]
   - PeoplePanel renders person lists with inline editing; consider limiting visible faces for very large datasets.
   - VideoLibrary renders video grids with thumbnails; lazy loading could improve initial load performance.
   - **TranscriptPanel translation**: Translation requests are batched and cached; consider debouncing rapid language changes.
+  - **Enhanced**: VideoTimeline subtitle track management uses efficient TextTrack mode switching without re-rendering entire video elements.
 - Network:
   - useVideoProcessing simulates upload progress; real progress requires XHR with onprogress. Consider upgrading upload flow for accurate progress.
   - VideoLibrary fetches video list on mount; consider pagination for large archives.
   - **Translation API**: Single API call translates all segments efficiently; consider caching translations for repeated requests.
+  - **Enhanced**: Subtitle streaming uses native HTML5 track elements for optimal browser performance and memory management.
 - Memory:
   - VideoUpload creates object URLs; revoke on reset to prevent leaks.
   - PipelineVisualizer and ComparisonMatrix render charts; unmount components to dispose resources.
@@ -823,6 +849,7 @@ API --> CM["ComparisonMatrix.tsx"]
   - PeoplePanel maintains editing state for individual faces; clean up state on component unmount.
   - VideoLibrary stores video list in component state; consider memoization for large video collections.
   - **Translation state**: Map-based translation storage is efficient but should be cleared when video changes to prevent memory leaks.
+  - **Enhanced**: Subtitle track listeners are properly cleaned up using removeEventListener to prevent memory leaks.
 
 ## Troubleshooting Guide
 - Upload fails:
@@ -842,6 +869,15 @@ API --> CM["ComparisonMatrix.tsx"]
   - Verify that duration is properly calculated before rendering appearance bars.
   - Ensure metadata is fully loaded before attempting to render timeline components.
   - **Updated**: Individual face appearance click handlers should now work correctly even when some faces lack appearance data.
+  - **Enhanced**: Subtitle track events may take time to populate after video loads; ensure proper event listener setup with addtrack event handling.
+- **Closed Captioning Issues**:
+  - **New**: Verify that videoId is provided for subtitle endpoints to generate proper URLs.
+  - Check that backend subtitle generation has completed successfully for the selected video.
+  - Ensure DASHSCOPE_API_KEY is configured on the backend server for translated subtitles.
+  - Verify that subtitle files exist in the correct format (WebVTT) at `/api/video/{videoId}/subtitles`.
+  - Check browser console for TextTrack-related errors when captions fail to display.
+  - **Updated**: Language selection menu should properly apply RTL direction for Arabic subtitles.
+  - **Updated**: SRT download functionality should generate proper filenames with language codes.
 - **SceneDetection rendering issues**:
   - **New**: Verify that scenes array contains valid SceneBoundary objects with timestamp and description properties.
   - Check that scene_type values match the predefined color mapping keys (interview, b-roll, aerial, ceremony, documentary, news-anchor, sport, other).
@@ -886,6 +922,8 @@ API --> CM["ComparisonMatrix.tsx"]
 - [useVideoProcessing.ts:215-276](file://frontend/src/lib/useVideoProcessing.ts#L215-L276)
 - [EvaluationSetup.tsx:156-189](file://frontend/src/components/evaluator/EvaluationSetup.tsx#L156-L189)
 - [VideoTimeline.tsx:200-201](file://frontend/src/components/archive/VideoTimeline.tsx#L200-L201)
+- [VideoTimeline.tsx:71-91](file://frontend/src/components/archive/VideoTimeline.tsx#L71-L91)
+- [VideoTimeline.tsx:214-330](file://frontend/src/components/archive/VideoTimeline.tsx#L214-L330)
 - [SceneDetection.tsx:43](file://frontend/src/components/archive/SceneDetection.tsx#L43)
 - [SceneDetection.tsx:52-55](file://frontend/src/components/archive/SceneDetection.tsx#L52-L55)
 - [PeoplePanel.tsx:114](file://frontend/src/components/archive/PeoplePanel.tsx#L114)
@@ -894,18 +932,20 @@ API --> CM["ComparisonMatrix.tsx"]
 - [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-L21)
 - [TranscriptPanel.tsx:67-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L67-L121)
 - [TranscriptPanel.tsx:286-297](file://frontend/src/components/archive/TranscriptPanel.tsx#L286-L297)
+- [video.py:349-420](file://backend/routers/video.py#L349-L420)
 
 ## Conclusion
 The component library provides a cohesive, accessible, and extensible foundation for the Dubai Media application. Base components (Button, Card) standardize UI patterns; feature-specific components encapsulate complex workflows while integrating with shared state and APIs. The recent defensive programming improvements ensure reliable operation even with incomplete data, while the accessibility enhancements guarantee consistent text visibility across all form components. 
 
-The enhanced TranscriptPanel component represents a significant advancement in multilingual support, providing comprehensive translation capabilities with real-time status indicators, error handling, and proper RTL support for Arabic translations. The new PeoplePanel and VideoLibrary components significantly enhance the Archive feature by providing comprehensive person management and video browsing capabilities. The PeoplePanel offers sophisticated person identification with confidence scoring, source attribution, and inline editing, while the VideoLibrary provides an intuitive browsing interface for archived videos with rich metadata display. Both components integrate seamlessly with the existing video processing pipeline and follow established architectural patterns.
+The enhanced VideoTimeline component represents a significant advancement in multimedia accessibility, providing comprehensive closed captioning capabilities with native HTML5 track elements, multi-language subtitle support, and proper RTL handling for Arabic content. The new subtitle management system seamlessly integrates with backend APIs to deliver WebVTT streams and SRT downloads, while maintaining excellent performance through efficient TextTrack mode management. The enhanced TranscriptPanel component represents another major advancement in multilingual support, providing comprehensive translation capabilities with real-time status indicators, error handling, and proper RTL support for Arabic translations. The new PeoplePanel and VideoLibrary components significantly enhance the Archive feature by providing comprehensive person management and video browsing capabilities. The PeoplePanel offers sophisticated person identification with confidence scoring, source attribution, and inline editing, while the VideoLibrary provides an intuitive browsing interface for archived videos with rich metadata display. Both components integrate seamlessly with the existing video processing pipeline and follow established architectural patterns.
 
 Key improvements include:
-- **Comprehensive Translation Interface**: TranscriptPanel now supports real-time translation into Arabic, French, and Russian with proper RTL text direction and bilingual display
+- **Comprehensive Closed Captioning Interface**: VideoTimeline now supports native HTML5 subtitle tracks with CC toggle, language selection menu, and SRT download functionality
+- **Multi-Language Subtitle Support**: Built-in support for English, Arabic, French, and Russian subtitles with proper RTL text direction
 - **Enhanced Multilingual Support**: Automatic language detection, error handling, and user-friendly status indicators for translation requests
 - **Robust Error Management**: Comprehensive try-catch blocks with user-friendly error messages and graceful fallbacks
-- **Seamless Backend Integration**: Efficient single-call translation API using DashScope Qwen model with marker-based segment parsing
+- **Seamless Backend Integration**: Efficient subtitle streaming and download APIs using WebVTT format with DashScope Qwen model for translations
 - **Accessibility Features**: Proper ARIA labels, keyboard navigation, and screen reader support for all multilingual content
-- **Performance Optimization**: Map-based translation caching and automatic state cleanup when videos change
+- **Performance Optimization**: Native HTML5 track elements for optimal browser performance and memory management
 
 The enhanced VideoTimeline component now provides granular face detection navigation with improved tooltip information, and the MetadataPanel component offers comprehensive multilingual support with proper RTL handling. The SearchDemo component now features robust thumbnail URL resolution that handles various path formats, and the TranscriptPanel provides reliable timestamp formatting across multiple input types. By adhering to the documented props, composition patterns, defensive programming practices, and accessibility guidelines, teams can build consistent experiences across Archive, RFP, and Evaluator features.

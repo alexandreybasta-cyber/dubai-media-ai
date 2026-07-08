@@ -3,11 +3,11 @@ schema_version: 1
 locale: en-US
 branch: main
 nodes_managed: true
-exported_at: "2026-07-08T05:02:05Z"
+exported_at: "2026-07-08T08:11:53Z"
 modules:
     "":
-        dir_name: Dubai Media — Multimodal Video Ingestion & RFP Platform
-        title: Dubai Media — Multimodal Video Ingestion & RFP Platform
+        dir_name: Dubai Media AI Backend (FastAPI + Video Processing Pipeline)
+        title: Dubai Media AI Backend (FastAPI + Video Processing Pipeline)
         scope: []
         source_files: []
         children: []

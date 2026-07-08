@@ -13,21 +13,23 @@
 - [backend/pipeline/metadata_structuring.py](file://backend/pipeline/metadata_structuring.py)
 - [backend/pipeline/visual_analysis.py](file://backend/pipeline/visual_analysis.py)
 - [backend/pipeline/face_recognition.py](file://backend/pipeline/face_recognition.py)
+- [backend/pipeline/subtitle_generation.py](file://backend/pipeline/subtitle_generation.py)
 - [frontend/src/lib/api.ts](file://frontend/src/lib/api.ts)
 - [frontend/src/lib/useVideoProcessing.ts](file://frontend/src/lib/useVideoProcessing.ts)
 - [frontend/src/components/archive/VideoUpload.tsx](file://frontend/src/components/archive/VideoUpload.tsx)
 - [frontend/src/components/archive/PeoplePanel.tsx](file://frontend/src/components/archive/PeoplePanel.tsx)
 - [frontend/src/components/archive/TranscriptPanel.tsx](file://frontend/src/components/archive/TranscriptPanel.tsx)
+- [frontend/src/components/archive/VideoTimeline.tsx](file://frontend/src/components/archive/VideoTimeline.tsx)
 - [README.md](file://README.md)
 </cite>
 
 ## Update Summary
 **Changes Made**
-- Added comprehensive documentation for the new POST /api/video/{video_id}/translate-transcript endpoint for real-time transcript translation into Arabic, French, and Russian languages
-- Updated transcript section to include translation capabilities with DashScope Qwen integration
-- Added detailed examples for transcript translation workflows with exponential backoff retry logic
-- Enhanced frontend integration examples to demonstrate the new translation functionality in TranscriptPanel component
-- Updated API schemas to include translation request/response structures
+- Added comprehensive documentation for new subtitle generation API endpoints including GET /api/video/{video_id}/subtitles for WebVTT content and GET /api/video/{video_id}/subtitles/download for downloadable SRT/VTT files
+- Enhanced video processing pipeline integration with automatic subtitle generation after audio transcription completion
+- Updated architecture diagrams to reflect subtitle generation workflow
+- Added detailed examples for subtitle download functionality with curl commands and JavaScript implementations
+- Updated frontend integration examples to demonstrate subtitle track management in VideoTimeline component
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -36,12 +38,13 @@
 4. [Architecture Overview](#architecture-overview)
 5. [Detailed Component Analysis](#detailed-component-analysis)
 6. [Enhanced Face Recognition System](#enhanced-face-recognition-system)
-7. [Transcript Translation System](#transcript-translation-system)
-8. [Dependency Analysis](#dependency-analysis)
-9. [Performance Considerations](#performance-considerations)
-10. [Troubleshooting Guide](#troubleshooting-guide)
-11. [Conclusion](#conclusion)
-12. [Appendices](#appendices)
+7. [Subtitle Generation System](#subtitle-generation-system)
+8. [Transcript Translation System](#transcript-translation-system)
+9. [Dependency Analysis](#dependency-analysis)
+10. [Performance Considerations](#performance-considerations)
+11. [Troubleshooting Guide](#troubleshooting-guide)
+12. [Conclusion](#conclusion)
+13. [Appendices](#appendices)
 
 ## Introduction
 This document provides comprehensive API documentation for the video processing endpoints that power the AI-powered media archive. It covers:
@@ -49,22 +52,25 @@ This document provides comprehensive API documentation for the video processing 
 - GET /api/video/{video_id}/status for retrieving processing pipeline status with detailed progress information
 - GET /api/video/{video_id}/metadata for accessing structured metadata results from all pipeline stages with enhanced face recognition data
 - GET /api/video/{video_id}/transcript for retrieving speech-to-text transcripts
-- **NEW** POST /api/video/{video_id}/translate-transcript for real-time transcript translation into Arabic, French, and Russian languages with DashScope Qwen integration
+- **NEW** GET /api/video/{video_id}/subtitles for retrieving WebVTT subtitle content with multi-language support
+- **NEW** GET /api/video/{video_id}/subtitles/download for downloading subtitles as SRT or VTT files
+- POST /api/video/{video_id}/translate-transcript for real-time transcript translation into Arabic, French, and Russian languages with DashScope Qwen integration
 - POST /api/video/{video_id}/faces/name for assigning names to detected persons with optional reference database integration
 - GET/POST /api/search for semantic search with dual HTTP method support and person-specific filtering
 - POST /api/reindex for rebuilding search indexes from existing processed videos
 
-The documentation includes request/response schemas, error codes, file upload handling with subprocess execution, and practical examples using curl commands and JavaScript implementations.
+The documentation includes request/response schemas, error codes, file upload handling, subtitle generation workflows, and practical examples using curl commands and JavaScript implementations.
 
-**Updated** The system now implements enhanced transcript translation capabilities powered by DashScope Qwen models, providing real-time translation of speech-to-text content into multiple languages with robust retry logic and segment-based processing.
+**Updated** The system now features comprehensive subtitle generation capabilities with automatic multi-language subtitle creation after audio transcription completion. The subtitle system integrates seamlessly with the existing pipeline, providing instant access to WebVTT and SRT formats while maintaining temporal accuracy and speaker attribution.
 
 ## Project Structure
 The video processing system consists of:
 - FastAPI backend with routers and pipeline orchestration using subprocess-based execution for process isolation
 - Standalone pipeline runner that executes as a separate process for enhanced reliability
 - **Enhanced** AI pipeline stages powered by Alibaba Cloud DashScope models with advanced face recognition and transcript translation
-- Frontend client utilities for uploading, consuming APIs, managing person identification, and transcript translation
-- **New** Reference database system for persistent person recognition across videos
+- Frontend client utilities for uploading, consuming APIs, managing person identification, transcript translation, and subtitle management
+- **New** Subtitle generation module with automatic multi-language subtitle creation and caching
+- Reference database system for persistent person recognition across videos
 
 ```mermaid
 graph TB
@@ -74,14 +80,16 @@ FE_HOOK["useVideoProcessing.ts<br/>React hook"]
 FE_UPLOAD["VideoUpload.tsx<br/>UI component"]
 FE_PEOPLE["PeoplePanel.tsx<br/>Person identification UI"]
 FE_TRANSCRIPT["TranscriptPanel.tsx<br/>Translation UI"]
+FE_TIMELINE["VideoTimeline.tsx<br/>Subtitle track management"]
 end
 subgraph "Backend"
 MAIN["main.py<br/>FastAPI app"]
-ROUTER["routers/video.py<br/>Video endpoints + Translation"]
+ROUTER["routers/video.py<br/>Video endpoints + Subtitles"]
 RUNNER["run_pipeline.py<br/>Standalone pipeline runner"]
 ORCH["pipeline/orchestrator.py<br/>Pipeline orchestrator"]
 CFG["config.py<br/>Settings"]
 SI["pipeline/search_index.py<br/>Search index"]
+SUBGEN["pipeline/subtitle_generation.py<br/>Subtitle generation"]
 end
 subgraph "Enhanced Pipeline Stages"
 ING["ingestion.py<br/>FFmpeg extraction"]
@@ -97,8 +105,10 @@ FE_HOOK --> FE_API
 FE_UPLOAD --> FE_HOOK
 FE_PEOPLE --> FE_HOOK
 FE_TRANSCRIPT --> FE_HOOK
+FE_TIMELINE --> FE_API
 MAIN --> ROUTER
 ROUTER --> RUNNER
+ROUTER --> SUBGEN
 ROUTER --> REFDB
 ROUTER --> DASHSCOPE
 RUNNER --> ORCH
@@ -108,19 +118,21 @@ ORCH --> AUD
 ORCH --> FACE
 ORCH --> META
 ORCH --> SI
+ORCH --> SUBGEN
 CFG --> ORCH
 FACE --> REFDB
 ```
 
 **Diagram sources**
 - [backend/main.py:1-44](file://backend/main.py#L1-L44)
-- [backend/routers/video.py:1-637](file://backend/routers/video.py#L1-L637)
+- [backend/routers/video.py:1-722](file://backend/routers/video.py#L1-L722)
 - [backend/run_pipeline.py:1-29](file://backend/run_pipeline.py#L1-L29)
-- [backend/pipeline/orchestrator.py:1-392](file://backend/pipeline/orchestrator.py#L1-L392)
+- [backend/pipeline/orchestrator.py:1-403](file://backend/pipeline/orchestrator.py#L1-L403)
 - [backend/config.py:1-30](file://backend/config.py#L1-L30)
 - [backend/pipeline/search_index.py:1-333](file://backend/pipeline/search_index.py#L1-L333)
 - [backend/pipeline/face_recognition.py:1-660](file://backend/pipeline/face_recognition.py#L1-L660)
-- [frontend/src/components/archive/TranscriptPanel.tsx:1-305](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L305)
+- [backend/pipeline/subtitle_generation.py:1-383](file://backend/pipeline/subtitle_generation.py#L1-L383)
+- [frontend/src/components/archive/VideoTimeline.tsx:1-469](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L469)
 
 **Section sources**
 - [README.md:148-168](file://README.md#L148-L168)
@@ -129,48 +141,54 @@ FACE --> REFDB
 ## Core Components
 - Video upload router: Handles multipart/form-data uploads, saves files, initializes status, and launches the pipeline as a completely separate subprocess for process isolation and enhanced reliability
 - **Enhanced** Transcript translation router: Provides real-time translation of transcript segments into Arabic, French, and Russian using DashScope Qwen models with exponential backoff retry logic
+- **NEW** Subtitle generation router: Manages WebVTT and SRT subtitle generation with automatic multi-language support and caching
 - **Enhanced** Face naming router: Manages person identification with manual naming, reference database integration, and immediate search indexing
 - Standalone pipeline runner: Executes the pipeline in a separate Python process with full isolation from the main API server
-- **Enhanced** Pipeline orchestrator: Coordinates six stages with progress tracking, error handling, and integrated face recognition with OCR/transcript context
+- **Enhanced** Pipeline orchestrator: Coordinates six stages with progress tracking, error handling, integrated face recognition with OCR/transcript context, and automatic subtitle generation
 - **Enhanced** Search index: Manages FAISS-based vector search with DashScope text embeddings, person-specific search, and rebuild capability
 - **Enhanced** Face recognition system: Advanced person identification using batch processing, OCR text analysis, transcript context, and reference database matching
-- Frontend API utilities: Provide standard fetch-based upload functionality, typed helpers for uploads, status polling, WebSocket progress streaming, person management, and transcript translation
+- **NEW** Subtitle generation system: Automatic WebVTT/SRT generation with multi-language translation support and intelligent caching
+- Frontend API utilities: Provide standard fetch-based upload functionality, typed helpers for uploads, status polling, WebSocket progress streaming, person management, transcript translation, and subtitle track management
 
 Key capabilities:
 - Process isolation through subprocess execution prevents pipeline failures from affecting the main API server
 - Enhanced reliability with automatic process recovery and resource isolation
-- **New** Real-time transcript translation with multi-language support (Arabic, French, Russian)
-- **New** Exponential backoff retry logic for translation API calls ensuring reliability
-- **New** Segment-based translation preserving timing information and speaker attribution
+- **New** Real-time subtitle generation with automatic multi-language support (English, Arabic, French, Russian)
+- **New** Intelligent subtitle caching system that generates translations on-demand and persists them for future use
+- **New** Seamless subtitle track integration with HTML5 video players via WebVTT format
+- **New** Downloadable subtitle files in both SRT and VTT formats with proper MIME types
 - **Enhanced** Advanced face recognition with OCR text fallback, transcript context, and reference database matching
 - **Enhanced** Structured metadata generation (EBUCore XML, IPTC) with person mentions
 - Speech-to-text with speaker diarization
 - Semantic search with dual HTTP method support and person-specific filtering
 - Batch reindexing from existing processed videos
 
-**Updated** The system now implements comprehensive transcript translation capabilities with real-time processing, multi-language support, and robust error handling. The translation service integrates seamlessly with the existing transcript workflow, providing users with instant access to translated content while maintaining temporal accuracy.
+**Updated** The system now implements comprehensive subtitle generation capabilities with automatic multi-language support. The subtitle system automatically generates WebVTT tracks after audio transcription completion, providing instant access to captions in multiple languages while maintaining temporal accuracy and preserving speaker attribution throughout the translation process.
 
 **Section sources**
+- [backend/routers/video.py:341-421](file://backend/routers/video.py#L341-L421)
 - [backend/routers/video.py:231-316](file://backend/routers/video.py#L231-L316)
 - [backend/routers/video.py:41-365](file://backend/routers/video.py#L41-L365)
 - [backend/run_pipeline.py:1-29](file://backend/run_pipeline.py#L1-L29)
-- [backend/pipeline/orchestrator.py:44-206](file://backend/pipeline/orchestrator.py#L44-L206)
+- [backend/pipeline/orchestrator.py:131-139](file://backend/pipeline/orchestrator.py#L131-L139)
 - [backend/pipeline/search_index.py:59-333](file://backend/pipeline/search_index.py#L59-L333)
 - [backend/pipeline/face_recognition.py:185-262](file://backend/pipeline/face_recognition.py#L185-L262)
-- [frontend/src/lib/api.ts:222-233](file://frontend/src/lib/api.ts#L222-L233)
+- [backend/pipeline/subtitle_generation.py:238-280](file://backend/pipeline/subtitle_generation.py#L238-L280)
+- [frontend/src/components/archive/VideoTimeline.tsx:64-114](file://frontend/src/components/archive/VideoTimeline.tsx#L64-L114)
 
 ## Architecture Overview
 The system follows a staged pipeline architecture with subprocess-based execution and process isolation:
 1. Upload endpoint receives multipart/form-data via standard HTTP requests
 2. Main API server creates a separate subprocess that runs the pipeline independently
 3. Subprocess executes the orchestrator which runs stages sequentially with optimized status updates
-4. **Enhanced** Face recognition stage uses batch processing with OCR text and transcript context for improved person identification
-5. **New** Translation endpoint processes transcript segments through DashScope Qwen models with exponential backoff retry logic
-6. Progress updates are streamed via WebSocket and persisted to status.json
-7. Results are saved as individual JSON artifacts per stage
-8. **Enhanced** Search index is built incrementally during processing with person-specific entries and can be rebuilt via /api/reindex
+4. **Enhanced** Audio analysis stage produces transcript segments with timing information
+5. **NEW** Subtitle generation stage automatically creates WebVTT tracks in multiple languages after audio transcription
+6. **Enhanced** Face recognition stage uses batch processing with OCR text and transcript context for improved person identification
+7. Progress updates are streamed via WebSocket and persisted to status.json
+8. Results are saved as individual JSON artifacts per stage
+9. **Enhanced** Search index is built incrementally during processing with person-specific entries and can be rebuilt via /api/reindex
 
-**Updated** The system now features enhanced transcript translation capabilities with real-time processing. The translation endpoint accepts transcript segments and translates them into target languages using DashScope Qwen models, implementing exponential backoff retry logic for reliability. The translation preserves segment timing information and maintains speaker attribution throughout the translation process.
+**Updated** The system now features automatic subtitle generation as an integral part of the processing pipeline. After audio transcription completes, the system automatically generates WebVTT subtitle tracks in English and translates them into Arabic, French, and Russian using DashScope Qwen models. The subtitle generation is non-blocking and resilient - failures don't prevent other pipeline stages from completing.
 
 ```mermaid
 sequenceDiagram
@@ -180,10 +198,10 @@ participant FS as "Filesystem"
 participant Subproc as "Subprocess"
 participant Runner as "run_pipeline.py"
 participant Orchestrator as "Pipeline Orchestrator"
-participant FaceRec as "Face Recognition"
-participant RefDB as "Reference Database"
-participant Stage as "Pipeline Stage"
+participant AudioStage as "Audio Analysis"
+participant SubtitleGen as "Subtitle Generation"
 participant Translator as "DashScope Qwen"
+participant Stage as "Pipeline Stage"
 Client->>API : "POST /api/video/upload (multipart/form-data)"
 API->>FS : "Save video file"
 API->>Subproc : "subprocess.Popen(run_pipeline.py, video_id, video_path)"
@@ -192,12 +210,12 @@ Subproc->>Runner : "Execute standalone pipeline runner"
 Runner->>Orchestrator : "process_video(video_id, video_path)"
 Orchestrator->>Stage : "Run ingestion"
 Stage-->>Orchestrator : "Stage result"
-Orchestrator->>Stage : "Run visual analysis"
-Stage-->>Orchestrator : "Faces + OCR + scenes"
-Orchestrator->>FaceRec : "identify_faces(batch)"
-FaceRec->>RefDB : "Load reference database"
-FaceRec->>FaceRec : "Process OCR + transcript context"
-FaceRec-->>Orchestrator : "Identified faces"
+Orchestrator->>AudioStage : "Run audio analysis"
+AudioStage-->>Orchestrator : "Transcript segments"
+Orchestrator->>SubtitleGen : "Generate subtitles (non-blocking)"
+SubtitleGen->>Translator : "Translate segments (AR/FR/RU)"
+Translator-->>SubtitleGen : "Translated segments"
+SubtitleGen-->>Orchestrator : "WebVTT files cached"
 Orchestrator->>Stage : "Run next stage"
 Stage-->>Orchestrator : "Stage result"
 Orchestrator->>FS : "Write status.json"
@@ -205,18 +223,18 @@ Orchestrator-->>Runner : "Pipeline complete"
 Runner-->>Subproc : "Exit subprocess"
 API-->>Client : "{video_id, status}"
 Note over API : "Server remains unaffected<br/>by subprocess execution"
-Client->>API : "POST /api/video/{id}/translate-transcript"
-API->>Translator : "Translate segments with retry logic"
-Translator-->>API : "Translated segments"
-API-->>Client : "Translations with timestamps"
+Client->>API : "GET /api/video/{id}/subtitles?language=ar"
+API->>SubtitleGen : "ensure_vtt(video_id, language)"
+SubtitleGen-->>API : "Cached or generated VTT content"
+API-->>Client : "text/vtt response"
 ```
 
 **Diagram sources**
 - [backend/routers/video.py:85-95](file://backend/routers/video.py#L85-L95)
-- [backend/routers/video.py:231-316](file://backend/routers/video.py#L231-L316)
+- [backend/routers/video.py:349-378](file://backend/routers/video.py#L349-L378)
 - [backend/run_pipeline.py:15-28](file://backend/run_pipeline.py#L15-L28)
-- [backend/pipeline/orchestrator.py:130-156](file://backend/pipeline/orchestrator.py#L130-L156)
-- [backend/pipeline/face_recognition.py:227-262](file://backend/pipeline/face_recognition.py#L227-L262)
+- [backend/pipeline/orchestrator.py:131-139](file://backend/pipeline/orchestrator.py#L131-L139)
+- [backend/pipeline/subtitle_generation.py:283-319](file://backend/pipeline/subtitle_generation.py#L283-L319)
 
 ## Detailed Component Analysis
 
@@ -437,86 +455,149 @@ console.log("segments count:", transcript.segments.length);
 - [backend/routers/video.py:190-206](file://backend/routers/video.py#L190-L206)
 - [backend/pipeline/audio_analysis.py:22-59](file://backend/pipeline/audio_analysis.py#L22-L59)
 
-### **NEW** POST /api/video/{video_id}/translate-transcript
-Purpose: Translate transcript segments into target languages (Arabic, French, Russian) using DashScope Qwen models with exponential backoff retry logic.
+### **NEW** GET /api/video/{video_id}/subtitles
+Purpose: Retrieve WebVTT subtitle content for a video in the specified language with automatic generation and caching.
 
-- Method: POST
-- Path: /api/video/{video_id}/translate-transcript
+- Method: GET
+- Path: /api/video/{video_id}/subtitles
 - Path Parameters:
-  - video_id: UUID of the video (for logging/context)
-- Request Body:
-  - language: string (target language code: "ar", "fr", or "ru")
-  - segments: array of segment objects to translate
-    - text: string (original text content)
-    - start_time: number (segment start time in seconds)
-    - end_time: number (segment end time in seconds)
-- Response Schema:
-  - translations: array of translated segment objects
-    - start_time: number (preserved from original)
-    - end_time: number (preserved from original)
-    - text: string (translated content)
-  - language: string (target language code)
+  - video_id: UUID of the video
+- Query Parameters:
+  - language: string (optional, default: "en") - Supported languages: en, ar, fr, ru
+- Response:
+  - Content-Type: text/vtt
+  - Body: WebVTT formatted subtitle content
 
 **Enhanced** Features:
-- **Multi-language Support**: Translates into Arabic (ar), French (fr), and Russian (ru)
-- **Segment-Based Processing**: Preserves timing information and speaker attribution
-- **Exponential Backoff Retry Logic**: Implements 3 attempts with increasing delays (1s, 2s, 4s) for reliability
-- **Batch Translation**: Processes all segments in a single API call using numbered markers for efficiency
-- **Context Preservation**: Maintains segment order and numbering through translation process
-- **Error Handling**: Comprehensive error handling with detailed logging and user-friendly responses
+- **Multi-language Support**: Provides subtitles in English (source), Arabic, French, and Russian
+- **Automatic Generation**: Generates WebVTT content on-the-fly if not already cached
+- **Intelligent Caching**: Persists generated subtitles for faster subsequent requests
+- **Real-time Translation**: Translates transcript segments using DashScope Qwen models with exponential backoff retry logic
+- **Format Compliance**: Produces standards-compliant WebVTT files compatible with HTML5 video players
+- **Error Handling**: Graceful degradation with detailed error responses for missing transcripts or API failures
 
 Behavior:
 - Validates target language against supported languages list
-- Checks for DashScope API key configuration
-- Joins all segment texts with numbered markers ([SEG1], [SEG2], etc.) for single API call
-- Sends translation request to DashScope Qwen model with professional translator prompt
-- Implements exponential backoff retry logic for network failures and rate limiting
-- Parses translated content back into individual segments using marker positions
-- Returns translations with preserved timing information
+- Checks for video existence and transcript availability
+- Retrieves cached VTT file if available, otherwise generates on-demand
+- For non-English languages, translates transcript segments using DashScope Qwen models
+- Implements exponential backoff retry logic for translation API calls
+- Caches generated content for future requests
+- Returns WebVTT content with proper MIME type
 
 Error codes:
-- 400: Unsupported language or invalid request format
-- 404: Video ID not found (for context/logging purposes)
-- 500: DashScope API key not configured
-- 502: Translation service unavailable or API failure after retries
+- 400: Unsupported language
+- 404: Video ID not found or transcript not available
+- 502: Subtitle generation failed (transcription or translation errors)
 
 curl example:
 ```bash
-curl -X POST "http://localhost:8000/api/video/<video_id>/translate-transcript" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "language": "ar",
-    "segments": [
-      {"text": "Welcome to the conference", "start_time": 0, "end_time": 3},
-      {"text": "Today we discuss innovation", "start_time": 3, "end_time": 6}
-    ]
-  }'
+curl "http://localhost:8000/api/video/<video_id>/subtitles?language=ar"
 ```
 
 JavaScript fetch example:
 ```javascript
-const response = await fetch(`http://localhost:8000/api/video/${videoId}/translate-transcript`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    language: "fr",
-    segments: [
-      { text: "Hello everyone", start_time: 0, end_time: 2 },
-      { text: "Thank you for attending", start_time: 2, end_time: 4 }
-    ]
-  })
-});
-
-const result = await response.json();
-console.log("Translations:", result.translations);
-console.log("Target language:", result.language);
+const response = await fetch(`http://localhost:8000/api/video/${videoId}/subtitles?language=fr`);
+const vttContent = await response.text();
+console.log("VTT length:", vttContent.length);
 ```
 
 **Section sources**
-- [backend/routers/video.py:231-316](file://backend/routers/video.py#L231-L316)
-- [backend/config.py:6-12](file://backend/config.py#L6-L12)
+- [backend/routers/video.py:349-378](file://backend/routers/video.py#L349-L378)
+- [backend/pipeline/subtitle_generation.py:283-319](file://backend/pipeline/subtitle_generation.py#L283-L319)
+
+### **NEW** GET /api/video/{video_id}/subtitles/download
+Purpose: Download subtitles as downloadable SRT or VTT files with proper attachment headers.
+
+- Method: GET
+- Path: /api/video/{video_id}/subtitles/download
+- Path Parameters:
+  - video_id: UUID of the video
+- Query Parameters:
+  - language: string (optional, default: "en") - Supported languages: en, ar, fr, ru
+  - format: string (optional, default: "srt") - Supported formats: srt, vtt
+- Response:
+  - Content-Type: application/x-subrip (SRT) or text/vtt (VTT)
+  - Content-Disposition: attachment; filename="{video_id}_{language}.{format}"
+  - Body: Subtitle file content for download
+
+**Enhanced** Features:
+- **Multiple Formats**: Supports both SRT and VTT subtitle formats
+- **Automatic Conversion**: Converts between formats while preserving timing and content
+- **Download Headers**: Properly configured Content-Disposition headers for browser downloads
+- **MIME Type Detection**: Returns appropriate Content-Type based on requested format
+- **Caching Integration**: Reuses cached VTT content to avoid redundant translations
+- **Error Handling**: Comprehensive error handling with user-friendly error messages
+
+Behavior:
+- Validates language and format parameters
+- Ensures video exists and transcript is available
+- Uses ensure_subtitle_content() to generate or retrieve subtitle content
+- For SRT format, converts from cached VTT to maintain consistency
+- Sets proper download headers with descriptive filenames
+- Returns subtitle file content with appropriate MIME type
+
+Error codes:
+- 400: Unsupported language or format
+- 404: Video ID not found or transcript not available
+- 502: Subtitle generation failed
+
+curl example:
+```bash
+curl -o subtitles_ar.srt "http://localhost:8000/api/video/<video_id>/subtitles/download?language=ar&format=srt"
+```
+
+JavaScript fetch example:
+```javascript
+const response = await fetch(`http://localhost:8000/api/video/${videoId}/subtitles/download?language=ru&format=vtt`);
+const blob = await response.blob();
+const url = URL.createObjectURL(blob);
+window.open(url, '_blank');
+```
+
+**Section sources**
+- [backend/routers/video.py:381-420](file://backend/routers/video.py#L381-L420)
+- [backend/pipeline/subtitle_generation.py:322-345](file://backend/pipeline/subtitle_generation.py#L322-L345)
+
+### **NEW** Subtitle Generation System
+
+#### Automatic Subtitle Generation Pipeline
+The subtitle generation system provides seamless integration between speech-to-text content and multi-language subtitle creation:
+
+**Generation Workflow:**
+1. **Transcript Loading**: Reads transcript segments from transcript.json after audio analysis completion
+2. **English Generation**: Creates WebVTT files directly from source transcript segments
+3. **Translation Processing**: Translates segments into Arabic, French, and Russian using DashScope Qwen models
+4. **File Caching**: Persists generated VTT files for fast subsequent access
+5. **Error Resilience**: Continues processing even if individual language translations fail
+
+**Language Support:**
+- **English (en)**: Source language - direct conversion from transcript segments
+- **Arabic (ar)**: Full RTL support with proper text direction handling
+- **French (fr)**: European French with cultural context preservation  
+- **Russian (ru)**: Cyrillic script support with proper encoding
+
+**Quality Assurance:**
+- Professional translator prompts ensure contextual accuracy
+- Temperature control (0.3) balances creativity with fidelity
+- Token limits prevent excessive response sizes
+- Error handling ensures graceful degradation
+- Exponential backoff retry logic for reliability
+
+#### Frontend Integration
+The VideoTimeline component provides comprehensive subtitle track management:
+- Native HTML5 video player integration with WebVTT tracks
+- Language selection dropdown with native language labels
+- Real-time caption toggle controls
+- SRT download functionality for offline viewing
+- Proper text direction handling for RTL languages
+- Seamless track switching without page reload
+
+**Section sources**
+- [backend/pipeline/subtitle_generation.py:238-280](file://backend/pipeline/subtitle_generation.py#L238-L280)
+- [backend/pipeline/orchestrator.py:131-139](file://backend/pipeline/orchestrator.py#L131-L139)
+- [frontend/src/components/archive/VideoTimeline.tsx:64-114](file://frontend/src/components/archive/VideoTimeline.tsx#L64-L114)
+- [frontend/src/components/archive/VideoTimeline.tsx:194-204](file://frontend/src/components/archive/VideoTimeline.tsx#L194-L204)
 
 ### **NEW** Transcript Translation System
 
@@ -552,8 +633,8 @@ The TranscriptPanel component provides intuitive translation controls:
 
 **Section sources**
 - [backend/routers/video.py:231-316](file://backend/routers/video.py#L231-L316)
-- [frontend/src/components/archive/TranscriptPanel.tsx:82-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L82-L121)
-- [frontend/src/lib/api.ts:222-233](file://frontend/src/lib/api.ts#L222-L233)
+- [frontend/src/components/archive/TranscriptPanel.tsx:82-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L82-121)
+- [frontend/src/lib/api.ts:222-233](file://frontend/src/lib/api.ts#L222-233)
 
 ### POST /api/video/{video_id}/faces/name
 Purpose: Assign or correct the name of a detected person, optionally saving them to the reference database for future recognition.
@@ -608,7 +689,7 @@ JavaScript fetch example:
 const response = await fetch(`http://localhost:8000/api/video/${videoId}/faces/name`, {
   method: "POST",
   headers: {
-    "Content-Type": "application/json",
+    "Content-Type: application/json",
   },
   body: JSON.stringify({
     face_index: 0,
@@ -624,7 +705,7 @@ console.log("Added to reference:", result.added_to_reference);
 ```
 
 **Section sources**
-- [backend/routers/video.py:408-494](file://backend/routers/video.py#L408-L494)
+- [backend/routers/video.py:494-579](file://backend/routers/video.py#L494-579)
 
 ### GET/POST /api/search
 Purpose: Perform semantic search across all indexed videos with dual HTTP method support and enhanced person filtering.
@@ -676,7 +757,7 @@ const results = await response.json();
 const response = await fetch("http://localhost:8000/api/search", {
   method: "POST",
   headers: {
-    "Content-Type": "application/json",
+    "Content-Type: application/json",
   },
   body: JSON.stringify({
     query: "Sheikh Mohammed",
@@ -689,7 +770,7 @@ console.log("Person appearances:", results.results.filter(r => r.type === "perso
 ```
 
 **Section sources**
-- [backend/routers/video.py:499-541](file://backend/routers/video.py#L499-L541)
+- [backend/routers/video.py:584-626](file://backend/routers/video.py#L584-626)
 
 ### POST /api/reindex
 Purpose: Rebuild the search index from all existing processed video results with enhanced person indexing.
@@ -735,9 +816,9 @@ console.log("Total vectors:", result.total_vectors);
 ```
 
 **Section sources**
-- [backend/routers/video.py:546-585](file://backend/routers/video.py#L546-L585)
-- [backend/pipeline/orchestrator.py:307-367](file://backend/pipeline/orchestrator.py#L307-L367)
-- [backend/pipeline/search_index.py:143-213](file://backend/pipeline/search_index.py#L143-L213)
+- [backend/routers/video.py:631-670](file://backend/routers/video.py#L631-670)
+- [backend/pipeline/orchestrator.py:307-367](file://backend/pipeline/orchestrator.py#L307-367)
+- [backend/pipeline/search_index.py:143-213](file://backend/pipeline/search_index.py#L143-213)
 
 ## Enhanced Face Recognition System
 
@@ -789,8 +870,8 @@ Enhanced face objects include:
 ```
 
 **Section sources**
-- [backend/pipeline/face_recognition.py:185-262](file://backend/pipeline/face_recognition.py#L185-L262)
-- [backend/pipeline/face_recognition.py:404-499](file://backend/pipeline/face_recognition.py#L404-L499)
+- [backend/pipeline/face_recognition.py:185-262](file://backend/pipeline/face_recognition.py#L185-262)
+- [backend/pipeline/face_recognition.py:404-499](file://backend/pipeline/face_recognition.py#L404-499)
 - [backend/pipeline/face_recognition.py:121-182](file://backend/pipeline/face_recognition.py#L121-182)
 
 ## Dependency Analysis
@@ -802,15 +883,17 @@ The video processing endpoints depend on:
 - FFmpeg for local video/audio processing
 - FAISS or numpy for vector search indexing
 - **Enhanced** Reference database system for persistent person recognition
+- **New** Subtitle generation module with automatic multi-language subtitle creation
 - **New** DashScope Qwen models for transcript translation services
 
-**Updated** The system now depends on enhanced transcript translation capabilities with multi-language support, exponential backoff retry logic, and robust error handling. The translation service integrates seamlessly with the existing DashScope infrastructure.
+**Updated** The system now depends on enhanced subtitle generation capabilities with automatic multi-language support, intelligent caching, and robust error handling. The subtitle generation integrates seamlessly with the existing DashScope infrastructure and pipeline orchestration.
 
 ```mermaid
 graph LR
 Router["routers/video.py"] --> Runner["run_pipeline.py"]
 Router --> RefDB["reference_faces.json"]
 Router --> DashScope["DashScope Qwen<br/>Translation Service"]
+Router --> SubtitleAPI["Subtitle API Endpoints"]
 Runner --> Orchestrator["pipeline/orchestrator.py"]
 Orchestrator --> Config["config.py"]
 Orchestrator --> Ingestion["pipeline/ingestion.py"]
@@ -819,23 +902,27 @@ Orchestrator --> Audio["pipeline/audio_analysis.py"]
 Orchestrator --> Face["pipeline/face_recognition.py"]
 Orchestrator --> Metadata["pipeline/metadata_structuring.py"]
 Orchestrator --> SearchIndex["pipeline/search_index.py"]
+Orchestrator --> SubtitleGen["pipeline/subtitle_generation.py"]
 Face --> RefDB
+SubtitleGen --> DashScope
 FrontendAPI["frontend/src/lib/api.ts"] --> Router
 FrontendHook["frontend/src/lib/useVideoProcessing.ts"] --> FrontendAPI
 FrontendUpload["frontend/src/components/archive/VideoUpload.tsx"] --> FrontendHook
 FrontendPeople["frontend/src/components/archive/PeoplePanel.tsx"] --> FrontendHook
 FrontendTranscript["frontend/src/components/archive/TranscriptPanel.tsx"] --> FrontendHook
+FrontendTimeline["frontend/src/components/archive/VideoTimeline.tsx"] --> FrontendAPI
 ```
 
 **Diagram sources**
 - [backend/routers/video.py:17-19](file://backend/routers/video.py#L17-L19)
-- [backend/routers/video.py:231-316](file://backend/routers/video.py#L231-L316)
+- [backend/routers/video.py:341-421](file://backend/routers/video.py#L341-L421)
 - [backend/run_pipeline.py:12-17](file://backend/run_pipeline.py#L12-17)
 - [backend/pipeline/orchestrator.py:14-21](file://backend/pipeline/orchestrator.py#L14-21)
 - [backend/config.py:4-12](file://backend/config.py#L4-L12)
 - [backend/pipeline/face_recognition.py:17-18](file://backend/pipeline/face_recognition.py#L17-L18)
-- [frontend/src/lib/api.ts:164-183](file://frontend/src/lib/api.ts#L164-L183)
-- [frontend/src/components/archive/TranscriptPanel.tsx:1-305](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L305)
+- [backend/pipeline/subtitle_generation.py:15-26](file://backend/pipeline/subtitle_generation.py#L15-26)
+- [frontend/src/lib/api.ts:164-183](file://frontend/src/lib/api.ts#L164-183)
+- [frontend/src/components/archive/VideoTimeline.tsx:30-35](file://frontend/src/components/archive/VideoTimeline.tsx#L30-35)
 
 **Section sources**
 - [backend/main.py:35-38](file://backend/main.py#L35-L38)
@@ -849,17 +936,17 @@ FrontendTranscript["frontend/src/components/archive/TranscriptPanel.tsx"] --> Fr
 - **Updated** Standalone pipeline runner eliminates main server resource contention during long-running operations
 - **Enhanced** Face recognition batch processing improves efficiency by processing multiple faces in single API calls
 - **Enhanced** OCR and transcript context analysis provide additional identification sources without significant performance impact
-- **New** Transcript translation uses batch processing to minimize API calls and reduce latency
-- **New** Exponential backoff retry logic prevents overwhelming translation services during high load
-- Results are persisted as JSON files; ensure sufficient disk space for large archives
-- FFmpeg operations require adequate CPU/memory resources
+- **New** Subtitle generation uses intelligent caching to minimize redundant translation API calls
+- **New** Automatic subtitle generation runs non-blocking after audio transcription completion
+- **New** WebVTT caching system provides fast subtitle delivery for subsequent requests
+- **Enhanced** Reference database lookups are cached and optimized for fast person matching
 - **Updated** Process isolation ensures that memory leaks or resource exhaustion in pipeline stages don't affect server stability
 - **Updated** Subprocess execution allows for automatic process recovery and cleanup
 - **Updated** Separate process execution enables better resource monitoring and control
 - **Updated** Improved memory management through process isolation prevents accumulation of memory leaks
-- **Enhanced** Reference database lookups are cached and optimized for fast person matching
-- **New** Translation service timeout handling prevents hanging requests during network issues
-- **New** Segment batching reduces API overhead by processing multiple segments in single calls
+- **New** Subtitle translation uses exponential backoff retry logic to prevent overwhelming translation services
+- **New** Format conversion between SRT and VTT is optimized to reuse cached content
+- **New** HTML5 video player integration provides native subtitle rendering without additional processing overhead
 
 ## Troubleshooting Guide
 Common issues and resolutions:
@@ -876,10 +963,12 @@ Common issues and resolutions:
 - **Enhanced** Face recognition failures: Check reference_faces.json format and DashScope API connectivity
 - **Enhanced** Person naming errors: Verify face indices exist and names are properly formatted
 - **Enhanced** Search indexing issues: Ensure results.json files contain valid face recognition data
-- **New** Translation failures: Check DASHSCOPE_API_KEY configuration and network connectivity
+- **New** Subtitle generation failures: Check transcript.json availability and DashScope API connectivity
+- **New** Subtitle caching issues: Verify write permissions in video output directories
 - **New** Translation timeouts: Verify DashScope service availability and adjust timeout settings if needed
-- **New** Language support errors: Ensure target language is one of the supported codes (ar, fr, ru)
-- **New** Segment parsing errors: Verify transcript segments have valid timing information
+- **New** Language support errors: Ensure target language is one of the supported codes (en, ar, fr, ru)
+- **New** Format conversion errors: Verify subtitle content integrity during SRT/VTT conversion
+- **New** HTML5 player issues: Check WebVTT format compliance and browser subtitle track support
 
 Error handling patterns:
 - Upload failures return HTTP 500 with detailed error messages
@@ -893,24 +982,29 @@ Error handling patterns:
 - **Updated** Process monitoring helps identify and recover from resource exhaustion scenarios
 - **Enhanced** Face recognition errors include detailed reasoning and confidence scores for debugging
 - **Enhanced** Reference database conflicts are logged and resolved automatically
-- **New** Translation errors implement exponential backoff retry logic with detailed logging
+- **New** Subtitle generation errors implement exponential backoff retry logic with detailed logging
 - **New** Network failures trigger automatic retries with increasing delay intervals
 - **New** API rate limiting is handled gracefully with appropriate wait times
+- **New** Subtitle caching failures are logged but don't prevent on-demand generation
 
 **Section sources**
 - [backend/routers/video.py:57-59](file://backend/routers/video.py#L57-L59)
 - [backend/routers/video.py:129-131](file://backend/routers/video.py#L129-L131)
 - [backend/routers/video.py:184-185](file://backend/routers/video.py#L184-L185)
 - [backend/routers/video.py:238-253](file://backend/routers/video.py#L238-L253)
+- [backend/routers/video.py:358-376](file://backend/routers/video.py#L358-L376)
+- [backend/routers/video.py:387-413](file://backend/routers/video.py#L387-L413)
 - [backend/pipeline/orchestrator.py:259-282](file://backend/pipeline/orchestrator.py#L259-L282)
 - [frontend/src/lib/api.ts:43-95](file://frontend/src/lib/api.ts#L43-L95)
 
 ## Conclusion
 The video processing endpoints provide a robust foundation for AI-powered media archive workflows with enhanced reliability through subprocess-based execution and advanced face recognition capabilities. They support efficient uploads, process isolation, real-time progress monitoring, and comprehensive metadata extraction with structured outputs suitable for broadcasting standards and semantic search. 
 
-**Enhanced** The new transcript translation system provides sophisticated multi-language support with real-time processing, exponential backoff retry logic, and seamless integration with the existing transcript workflow. The translation service leverages DashScope Qwen models to deliver high-quality translations while maintaining temporal accuracy and speaker attribution.
+**Enhanced** The new subtitle generation system provides sophisticated multi-language support with automatic WebVTT creation, intelligent caching, and seamless integration with HTML5 video players. The subtitle system leverages DashScope Qwen models to deliver high-quality translations while maintaining temporal accuracy and preserving speaker attribution throughout the translation process.
 
 **Enhanced** The enhanced face recognition system provides sophisticated person identification through multi-source analysis including OCR text, transcript context, and reference database matching. The face naming endpoint enables seamless integration between manual and automatic identification, while the reference database grows over time to improve future recognition accuracy.
+
+**New** The subtitle generation workflow automatically creates WebVTT tracks after audio transcription completion, providing instant access to captions in multiple languages. The system intelligently caches generated content and provides both inline playback and downloadable formats, ensuring optimal user experience across different devices and browsers.
 
 The subprocess-based execution model ensures that pipeline failures never affect server availability, while maintaining backward compatibility with existing API endpoints and response structures. The standalone pipeline runner provides complete process isolation, enabling better resource management, automatic recovery, and improved system stability. This architecture prevents memory leaks and ensures better system stability through complete process isolation and automatic cleanup mechanisms.
 
@@ -948,14 +1042,23 @@ Transcript response:
 - language: string
 - speaker_count: number
 
-**New** Transcript translation request:
+**New** Subtitle response (GET /subtitles):
+- Content-Type: text/vtt
+- Body: WebVTT formatted subtitle content
+
+**New** Subtitle download response (GET /subtitles/download):
+- Content-Type: application/x-subrip (SRT) or text/vtt (VTT)
+- Content-Disposition: attachment; filename="{video_id}_{language}.{format}"
+- Body: Subtitle file content for download
+
+Transcript translation request:
 - language: string ("ar", "fr", or "ru")
 - segments: array of segment objects
   - text: string (content to translate)
   - start_time: number (segment start time)
   - end_time: number (segment end time)
 
-**New** Transcript translation response:
+Transcript translation response:
 - translations: array of translated segment objects
   - start_time: number (preserved from original)
   - end_time: number (preserved from original)
@@ -1022,12 +1125,38 @@ ws.onmessage = (event) => {
 };
 ```
 
-**New** JavaScript transcript translation:
+**New** JavaScript subtitle retrieval:
+```javascript
+// Get WebVTT content for Arabic subtitles
+const response = await fetch(`http://localhost:8000/api/video/${videoId}/subtitles?language=ar`);
+const vttContent = await response.text();
+console.log("VTT length:", vttContent.length);
+
+// Download SRT file for French subtitles
+const downloadUrl = `http://localhost:8000/api/video/${videoId}/subtitles/download?language=fr&format=srt`;
+window.open(downloadUrl, '_blank');
+```
+
+**New** HTML5 video player with subtitle tracks:
+```html
+<video src="video.mp4" controls>
+  <track kind="subtitles" src="/api/video/video-id/subtitles?language=en" 
+         srcLang="en" label="English" default />
+  <track kind="subtitles" src="/api/video/video-id/subtitles?language=ar" 
+         srcLang="ar" label="العربية" />
+  <track kind="subtitles" src="/api/video/video-id/subtitles?language=fr" 
+         srcLang="fr" label="Français" />
+  <track kind="subtitles" src="/api/video/video-id/subtitles?language=ru" 
+         srcLang="ru" label="Русский" />
+</video>
+```
+
+JavaScript transcript translation:
 ```javascript
 const response = await fetch(`http://localhost:8000/api/video/${videoId}/translate-transcript`, {
   method: "POST",
   headers: {
-    "Content-Type": "application/json",
+    "Content-Type: application/json",
   },
   body: JSON.stringify({
     language: "ar",
@@ -1048,7 +1177,7 @@ JavaScript face naming:
 const response = await fetch(`http://localhost:8000/api/video/${videoId}/faces/name`, {
   method: "POST",
   headers: {
-    "Content-Type": "application/json",
+    "Content-Type: application/json",
   },
   body: JSON.stringify({
     face_index: 0,
@@ -1074,7 +1203,7 @@ JavaScript search (POST):
 const response = await fetch("http://localhost:8000/api/search", {
   method: "POST",
   headers: {
-    "Content-Type": "application/json",
+    "Content-Type: application/json",
   },
   body: JSON.stringify({
     query: "Sheikh Mohammed",
@@ -1112,6 +1241,20 @@ The enhanced face recognition system follows this workflow:
 7. **Search Indexing**: Creates searchable entries for named persons
 
 This workflow provides significantly improved person identification accuracy while maintaining performance through batch processing and intelligent context utilization.
+
+### Subtitle Generation Workflow
+
+The subtitle generation system follows this automated workflow:
+
+1. **Transcript Loading**: Reads transcript segments from transcript.json after audio analysis completion
+2. **English Generation**: Creates WebVTT files directly from source transcript segments
+3. **Translation Processing**: Translates segments into Arabic, French, and Russian using DashScope Qwen models
+4. **File Caching**: Persists generated VTT files for fast subsequent access
+5. **On-Demand Generation**: Generates subtitles on-demand when first requested via API
+6. **Format Conversion**: Converts between SRT and VTT formats while preserving timing
+7. **Error Resilience**: Continues processing even if individual language translations fail
+
+This workflow provides automatic multi-language subtitle creation while maintaining temporal accuracy and minimizing API costs through intelligent caching.
 
 ### Transcript Translation Workflow
 

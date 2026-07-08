@@ -12,6 +12,7 @@ import SearchDemo from "@/components/archive/SearchDemo";
 import APITransparencyPanel from "@/components/archive/APITransparencyPanel";
 import SceneDetection from "@/components/archive/SceneDetection";
 import PeoplePanel from "@/components/archive/PeoplePanel";
+import DubbingPanel from "@/components/archive/DubbingPanel";
 import VideoLibrary from "@/components/archive/VideoLibrary";
 
 /** Convert a timestamp (number of seconds, or "MM:SS" / "HH:MM:SS" string) to seconds */
@@ -171,6 +172,7 @@ function ArchivePageInner() {
                 onSeek={seekTo}
                 onRename={renameFace}
               />
+              <DubbingPanel videoId={state.videoId} />
               <MetadataPanel metadata={state.metadata} />
               <APITransparencyPanel
                 apiCalls={state.metadata?.api_calls || []}

@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     MODEL_EMBEDDING: str = "text-embedding-v3"
     UPLOAD_DIR: str = "./uploads"
     BASE_URL: str = "http://localhost:8000"
+    DUBBING_DEFAULT_LANGUAGE: str = "ar"
+    DUBBING_SUPPORTED_LANGUAGES: str = "ar,en,fr,es,de,ru,hi,zh"  # comma-separated
 
     model_config = {
         "env_file": "../.env",

@@ -1,0 +1,5 @@
+- Long-running video processing is never executed inside the FastAPI event loop; the upload endpoint spawns a detached `subprocess.Popen` running `run_pipeline.py` so the server stays responsive regardless of pipeline duration.
+- Every pipeline stage follows a uniform status contract: a `status.json` dict with keys `status`, `progress`, `stages` (each one of `pending|running|completed|failed`), `errors`, and ISO timestamps, written at each transition.
+- Each uploaded video is isolated under a UUIDv4 directory in `backend/uploads/<id>/`, and all artifacts (audio, transcripts, faces, thumbnails, per-stage JSON) are keyed by that same id.
+- Configuration is loaded once via a module-level `settings = Settings()` singleton from `config.py`, and downstream modules import that instance rather than re-instantiating settings.
+- External LLM calls use a retry-with-exponential-backoff pattern over httpx.AsyncClient with a configurable `max_retries` and timeout, raising a descriptive RuntimeError after exhaustion.

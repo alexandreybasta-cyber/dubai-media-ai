@@ -260,6 +260,17 @@ export const api = {
       videoId: string,
       onMessage: (data: WSMessage) => void
     ) => connectWebSocket(`/api/ws/pipeline/${videoId}`, onMessage),
+    requestDubbing: (videoId: string, targetLanguage: string) =>
+      apiFetch<{ status: string; video_id: string; target_language: string; message: string }>(
+        `/api/video/${videoId}/dub`,
+        { method: "POST", body: JSON.stringify({ target_language: targetLanguage }) }
+      ),
+    getDubbingStatus: (videoId: string) =>
+      apiFetch<{ status: string; languages: Record<string, unknown> }>(`/api/video/${videoId}/dub/status`),
+    getDubbingLanguages: (videoId: string) =>
+      apiFetch<{ video_id: string; dubbed_languages: string[]; supported_languages: string[] }>(
+        `/api/video/${videoId}/dub/languages`
+      ),
   },
 
   // RFP endpoints

@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: ""
-title: Dubai Media — Multimodal Video Ingestion & RFP Platform
+title: Dubai Media AI Backend (FastAPI + Video Processing Pipeline)
 scope: []
 source_files: []
 depends_on: []

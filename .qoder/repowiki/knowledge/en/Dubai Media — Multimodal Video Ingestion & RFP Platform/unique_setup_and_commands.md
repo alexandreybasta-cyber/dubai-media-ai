@@ -1,1 +1,0 @@
-Copy `.env.example` to `.env` and set `DASHSCOPE_API_KEY` (and optionally `DASHSCOPE_VIDEO_API_KEY` / model overrides); run the full stack with `docker-compose up`; locally start the backend via `uvicorn main:app --reload` from `backend/` and the frontend via `npm run dev` from `frontend/` with `NEXT_PUBLIC_API_URL=http://localhost:8000`.

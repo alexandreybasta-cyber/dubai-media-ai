@@ -15,14 +15,15 @@ from typing import Dict, List, Optional
 
 import aiofiles
 import httpx
-from fastapi import APIRouter, UploadFile, File, WebSocket, WebSocketDisconnect, HTTPException
-from fastapi.responses import Response
+from fastapi import APIRouter, UploadFile, File, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi.responses import Response, FileResponse
 from pydantic import BaseModel
 
 from config import settings
 from pipeline.orchestrator import PipelineOrchestrator
 from pipeline.search_index import SearchIndex
 from pipeline import subtitle_generation
+from pipeline import dubbing
 
 logger = logging.getLogger(__name__)
 
@@ -416,6 +417,140 @@ async def download_subtitles(video_id: str, language: str = "en", format: str = 
         content=content,
         media_type=_SUBTITLE_MIME[fmt],
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── Dubbing ─────────────────────────────────────────────────────────
+
+# Track in-flight dubbing tasks to avoid launching duplicates: {(video_id, lang)}
+_active_dubbing: set = set()
+
+
+def _supported_dub_languages() -> List[str]:
+    """Parse the comma-separated supported dubbing languages from settings."""
+    return [
+        c.strip().lower()
+        for c in settings.DUBBING_SUPPORTED_LANGUAGES.split(",")
+        if c.strip()
+    ]
+
+
+async def _run_dubbing_task(video_id: str, video_path: str, output_dir: str, lang: str):
+    """Background task wrapper that runs the dubbing pipeline and clears the lock."""
+    try:
+        await dubbing.dub_video(video_id, video_path, output_dir, lang)
+    except Exception as e:
+        logger.error("Dubbing task failed for %s (%s): %s", video_id, lang, e)
+    finally:
+        _active_dubbing.discard((video_id, lang))
+
+
+@router.post("/video/{video_id}/dub")
+async def request_dubbing(video_id: str, request: Request):
+    """Request dubbing for a video. Body: {"target_language": "ar"}"""
+    output_dir = os.path.join(settings.UPLOAD_DIR, video_id)
+    if not os.path.isdir(output_dir):
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    lang = str(body.get("target_language") or settings.DUBBING_DEFAULT_LANGUAGE).lower()
+
+    if lang not in _supported_dub_languages():
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported language '{lang}'. Supported: {settings.DUBBING_SUPPORTED_LANGUAGES}",
+        )
+
+    # A transcript is required to dub.
+    if not os.path.exists(os.path.join(output_dir, "transcript.json")):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Transcript for {video_id} not available yet",
+        )
+
+    # Return cached result if the dubbed video already exists.
+    dubbed_video = os.path.join(output_dir, "dubbed", f"video_{lang}.mp4")
+    if os.path.exists(dubbed_video):
+        return {
+            "status": "completed",
+            "video_id": video_id,
+            "target_language": lang,
+            "cached": True,
+            "video_path": f"/uploads/{video_id}/dubbed/video_{lang}.mp4",
+        }
+
+    # Avoid launching a duplicate task for the same video/language.
+    if (video_id, lang) in _active_dubbing:
+        return {"status": "processing", "video_id": video_id, "target_language": lang}
+
+    video_file = _find_video_file(video_id)
+    if not video_file:
+        raise HTTPException(status_code=404, detail=f"Source video file for {video_id} not found")
+    video_path = os.path.join(settings.UPLOAD_DIR, video_file)
+
+    _active_dubbing.add((video_id, lang))
+    asyncio.create_task(_run_dubbing_task(video_id, video_path, output_dir, lang))
+
+    return {"status": "processing", "video_id": video_id, "target_language": lang}
+
+
+@router.get("/video/{video_id}/dub/status")
+async def get_dubbing_status(video_id: str, language: str = ""):
+    """Get dubbing status for a video (optionally for a specific language)."""
+    dubbed_dir = os.path.join(settings.UPLOAD_DIR, video_id, "dubbed")
+    if not os.path.isdir(dubbed_dir):
+        return {"video_id": video_id, "status": "not_started", "languages": []}
+
+    lang = (language or settings.DUBBING_DEFAULT_LANGUAGE).lower()
+
+    # Prefer the detailed dubbing_{lang}.json, fall back to status_{lang}.json.
+    for fname in (f"dubbing_{lang}.json", f"status_{lang}.json"):
+        data = _read_json(os.path.join(dubbed_dir, fname))
+        if data is not None:
+            data["video_id"] = video_id
+            if (video_id, lang) in _active_dubbing:
+                data["status"] = "processing"
+            return data
+
+    status = "processing" if (video_id, lang) in _active_dubbing else "not_started"
+    return {"video_id": video_id, "target_language": lang, "status": status}
+
+
+@router.get("/video/{video_id}/dub/languages")
+async def get_available_languages(video_id: str):
+    """Get list of available dubbed languages for a video."""
+    dubbed_dir = os.path.join(settings.UPLOAD_DIR, video_id, "dubbed")
+    available = []
+    if os.path.isdir(dubbed_dir):
+        for fname in os.listdir(dubbed_dir):
+            if fname.startswith("video_") and fname.endswith(".mp4"):
+                available.append(fname[len("video_"):-len(".mp4")])
+    return {
+        "video_id": video_id,
+        "available": sorted(available),
+        "supported": _supported_dub_languages(),
+    }
+
+
+@router.get("/video/{video_id}/dubbed/{language}")
+async def get_dubbed_video(video_id: str, language: str):
+    """Stream the dubbed video file."""
+    lang = (language or "").lower()
+    dubbed_video = os.path.join(
+        settings.UPLOAD_DIR, video_id, "dubbed", f"video_{lang}.mp4"
+    )
+    if not os.path.isfile(dubbed_video):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Dubbed video for {video_id} ({lang}) not found",
+        )
+    return FileResponse(
+        dubbed_video,
+        media_type="video/mp4",
+        filename=f"{video_id}_{lang}.mp4",
     )
 
 
