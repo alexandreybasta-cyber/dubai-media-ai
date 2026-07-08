@@ -242,6 +242,11 @@ export const api = {
       }),
     list: () =>
       apiFetch<{ videos: LibraryVideo[]; total: number }>("/api/videos"),
+    delete: (videoIds: string[]) =>
+      apiFetch<{ deleted: string[]; failed: { video_id: string; error: string }[] }>(
+        "/api/videos",
+        { method: "DELETE", body: JSON.stringify({ video_ids: videoIds }) }
+      ),
     nameFace: (
       videoId: string,
       data: {

@@ -27,11 +27,10 @@
 
 ## Update Summary
 **Changes Made**
-- Added comprehensive documentation for new dubbing API endpoints including POST /api/video/{video_id}/dub for job submission, GET /api/video/{video_id}/dub/status for progress monitoring, and GET /api/video/{video_id}/dub/languages for language availability checks
-- Enhanced video processing pipeline integration with automatic dubbing capabilities using Edge-TTS and DashScope translation services
-- Updated architecture diagrams to reflect dubbing workflow integration
-- Added detailed examples for dubbing functionality with curl commands and JavaScript implementations
-- Updated frontend integration examples to demonstrate dubbing panel management in DubbingPanel component
+- Enhanced Arabic translation handling with improved language identification ('Modern Standard Arabic (العربية)') and better AI model guidance to prevent Chinese output defaults
+- Updated /api/video/{video_id}/languages endpoint response structure with clearer field names (dubbed_languages, supported_languages)
+- Improved subtitle generation system with enhanced Arabic language support and explicit script specification
+- Enhanced transcript translation system with better Arabic language disambiguation
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -142,13 +141,13 @@ DUBBING --> FFMPEG
 
 **Diagram sources**
 - [backend/main.py:1-44](file://backend/main.py#L1-L44)
-- [backend/routers/video.py:1-860](file://backend/routers/video.py#L1-L860)
+- [backend/routers/video.py:1-918](file://backend/routers/video.py#L1-L918)
 - [backend/run_pipeline.py:1-29](file://backend/run_pipeline.py#L1-L29)
 - [backend/pipeline/orchestrator.py:1-403](file://backend/pipeline/orchestrator.py#L1-L403)
 - [backend/config.py:1-33](file://backend/config.py#L1-L33)
 - [backend/pipeline/search_index.py:1-333](file://backend/pipeline/search_index.py#L1-L333)
 - [backend/pipeline/face_recognition.py:1-660](file://backend/pipeline/face_recognition.py#L1-L660)
-- [backend/pipeline/subtitle_generation.py:1-383](file://backend/pipeline/subtitle_generation.py#L1-L383)
+- [backend/pipeline/subtitle_generation.py:1-577](file://backend/pipeline/subtitle_generation.py#L1-L577)
 - [backend/pipeline/dubbing.py:1-508](file://backend/pipeline/dubbing.py#L1-L508)
 - [frontend/src/components/archive/DubbingPanel.tsx:1-338](file://frontend/src/components/archive/DubbingPanel.tsx#L1-L338)
 
@@ -158,9 +157,9 @@ DUBBING --> FFMPEG
 
 ## Core Components
 - Video upload router: Handles multipart/form-data uploads, saves files, initializes status, and launches the pipeline as a completely separate subprocess for process isolation and enhanced reliability
-- **Enhanced** Transcript translation router: Provides real-time translation of transcript segments into Arabic, French, and Russian using DashScope Qwen models with exponential backoff retry logic
+- **Enhanced** Transcript translation router: Provides real-time translation of transcript segments into Arabic, French, and Russian using DashScope Qwen models with exponential backoff retry logic and improved Arabic language identification
 - **NEW** Dubbing router: Manages dubbing job submission, progress tracking, and dubbed video delivery with Edge-TTS voice synthesis and FFmpeg audio assembly
-- **Enhanced** Subtitle generation router: Manages WebVTT and SRT subtitle generation with automatic multi-language support and caching
+- **Enhanced** Subtitle generation router: Manages WebVTT and SRT subtitle generation with automatic multi-language support, enhanced Arabic language handling, and intelligent caching
 - **Enhanced** Face naming router: Manages person identification with manual naming, reference database integration, and immediate search indexing
 - Standalone pipeline runner: Executes the pipeline in a separate Python process with full isolation from the main API server
 - **Enhanced** Pipeline orchestrator: Coordinates six stages with progress tracking, error handling, integrated face recognition with OCR/transcript context, and automatic subtitle generation
@@ -175,7 +174,7 @@ Key capabilities:
 - **New** Real-time dubbing with automatic multi-language voice synthesis (Arabic, English, French, Spanish, German, Russian, Hindi, Chinese)
 - **New** Intelligent dubbing job queue with duplicate prevention and background task management
 - **New** Seamless dubbed video delivery with streaming support and download capabilities
-- **New** Professional translation quality using DashScope Qwen models with exponential backoff retry logic
+- **New** Professional translation quality using DashScope Qwen models with exponential backoff retry logic and enhanced Arabic language disambiguation
 - **New** High-quality voice synthesis using Microsoft Edge-TTS neural voices with proper language-specific voices
 - **New** Precise timing preservation during audio assembly using FFmpeg concat operations and silence gaps
 - **Enhanced** Advanced face recognition with OCR text fallback, transcript context, and reference database matching
@@ -184,7 +183,7 @@ Key capabilities:
 - Semantic search with dual HTTP method support and person-specific filtering
 - Batch reindexing from existing processed videos
 
-**Updated** The system now implements comprehensive dubbing capabilities with automatic multi-language voice synthesis. The dubbing system automatically generates dubbed video tracks after audio transcription completion, providing instant access to professionally translated and synthesized audio in multiple languages while maintaining temporal accuracy and preserving speaker attribution throughout the translation and synthesis process.
+**Updated** The system now implements comprehensive dubbing capabilities with automatic multi-language voice synthesis and enhanced Arabic language support. The dubbing system automatically generates dubbed video tracks after audio transcription completion, providing instant access to professionally translated and synthesized audio in multiple languages while maintaining temporal accuracy and preserving speaker attribution throughout the translation and synthesis process.
 
 **Section sources**
 - [backend/routers/video.py:450-501](file://backend/routers/video.py#L450-L501)
@@ -197,7 +196,7 @@ Key capabilities:
 - [backend/pipeline/orchestrator.py:131-139](file://backend/pipeline/orchestrator.py#L131-L139)
 - [backend/pipeline/search_index.py:59-333](file://backend/pipeline/search_index.py#L59-L333)
 - [backend/pipeline/face_recognition.py:185-262](file://backend/pipeline/face_recognition.py#L185-L262)
-- [backend/pipeline/subtitle_generation.py:238-280](file://backend/pipeline/subtitle_generation.py#L238-280)
+- [backend/pipeline/subtitle_generation.py:238-280](file://backend/pipeline/subtitle_generation.py#L238-L280)
 - [backend/pipeline/dubbing.py:56-161](file://backend/pipeline/dubbing.py#L56-L161)
 - [frontend/src/components/archive/DubbingPanel.tsx:27-138](file://frontend/src/components/archive/DubbingPanel.tsx#L27-L138)
 
@@ -213,7 +212,7 @@ The system follows a staged pipeline architecture with subprocess-based executio
 8. Results are saved as individual JSON artifacts per stage
 9. **Enhanced** Search index is built incrementally during processing with person-specific entries and can be rebuilt via /api/reindex
 
-**Updated** The system now features comprehensive dubbing capabilities as an on-demand service. When users request dubbing for a specific language, the system creates a background task that translates transcript segments using DashScope Qwen models, synthesizes speech using Edge-TTS neural voices, and assembles the final dubbed video using FFmpeg. The dubbing process maintains precise timing synchronization and provides real-time progress updates through dedicated status endpoints.
+**Updated** The system now features comprehensive dubbing capabilities as an on-demand service with enhanced Arabic language support. When users request dubbing for a specific language, the system creates a background task that translates transcript segments using DashScope Qwen models with improved Arabic language identification, synthesizes speech using Edge-TTS neural voices, and assembles the final dubbed video using FFmpeg. The dubbing process maintains precise timing synchronization and provides real-time progress updates through dedicated status endpoints.
 
 ```mermaid
 sequenceDiagram
@@ -249,6 +248,7 @@ Note over API : "Server remains unaffected<br/>by subprocess execution"
 Client->>API : "POST /api/video/{id}/dub {target_language : 'ar'}"
 API->>DubbingTask : "asyncio.create_task(_run_dubbing_task)"
 DubbingTask->>Translator : "Translate segments (AR/FR/RU/etc.)"
+Note over Translator : "Enhanced Arabic language<br/>identification with explicit<br/>script specification"
 Translator-->>DubbingTask : "Translated segments"
 DubbingTask->>TTS : "Synthesize speech (edge-tts)"
 TTS-->>DubbingTask : "Audio segments"
@@ -512,7 +512,7 @@ Purpose: Submit a dubbing job for a video to create a dubbed version in the spec
 - **Background Processing**: Runs as asynchronous task to prevent blocking the main API server
 - **Duplicate Prevention**: Prevents multiple simultaneous dubbing jobs for the same video/language combination
 - **Caching**: Returns immediately if dubbed version already exists
-- **Professional Translation**: Uses DashScope Qwen models for high-quality translation
+- **Professional Translation**: Uses DashScope Qwen models for high-quality translation with enhanced Arabic language identification
 - **Neural Voice Synthesis**: Employs Microsoft Edge-TTS for natural-sounding speech synthesis
 - **Timing Preservation**: Maintains precise timing synchronization with original video using FFmpeg
 
@@ -618,8 +618,10 @@ Purpose: Check available dubbed languages and supported language options for a v
   - video_id: UUID of the video
 - Response Schema:
   - video_id: string
-  - available: array of strings (languages with existing dubbed versions)
-  - supported: array of strings (all supported language codes)
+  - dubbed_languages: array of strings (languages with existing dubbed versions)
+  - supported_languages: array of strings (all supported language codes)
+
+**Updated** Response structure now uses clearer field names for better API consistency and developer experience.
 
 **Enhanced** Features:
 - **Available Languages**: Lists languages for which dubbed versions already exist
@@ -641,8 +643,8 @@ JavaScript fetch example:
 ```javascript
 const response = await fetch(`http://localhost:8000/api/video/${videoId}/dub/languages`);
 const languages = await response.json();
-console.log("Available dubs:", languages.available);
-console.log("Supported languages:", languages.supported);
+console.log("Available dubs:", languages.dubbed_languages);
+console.log("Supported languages:", languages.supported_languages);
 ```
 
 **Section sources**
@@ -707,7 +709,7 @@ Purpose: Retrieve WebVTT subtitle content for a video in the specified language 
 - **Multi-language Support**: Provides subtitles in English (source), Arabic, French, and Russian
 - **Automatic Generation**: Generates WebVTT content on-the-fly if not already cached
 - **Intelligent Caching**: Persists generated subtitles for faster subsequent requests
-- **Real-time Translation**: Translates transcript segments using DashScope Qwen models with exponential backoff retry logic
+- **Real-time Translation**: Translates transcript segments using DashScope Qwen models with exponential backoff retry logic and enhanced Arabic language identification
 - **Format Compliance**: Produces standards-compliant WebVTT files compatible with HTML5 video players
 - **Error Handling**: Graceful degradation with detailed error responses for missing transcripts or API failures
 
@@ -715,7 +717,7 @@ Behavior:
 - Validates target language against supported languages list
 - Checks for video existence and transcript availability
 - Retrieves cached VTT file if available, otherwise generates on-demand
-- For non-English languages, translates transcript segments using DashScope Qwen models
+- For non-English languages, translates transcript segments using DashScope Qwen models with improved Arabic language handling
 - Implements exponential backoff retry logic for translation API calls
 - Caches generated content for future requests
 - Returns WebVTT content with proper MIME type
@@ -738,7 +740,7 @@ console.log("VTT length:", vttContent.length);
 ```
 
 **Section sources**
-- [backend/routers/video.py:349-378](file://backend/routers/video.py#L349-378)
+- [backend/routers/video.py:349-378](file://backend/routers/video.py#L349-L378)
 - [backend/pipeline/subtitle_generation.py:283-319](file://backend/pipeline/subtitle_generation.py#L283-319)
 
 ### GET /api/video/{video_id}/subtitles/download
@@ -791,7 +793,7 @@ window.open(url, '_blank');
 ```
 
 **Section sources**
-- [backend/routers/video.py:381-420](file://backend/routers/video.py#L381-420)
+- [backend/routers/video.py:381-420](file://backend/routers/video.py#L381-L420)
 - [backend/pipeline/subtitle_generation.py:322-345](file://backend/pipeline/subtitle_generation.py#L322-345)
 
 ### **NEW** Dubbing System
@@ -803,14 +805,14 @@ The dubbing system provides comprehensive video dubbing capabilities with profes
 1. **Job Submission**: Accepts dubbing requests with target language specification
 2. **Background Processing**: Runs as asynchronous task to prevent API blocking
 3. **Transcript Loading**: Reads transcript segments with timing information
-4. **Professional Translation**: Translates segments using DashScope Qwen models
+4. **Professional Translation**: Translates segments using DashScope Qwen models with enhanced Arabic language identification
 5. **Voice Synthesis**: Generates speech using Edge-TTS neural voices
 6. **Audio Assembly**: Combines segments with precise timing using FFmpeg
 7. **Video Muxing**: Creates final dubbed video with original video track
 8. **Progress Tracking**: Updates status files for real-time monitoring
 
 **Language Support:**
-- **Arabic (ar)**: Saudi Arabian male/female voices with RTL support
+- **Arabic (ar)**: Saudi Arabian male/female voices with RTL support and Modern Standard Arabic identification
 - **English (en)**: US male voices with American pronunciation
 - **French (fr)**: European French male voices with cultural context
 - **Spanish (es)**: Castilian Spanish male voices
@@ -820,7 +822,7 @@ The dubbing system provides comprehensive video dubbing capabilities with profes
 - **Chinese (zh)**: Simplified Chinese male voices
 
 **Quality Assurance:**
-- Professional translator prompts ensure contextual accuracy
+- Professional translator prompts ensure contextual accuracy with enhanced Arabic language disambiguation
 - Temperature control (0.3) balances creativity with fidelity
 - Token limits prevent excessive response sizes
 - Error handling ensures graceful degradation
@@ -830,7 +832,7 @@ The dubbing system provides comprehensive video dubbing capabilities with profes
 The dubbing system leverages multiple technologies for optimal quality:
 
 **Translation Layer:**
-- Uses DashScope Qwen models for high-quality translation
+- Uses DashScope Qwen models for high-quality translation with improved Arabic language identification
 - Implements numbered segment markers for precise parsing
 - Maintains timing information throughout translation process
 - Provides fallback mechanisms for API failures
@@ -870,18 +872,18 @@ The subtitle generation system provides seamless integration between speech-to-t
 **Generation Workflow:**
 1. **Transcript Loading**: Reads transcript segments from transcript.json after audio analysis completion
 2. **English Generation**: Creates WebVTT files directly from source transcript segments
-3. **Translation Processing**: Translates segments into Arabic, French, and Russian using DashScope Qwen models
+3. **Translation Processing**: Translates segments into Arabic, French, and Russian using DashScope Qwen models with enhanced Arabic language identification
 4. **File Caching**: Persists generated VTT files for fast subsequent access
 5. **Error Resilience**: Continues processing even if individual language translations fail
 
 **Language Support:**
 - **English (en)**: Source language - direct conversion from transcript segments
-- **Arabic (ar)**: Full RTL support with proper text direction handling
+- **Arabic (ar)**: Full RTL support with proper text direction handling and Modern Standard Arabic identification
 - **French (fr)**: European French with cultural context preservation  
 - **Russian (ru)**: Cyrillic script support with proper encoding
 
 **Quality Assurance:**
-- Professional translator prompts ensure contextual accuracy
+- Professional translator prompts ensure contextual accuracy with enhanced Arabic language disambiguation
 - Temperature control (0.3) balances creativity with fidelity
 - Token limits prevent excessive response sizes
 - Error handling ensures graceful degradation
@@ -899,8 +901,8 @@ The VideoTimeline component provides comprehensive subtitle track management:
 **Section sources**
 - [backend/pipeline/subtitle_generation.py:238-280](file://backend/pipeline/subtitle_generation.py#L238-280)
 - [backend/pipeline/orchestrator.py:131-139](file://backend/pipeline/orchestrator.py#L131-L139)
-- [frontend/src/components/archive/VideoTimeline.tsx:64-114](file://frontend/src/components/archive/VideoTimeline.tsx#L64-L114)
-- [frontend/src/components/archive/VideoTimeline.tsx:194-204](file://frontend/src/components/archive/VideoTimeline.tsx#L194-L204)
+- [frontend/src/components/archive/VideoTimeline.tsx:64-114](file://frontend/src/components/archive/VideoTimeline.tsx#L64-114)
+- [frontend/src/components/archive/VideoTimeline.tsx:194-204](file://frontend/src/components/archive/VideoTimeline.tsx#L194-204)
 
 ### Transcript Translation System
 
@@ -910,18 +912,18 @@ The transcript translation system provides seamless integration between speech-t
 **Translation Pipeline:**
 1. **Segment Collection**: Gathers transcript segments with timing information
 2. **Batch Processing**: Combines segments with numbered markers for efficient API calls
-3. **Model Integration**: Uses DashScope Qwen models for high-quality translation
+3. **Model Integration**: Uses DashScope Qwen models for high-quality translation with enhanced Arabic language identification
 4. **Retry Logic**: Implements exponential backoff for reliability
 5. **Result Parsing**: Splits translated content back into individual segments
 6. **Timing Preservation**: Maintains original timestamps and speaker attribution
 
 **Language Support:**
-- **Arabic (ar)**: Full RTL support with proper text direction handling
+- **Arabic (ar)**: Full RTL support with proper text direction handling and Modern Standard Arabic identification
 - **French (fr)**: European French with cultural context preservation
 - **Russian (ru)**: Cyrillic script support with proper encoding
 
 **Quality Assurance:**
-- Professional translator prompts ensure contextual accuracy
+- Professional translator prompts ensure contextual accuracy with enhanced Arabic language disambiguation
 - Temperature control (0.3) balances creativity with fidelity
 - Token limits prevent excessive response sizes
 - Error handling ensures graceful degradation
@@ -1182,21 +1184,21 @@ The video processing endpoints depend on:
 - FastAPI routing with subprocess-based execution for process isolation
 - Standalone pipeline runner that executes independently from the main server
 - Filesystem for saving uploads and results
-- External AI services (DashScope) for vision, ASR, text generation, and translation
+- External AI services (DashScope) for vision, ASR, text generation, and translation with enhanced Arabic language support
 - FFmpeg for local video/audio processing
 - FAISS or numpy for vector search indexing
 - **Enhanced** Reference database system for persistent person recognition
-- **New** Subtitle generation module with automatic multi-language subtitle creation
+- **New** Subtitle generation module with automatic multi-language subtitle creation and enhanced Arabic language handling
 - **New** Dubbing module with Edge-TTS voice synthesis and FFmpeg audio assembly
-- **New** DashScope Qwen models for transcript translation services
+- **New** DashScope Qwen models for transcript translation services with improved Arabic language identification
 
-**Updated** The system now depends on enhanced dubbing capabilities with automatic multi-language voice synthesis, intelligent job queuing, and robust error handling. The dubbing system integrates seamlessly with the existing DashScope infrastructure, Edge-TTS service, and FFmpeg tools while maintaining process isolation and resource management.
+**Updated** The system now depends on enhanced dubbing capabilities with automatic multi-language voice synthesis, intelligent job queuing, and robust error handling. The dubbing system integrates seamlessly with the existing DashScope infrastructure, Edge-TTS service, and FFmpeg tools while maintaining process isolation and resource management. Enhanced Arabic language support ensures accurate translation and synthesis for Middle Eastern content.
 
 ```mermaid
 graph LR
 Router["routers/video.py"] --> Runner["run_pipeline.py"]
 Router --> RefDB["reference_faces.json"]
-Router --> DashScope["DashScope Qwen<br/>Translation Service"]
+Router --> DashScope["DashScope Qwen<br/>Translation Service<br/>(Enhanced Arabic Support)"]
 Router --> DubbingAPI["Dubbing API Endpoints"]
 Router --> SubtitleAPI["Subtitle API Endpoints"]
 Runner --> Orchestrator["pipeline/orchestrator.py"]
@@ -1207,7 +1209,7 @@ Orchestrator --> Audio["pipeline/audio_analysis.py"]
 Orchestrator --> Face["pipeline/face_recognition.py"]
 Orchestrator --> Metadata["pipeline/metadata_structuring.py"]
 Orchestrator --> SearchIndex["pipeline/search_index.py"]
-Orchestrator --> SubtitleGen["pipeline/subtitle_generation.py"]
+Orchestrator --> SubtitleGen["pipeline/subtitle_generation.py<br/>(Enhanced Arabic)"]
 Face --> RefDB
 SubtitleGen --> DashScope
 DubbingAPI --> DashScope
@@ -1250,7 +1252,7 @@ FrontendDubbing["frontend/src/components/archive/DubbingPanel.tsx"] --> Frontend
 - **New** Intelligent job queuing prevents duplicate dubbing requests for the same video/language
 - **New** Edge-TTS voice synthesis is optimized for batch processing with parallel segment synthesis
 - **New** FFmpeg audio assembly uses efficient concat operations for minimal processing overhead
-- **Enhanced** Subtitle generation uses intelligent caching to minimize redundant translation API calls
+- **Enhanced** Subtitle generation uses intelligent caching to minimize redundant translation API calls with enhanced Arabic language handling
 - **Enhanced** Reference database lookups are cached and optimized for fast person matching
 - **Updated** Process isolation ensures that memory leaks or resource exhaustion in pipeline stages don't affect server stability
 - **Updated** Subprocess execution allows for automatic process recovery and cleanup
@@ -1287,6 +1289,8 @@ Common issues and resolutions:
 - **New** Language support errors: Ensure target language is one of the supported codes (ar, en, fr, es, de, ru, hi, zh)
 - **New** Format conversion errors: Verify subtitle content integrity during SRT/VTT conversion
 - **New** HTML5 player issues: Check WebVTT format compliance and browser subtitle track support
+- **Enhanced** Arabic translation issues: Verify language identification is set to "Modern Standard Arabic (العربية)" and check for Chinese output defaults
+- **Enhanced** Subtitle generation problems: Check enhanced Arabic language handling in subtitle generation pipeline
 
 Error handling patterns:
 - Upload failures return HTTP 500 with detailed error messages
@@ -1307,6 +1311,7 @@ Error handling patterns:
 - **New** Background task failures are logged and cleaned up automatically
 - **New** Edge-TTS failures fall back to silence insertion for affected segments
 - **New** FFmpeg errors include detailed stderr output for troubleshooting
+- **Enhanced** Arabic translation errors include specific guidance about language identification and script requirements
 
 **Section sources**
 - [backend/routers/video.py:57-59](file://backend/routers/video.py#L57-L59)
@@ -1324,13 +1329,13 @@ Error handling patterns:
 ## Conclusion
 The video processing endpoints provide a robust foundation for AI-powered media archive workflows with enhanced reliability through subprocess-based execution and advanced face recognition capabilities. They support efficient uploads, process isolation, real-time progress monitoring, and comprehensive metadata extraction with structured outputs suitable for broadcasting standards and semantic search. 
 
-**Enhanced** The new dubbing system provides sophisticated multi-language voice synthesis with automatic translation, professional neural voices, and seamless integration with HTML5 video players. The dubbing system leverages DashScope Qwen models for translation and Edge-TTS for voice synthesis while maintaining temporal accuracy and preserving speaker attribution throughout the translation and synthesis process.
+**Enhanced** The new dubbing system provides sophisticated multi-language voice synthesis with automatic translation, professional neural voices, and seamless integration with HTML5 video players. The dubbing system leverages DashScope Qwen models for translation and Edge-TTS for voice synthesis while maintaining temporal accuracy and preserving speaker attribution throughout the translation and synthesis process. Enhanced Arabic language support ensures accurate translation and synthesis for Middle Eastern content.
 
 **Enhanced** The enhanced face recognition system provides sophisticated person identification through multi-source analysis including OCR text, transcript context, and reference database matching. The face naming endpoint enables seamless integration between manual and automatic identification, while the reference database grows over time to improve future recognition accuracy.
 
 **New** The dubbing workflow automatically processes on-demand requests with background task management, providing instant access to professionally dubbed video content in multiple languages. The system intelligently manages job queues, caches results, and provides both streaming playback and downloadable formats, ensuring optimal user experience across different devices and browsers.
 
-**Enhanced** The subtitle generation system provides sophisticated multi-language support with automatic WebVTT creation, intelligent caching, and seamless integration with HTML5 video players. The subtitle system leverages DashScope Qwen models to deliver high-quality translations while maintaining temporal accuracy and preserving speaker attribution throughout the translation process.
+**Enhanced** The subtitle generation system provides sophisticated multi-language support with automatic WebVTT creation, intelligent caching, and seamless integration with HTML5 video players. The subtitle system leverages DashScope Qwen models to deliver high-quality translations while maintaining temporal accuracy and preserving speaker attribution throughout the translation process. Enhanced Arabic language identification ensures accurate Modern Standard Arabic output.
 
 The subprocess-based execution model ensures that pipeline failures never affect server availability, while maintaining backward compatibility with existing API endpoints and response structures. The standalone pipeline runner provides complete process isolation, enabling better resource management, automatic recovery, and improved system stability. This architecture prevents memory leaks and ensures better system stability through complete process isolation and automatic cleanup mechanisms.
 
@@ -1385,10 +1390,10 @@ Transcript response:
 - stage: string (optional)
 - error: string (optional)
 
-**New** Dubbing languages response (GET /dub/languages):
+**Updated** Dubbing languages response (GET /dub/languages):
 - video_id: string
-- available: array of strings (existing dubbed languages)
-- supported: array of strings (all supported languages)
+- dubbed_languages: array of strings (existing dubbed languages)
+- supported_languages: array of strings (all supported languages)
 
 **New** Dubbed video response (GET /dubbed/{language}):
 - Content-Type: video/mp4
@@ -1510,7 +1515,8 @@ const pollInterval = setInterval(async () => {
 // Get available languages
 const languages = await fetch(`http://localhost:8000/api/video/${videoId}/dub/languages`);
 const langData = await languages.json();
-console.log("Available dubs:", langData.available);
+console.log("Available dubs:", langData.dubbed_languages);
+console.log("Supported languages:", langData.supported_languages);
 ```
 
 **New** HTML5 video player with dubbed content:
@@ -1665,7 +1671,7 @@ The subtitle generation system follows this automated workflow:
 
 1. **Transcript Loading**: Reads transcript segments from transcript.json after audio analysis completion
 2. **English Generation**: Creates WebVTT files directly from source transcript segments
-3. **Translation Processing**: Translates segments into Arabic, French, and Russian using DashScope Qwen models
+3. **Translation Processing**: Translates segments into Arabic, French, and Russian using DashScope Qwen models with enhanced Arabic language identification
 4. **File Caching**: Persists generated VTT files for fast subsequent access
 5. **On-Demand Generation**: Generates subtitles on-demand when first requested via API
 6. **Format Conversion**: Converts between SRT and VTT formats while preserving timing
@@ -1680,7 +1686,7 @@ The dubbing system follows this comprehensive workflow:
 1. **Job Submission**: Accepts dubbing requests with target language specification
 2. **Background Task Creation**: Creates asyncio task for non-blocking processing
 3. **Transcript Loading**: Reads transcript segments with timing information
-4. **Professional Translation**: Translates segments using DashScope Qwen models
+4. **Professional Translation**: Translates segments using DashScope Qwen models with enhanced Arabic language identification
 5. **Voice Synthesis**: Generates speech using Edge-TTS neural voices
 6. **Audio Assembly**: Combines segments with precise timing using FFmpeg
 7. **Video Muxing**: Creates final dubbed video with original video track
@@ -1695,7 +1701,7 @@ The transcript translation system follows this workflow:
 
 1. **Segment Collection**: Gathers transcript segments with timing information
 2. **Batch Preparation**: Joins segments with numbered markers for single API call
-3. **Model Request**: Sends translation request to DashScope Qwen with professional prompt
+3. **Model Request**: Sends translation request to DashScope Qwen with professional prompt and enhanced Arabic language identification
 4. **Retry Logic**: Implements exponential backoff for reliability (1s, 2s, 4s delays)
 5. **Response Parsing**: Splits translated content back into individual segments
 6. **Timing Preservation**: Maintains original timestamps and speaker attribution

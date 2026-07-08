@@ -453,6 +453,18 @@ async def _run_dubbing_task(video_id: str, video_path: str, output_dir: str, lan
         await dubbing.dub_video(video_id, video_path, output_dir, lang)
     except Exception as e:
         logger.error("Dubbing task failed for %s (%s): %s", video_id, lang, e)
+        # Write a failure status so the frontend stops polling and shows an error
+        dubbed_dir = os.path.join(output_dir, "dubbed")
+        os.makedirs(dubbed_dir, exist_ok=True)
+        try:
+            status_path = os.path.join(dubbed_dir, f"status_{lang}.json")
+            with open(status_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {"target_language": lang, "status": "failed", "stage": str(e)[:200]},
+                    f, ensure_ascii=False, indent=2,
+                )
+        except Exception:
+            pass
     finally:
         _active_dubbing.pop((video_id, lang), None)
 
