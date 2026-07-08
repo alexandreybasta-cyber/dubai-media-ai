@@ -1,1 +1,0 @@
-A hybrid Next.js/FastAPI system that ingests videos, extracts multimodal metadata via Alibaba Cloud DashScope, indexes results for semantic search, and generates/evaluates vendor RFPs.

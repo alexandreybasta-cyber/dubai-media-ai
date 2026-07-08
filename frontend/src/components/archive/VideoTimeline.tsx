@@ -1,6 +1,7 @@
 "use client";
 
 import { RefObject, useEffect, useRef, useState } from "react";
+import { API_BASE_URL } from "@/lib/api";
 import {
   SceneBoundary,
   DetectedFace,
@@ -12,12 +13,26 @@ interface VideoTimelineProps {
   videoRef: RefObject<HTMLVideoElement | null>;
   /** Seek requested before the media was ready; applied on loadedmetadata */
   pendingSeekRef?: RefObject<number | null>;
+  videoId: string | null;
   videoUrl: string | null;
   metadata: VideoMetadata | null;
   currentTime: number;
   onTimeUpdate: (time: number) => void;
   onSeek: (time: number) => void;
 }
+
+interface SubtitleLanguage {
+  code: string;
+  label: string;
+  rtl: boolean;
+}
+
+const SUBTITLE_LANGUAGES: SubtitleLanguage[] = [
+  { code: "en", label: "English", rtl: false },
+  { code: "ar", label: "العربية", rtl: true },
+  { code: "fr", label: "Français", rtl: false },
+  { code: "ru", label: "Русский", rtl: false },
+];
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -28,6 +43,7 @@ function formatTime(seconds: number): string {
 export default function VideoTimeline({
   videoRef,
   pendingSeekRef,
+  videoId,
   videoUrl,
   metadata,
   currentTime,
@@ -38,6 +54,64 @@ export default function VideoTimeline({
   const [duration, setDuration] = useState(metadata?.duration || 0);
   const [hoveredScene, setHoveredScene] = useState<SceneBoundary | null>(null);
   const [hoverPos, setHoverPos] = useState(0);
+
+  // ─── Closed-caption / subtitle state ──────────────────────────────────
+  const [ccEnabled, setCcEnabled] = useState(false);
+  const [activeLang, setActiveLang] = useState("en");
+  const [showLangMenu, setShowLangMenu] = useState(false);
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+
+  const subtitleSrc = (lang: string) =>
+    videoId
+      ? `${API_BASE_URL}/api/video/${videoId}/subtitles?language=${lang}`
+      : "";
+
+  // Sync the native TextTrack modes with our CC state so only the selected
+  // language renders (and nothing shows when captions are off).
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const applyTrackModes = () => {
+      const tracks = video.textTracks;
+      for (let i = 0; i < tracks.length; i++) {
+        const track = tracks[i];
+        if (track.kind !== "subtitles" && track.kind !== "captions") continue;
+        track.mode =
+          ccEnabled && track.language === activeLang ? "showing" : "hidden";
+      }
+    };
+
+    applyTrackModes();
+    // Track list may populate slightly after mount / src change.
+    video.textTracks.addEventListener?.("addtrack", applyTrackModes);
+    return () => {
+      video.textTracks.removeEventListener?.("addtrack", applyTrackModes);
+    };
+  }, [videoRef, ccEnabled, activeLang, videoUrl, videoId]);
+
+  const toggleCc = () => {
+    setCcEnabled((prev) => {
+      const next = !prev;
+      if (next) setShowLangMenu(true);
+      else setShowLangMenu(false);
+      return next;
+    });
+    setShowDownloadMenu(false);
+  };
+
+  const selectLanguage = (code: string) => {
+    setActiveLang(code);
+    setCcEnabled(true);
+    setShowLangMenu(false);
+  };
+
+  const downloadSrt = (lang: string) => {
+    if (!videoId) return;
+    const url = `${API_BASE_URL}/api/video/${videoId}/subtitles/download?language=${lang}&format=srt`;
+    window.open(url, "_blank");
+    setShowDownloadMenu(false);
+  };
 
   useEffect(() => {
     const video = videoRef.current;
@@ -113,15 +187,147 @@ export default function VideoTimeline({
             ref={videoRef}
             src={videoUrl}
             className="w-full h-full object-contain"
+            crossOrigin="anonymous"
             controls
             playsInline
-          />
+          >
+            {videoId &&
+              SUBTITLE_LANGUAGES.map((lang) => (
+                <track
+                  key={lang.code}
+                  kind="subtitles"
+                  src={subtitleSrc(lang.code)}
+                  srcLang={lang.code}
+                  label={lang.label}
+                  default={lang.code === "en"}
+                />
+              ))}
+          </video>
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <p className="text-gray-400 text-sm">No video loaded</p>
           </div>
         )}
       </div>
+
+      {/* Caption controls */}
+      {videoUrl && videoId && (
+        <div className="flex items-center gap-2 px-4 pt-3 border-b border-gray-100 pb-3">
+          {/* CC toggle */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={toggleCc}
+              aria-pressed={ccEnabled}
+              title="Toggle captions"
+              className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                ccEnabled
+                  ? "border-primary-500 bg-primary-500 text-white"
+                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="2" y="5" width="20" height="14" rx="2" />
+                <path d="M9.5 10a2 2 0 0 0-2 2 2 2 0 0 0 2 2" />
+                <path d="M16.5 10a2 2 0 0 0-2 2 2 2 0 0 0 2 2" />
+              </svg>
+              CC
+            </button>
+
+            {ccEnabled && showLangMenu && (
+              <div className="absolute z-40 mt-1 w-40 rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+                {SUBTITLE_LANGUAGES.map((lang) => (
+                  <button
+                    key={lang.code}
+                    type="button"
+                    dir={lang.rtl ? "rtl" : "ltr"}
+                    onClick={() => selectLanguage(lang.code)}
+                    className={`flex w-full items-center justify-between px-3 py-1.5 text-xs hover:bg-primary-50 ${
+                      activeLang === lang.code
+                        ? "font-semibold text-primary-600"
+                        : "text-gray-700"
+                    }`}
+                  >
+                    <span>{lang.label}</span>
+                    {activeLang === lang.code && (
+                      <span className="text-primary-500">✓</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Active language pill + change trigger */}
+          {ccEnabled && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowLangMenu((v) => !v);
+                setShowDownloadMenu(false);
+              }}
+              className="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+            >
+              {SUBTITLE_LANGUAGES.find((l) => l.code === activeLang)?.label ??
+                "English"}
+            </button>
+          )}
+
+          {/* SRT download */}
+          <div className="relative ml-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setShowDownloadMenu((v) => !v);
+                setShowLangMenu(false);
+              }}
+              title="Download subtitles (.srt)"
+              className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-50"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              SRT
+            </button>
+
+            {showDownloadMenu && (
+              <div className="absolute right-0 z-40 mt-1 w-40 rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+                {SUBTITLE_LANGUAGES.map((lang) => (
+                  <button
+                    key={lang.code}
+                    type="button"
+                    dir={lang.rtl ? "rtl" : "ltr"}
+                    onClick={() => downloadSrt(lang.code)}
+                    className="block w-full px-3 py-1.5 text-left text-xs text-gray-700 hover:bg-primary-50"
+                  >
+                    {lang.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Timeline Section */}
       <div className="p-4">

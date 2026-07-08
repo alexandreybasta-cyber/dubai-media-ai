@@ -16,11 +16,13 @@ from typing import Dict, List, Optional
 import aiofiles
 import httpx
 from fastapi import APIRouter, UploadFile, File, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from config import settings
 from pipeline.orchestrator import PipelineOrchestrator
 from pipeline.search_index import SearchIndex
+from pipeline import subtitle_generation
 
 logger = logging.getLogger(__name__)
 
@@ -333,6 +335,88 @@ def _parse_marked_segments(content: str, count: int) -> Dict[int, str]:
         if 1 <= seg_num <= count:
             result[seg_num - 1] = text
     return result
+
+
+# ── Subtitles ───────────────────────────────────────────────────────
+
+_SUBTITLE_MIME = {
+    "vtt": "text/vtt",
+    "srt": "application/x-subrip",
+}
+
+
+@router.get("/video/{video_id}/subtitles")
+async def get_subtitles(video_id: str, language: str = "en"):
+    """Return WebVTT subtitle content for the video in the specified language.
+
+    Supported languages: en, ar, fr, ru. If the VTT file doesn't exist yet it is
+    generated on-the-fly from transcript.json and cached for future requests.
+    """
+    language = (language or "en").lower()
+    if language not in subtitle_generation.SUPPORTED_LANGUAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported language '{language}'. Use one of: en, ar, fr, ru.",
+        )
+
+    video_dir = os.path.join(settings.UPLOAD_DIR, video_id)
+    if not os.path.isdir(video_dir):
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+
+    try:
+        content = await subtitle_generation.ensure_vtt(video_id, language)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Transcript for {video_id} not found",
+        )
+    except Exception as e:
+        logger.error("Failed to build subtitles for %s (%s): %s", video_id, language, e)
+        raise HTTPException(status_code=502, detail=f"Failed to generate subtitles: {e}")
+
+    return Response(content=content, media_type="text/vtt")
+
+
+@router.get("/video/{video_id}/subtitles/download")
+async def download_subtitles(video_id: str, language: str = "en", format: str = "srt"):
+    """Download subtitles as an SRT or VTT file (returned as an attachment)."""
+    language = (language or "en").lower()
+    fmt = (format or "srt").lower()
+
+    if language not in subtitle_generation.SUPPORTED_LANGUAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported language '{language}'. Use one of: en, ar, fr, ru.",
+        )
+    if fmt not in _SUBTITLE_MIME:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported format '{fmt}'. Use 'srt' or 'vtt'.",
+        )
+
+    video_dir = os.path.join(settings.UPLOAD_DIR, video_id)
+    if not os.path.isdir(video_dir):
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+
+    try:
+        content = await subtitle_generation.ensure_subtitle_content(
+            video_id, language, fmt=fmt
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Transcript for {video_id} not found",
+        )
+    except Exception as e:
+        logger.error("Failed to build subtitle download for %s (%s): %s", video_id, language, e)
+        raise HTTPException(status_code=502, detail=f"Failed to generate subtitles: {e}")
+
+    filename = f"{video_id}_{language}.{fmt}"
+    return Response(
+        content=content,
+        media_type=_SUBTITLE_MIME[fmt],
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ── Video Library ───────────────────────────────────────────────────

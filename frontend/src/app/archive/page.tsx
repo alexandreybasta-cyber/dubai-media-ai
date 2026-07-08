@@ -142,6 +142,7 @@ function ArchivePageInner() {
               <VideoTimeline
                 videoRef={videoRef}
                 pendingSeekRef={pendingSeekRef}
+                videoId={state.videoId}
                 videoUrl={state.videoUrl}
                 metadata={state.metadata}
                 currentTime={state.currentTime}

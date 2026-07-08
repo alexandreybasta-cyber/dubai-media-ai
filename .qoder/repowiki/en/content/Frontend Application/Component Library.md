@@ -28,12 +28,10 @@
 
 ## Update Summary
 **Changes Made**
-- Added comprehensive documentation for the new PeoplePanel component for person management
-- Added comprehensive documentation for the new VideoLibrary component for video browsing interface
-- Updated Archive Components section with detailed analysis of both new components
-- Enhanced component architecture diagrams to include PeoplePanel and VideoLibrary
-- Updated defensive programming practices section with new component examples
-- Updated troubleshooting guide with component-specific guidance
+- Enhanced TranscriptPanel component with comprehensive translation interface including language selection dropdown, real-time status indicators, error handling, RTL support for Arabic translations, and translated segment display alongside original text
+- Added detailed documentation for the new translation functionality and its integration with backend APIs
+- Updated component props and state management to include translation capabilities
+- Enhanced accessibility features for multilingual content display
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -115,7 +113,7 @@ SB --> ES
 - [Card.tsx:1-17](file://frontend/src/components/Card.tsx#L1-L17)
 - [VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
 - [VideoTimeline.tsx:1-245](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L245)
-- [TranscriptPanel.tsx:1-169](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L169)
+- [TranscriptPanel.tsx:1-305](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L305)
 - [MetadataPanel.tsx:1-380](file://frontend/src/components/archive/MetadataPanel.tsx#L1-L380)
 - [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
@@ -135,7 +133,7 @@ SB --> ES
 - [Card.tsx:1-17](file://frontend/src/components/Card.tsx#L1-L17)
 - [VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
 - [VideoTimeline.tsx:1-245](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L245)
-- [TranscriptPanel.tsx:1-169](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L169)
+- [TranscriptPanel.tsx:1-305](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L305)
 - [MetadataPanel.tsx:1-380](file://frontend/src/components/archive/MetadataPanel.tsx#L1-L380)
 - [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
@@ -209,7 +207,7 @@ UV-->>VU : metadata, transcript when ready
 - [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-L50)
 - [VideoUpload.tsx:63-67](file://frontend/src/components/archive/VideoUpload.tsx#L63-L67)
 - [useVideoProcessing.ts:162-211](file://frontend/src/lib/useVideoProcessing.ts#L162-L211)
-- [api.ts:167-182](file://frontend/src/lib/api.ts#L167-L182)
+- [api.ts:167-182](file://frontend/src/lib/api.ts#L167-182)
 
 ## Detailed Component Analysis
 
@@ -267,27 +265,38 @@ UV-->>VU : metadata, transcript when ready
 - [useVideoProcessing.ts:370-381](file://frontend/src/lib/useVideoProcessing.ts#L370-381)
 
 #### TranscriptPanel
-- Purpose: Displays speech transcript segments with speaker identity, timestamps, and language indicators; auto-scrolls to active segment.
+- Purpose: Displays speech transcript segments with speaker identity, timestamps, and language indicators; auto-scrolls to active segment; supports real-time translation into multiple languages.
 - Props:
+  - videoId: string | null
   - segments: TranscriptSegment[]
   - currentTime: number
   - onSeek: (time: number) => void
 - Interactions:
   - Clicking a timestamp seeks video to start of segment.
   - Auto-scroll keeps active segment visible.
-- Styling: Scrollable panel, speaker badges with distinct colors, active segment highlighting.
-- Accessibility: Smooth scroll behavior; clickable buttons for seeking; readable monospace timestamps.
-- **Enhanced Timestamp Formatting**: Implements robust timestamp formatting using formatTimestamp function that handles multiple input types including strings (e.g., "00:15", "1:30"), numeric seconds, and malformed data with graceful fallback to "0:00".
+  - Language selection dropdown for translation into Arabic, French, or Russian.
+  - Real-time translation status indicators with loading spinner.
+- Styling: Scrollable panel, speaker badges with distinct colors, active segment highlighting, translation dropdown with globe icon, bilingual text display with proper RTL support.
+- Accessibility: Smooth scroll behavior; clickable buttons for seeking; readable monospace timestamps; proper ARIA labels for translation controls; RTL text direction support for Arabic translations.
+- **Enhanced Translation Interface**: Comprehensive translation system with language selection dropdown, real-time status indicators, error handling, and bilingual display showing both original and translated text.
 
-**Updated** Enhanced timestamp formatting capabilities have been implemented to provide robust handling of various timestamp formats:
+**Updated** Enhanced translation capabilities have been implemented to provide comprehensive multilingual support:
 
-- **Multi-format support**: Handles string timestamps in "mm:ss" or "hh:mm:ss" format, numeric seconds, and malformed input
-- **Graceful fallback**: Automatically falls back to "0:00" for invalid or undefined timestamps
-- **Consistent output**: Always returns formatted timestamps in "m:ss" format with zero-padded seconds
+- **Language Selection Dropdown**: Integrated translation dropdown with globe icon supporting Arabic (العربية), French (Français), and Russian (Русский) languages
+- **Real-time Status Indicators**: Animated loading spinner and "Translating..." status message during translation requests
+- **Error Handling**: Comprehensive error state management with user-friendly error messages displayed in red banner
+- **RTL Support**: Automatic right-to-left text direction for Arabic translations using `dir="rtl"` attribute
+- **Bilingual Display**: Translated text displayed below original text with visual separator and italic styling
+- **Translation State Management**: Map-based storage of translations indexed by segment position for efficient lookup
+- **Auto-reset on Video Change**: Translation state automatically clears when underlying video or transcript changes
+- **Backend Integration**: Seamless integration with `/api/video/{videoId}/translate-transcript` endpoint using DashScope Qwen model
 
 **Section sources**
-- [TranscriptPanel.tsx:6-59](file://frontend/src/components/archive/TranscriptPanel.tsx#L6-L59)
-- [TranscriptPanel.tsx:30-48](file://frontend/src/components/archive/TranscriptPanel.tsx#L30-L48)
+- [TranscriptPanel.tsx:7-12](file://frontend/src/components/archive/TranscriptPanel.tsx#L7-L12)
+- [TranscriptPanel.tsx:67-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L67-L121)
+- [TranscriptPanel.tsx:175-231](file://frontend/src/components/archive/TranscriptPanel.tsx#L175-L231)
+- [TranscriptPanel.tsx:286-297](file://frontend/src/components/archive/TranscriptPanel.tsx#L286-L297)
+- [api.ts:222-233](file://frontend/src/lib/api.ts#L222-233)
 
 #### MetadataPanel
 - Purpose: Presents processed metadata in tabs: Summary, EBUCore XML, IPTC JSON, Raw JSON.
@@ -423,9 +432,9 @@ UV-->>VU : metadata, transcript when ready
 
 **Section sources**
 - [PeoplePanel.tsx:6-14](file://frontend/src/components/archive/PeoplePanel.tsx#L6-L14)
-- [PeoplePanel.tsx:22-28](file://frontend/src/components/archive/PeoplePanel.tsx#L22-L28)
-- [PeoplePanel.tsx:30-108](file://frontend/src/components/archive/PeoplePanel.tsx#L30-L108)
-- [PeoplePanel.tsx:110-226](file://frontend/src/components/archive/PeoplePanel.tsx#L110-L226)
+- [PeoplePanel.tsx:22-28](file://frontend/src/components/archive/PeoplePanel.tsx#L22-28)
+- [PeoplePanel.tsx:30-108](file://frontend/src/components/archive/PeoplePanel.tsx#L30-108)
+- [PeoplePanel.tsx:110-226](file://frontend/src/components/archive/PeoplePanel.tsx#L110-226)
 - [useVideoProcessing.ts:555-566](file://frontend/src/lib/useVideoProcessing.ts#L555-L566)
 
 #### VideoLibrary
@@ -569,7 +578,7 @@ UV-->>VU : metadata, transcript when ready
 - Styling: Responsive tables, legend for radar chart, color-coded score badges.
 
 **Section sources**
-- [ComparisonMatrix.tsx:42-317](file://frontend/src/components/evaluator/ComparisonMatrix.tsx#L42-L317)
+- [ComparisonMatrix.tsx:42-317](file://frontend/src/components/evaluator/ComparisonMatrix.tsx#L42-317)
 
 ### Sidebar
 - Purpose: Navigation sidebar linking to Archive Metadata, RFP Creator, and RFP Evaluator with active state indication and API connection status.
@@ -689,11 +698,14 @@ The SearchDemo component includes enhanced defensive programming for thumbnail h
 - **Null-safe rendering**: Thumbnail images are only rendered when valid URLs are available
 
 #### TranscriptPanel Component
-The TranscriptPanel component implements robust timestamp formatting:
+The TranscriptPanel component implements robust defensive programming for translation functionality:
 
-- **Multi-type timestamp handling**: formatTimestamp function processes strings, numbers, and invalid inputs gracefully
-- **Regex validation**: String timestamps are validated against expected patterns before processing
-- **Zero-padded output**: Seconds are always zero-padded for consistent formatting
+- **Translation state safety**: Map-based storage with proper initialization and cleanup
+- **API error handling**: Comprehensive try-catch blocks with user-friendly error messages
+- **Language validation**: Supports only predefined languages (ar, fr, ru) with graceful fallback
+- **Empty segment handling**: Prevents translation requests when no segments are available
+- **Auto-reset functionality**: Clears translation state when video or transcript changes
+- **RTL direction safety**: Conditional RTL attribute application based on selected language
 
 #### MetadataPanel Component
 The MetadataPanel component includes enhanced multilingual support with defensive programming:
@@ -728,7 +740,8 @@ The MetadataPanel component includes enhanced multilingual support with defensiv
 - [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-L50)
 - [VideoLibrary.tsx:17-28](file://frontend/src/components/archive/VideoLibrary.tsx#L17-L28)
 - [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-L21)
-- [TranscriptPanel.tsx:30-48](file://frontend/src/components/archive/TranscriptPanel.tsx#L30-L48)
+- [TranscriptPanel.tsx:67-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L67-L121)
+- [TranscriptPanel.tsx:286-297](file://frontend/src/components/archive/TranscriptPanel.tsx#L286-L297)
 - [MetadataPanel.tsx:193-198](file://frontend/src/components/archive/MetadataPanel.tsx#L193-L198)
 
 ## Dependency Analysis
@@ -736,6 +749,7 @@ The MetadataPanel component includes enhanced multilingual support with defensiv
   - Archive components depend on useVideoProcessing for state and on api for REST/WebSocket calls.
   - PeoplePanel depends on useVideoProcessing for face renaming functionality.
   - VideoLibrary depends on api for video listing and metadata retrieval.
+  - TranscriptPanel depends on api for translation functionality.
   - RFP components depend on api for creation, regeneration, and evaluation workflows.
   - Evaluator components depend on api for evaluation status/results and exports.
 - External dependencies:
@@ -756,6 +770,7 @@ UV --> SC["SceneDetection.tsx"]
 UV --> PP["PeoplePanel.tsx"]
 API["api.ts"] --> VU
 API --> VT
+API --> TP
 API --> MP
 API --> SD
 API --> VL["VideoLibrary.tsx"]
@@ -768,10 +783,10 @@ API --> CM["ComparisonMatrix.tsx"]
 
 **Diagram sources**
 - [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
-- [api.ts:164-244](file://frontend/src/lib/api.ts#L164-L244)
+- [api.ts:164-244](file://frontend/src/lib/api.ts#L164-244)
 - [VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
 - [VideoTimeline.tsx:1-245](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L245)
-- [TranscriptPanel.tsx:1-169](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L169)
+- [TranscriptPanel.tsx:1-305](file://frontend/src/components/archive/TranscriptPanel.tsx#L1-L305)
 - [MetadataPanel.tsx:1-380](file://frontend/src/components/archive/MetadataPanel.tsx#L1-L380)
 - [SearchDemo.tsx:1-230](file://frontend/src/components/archive/SearchDemo.tsx#L1-L230)
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
@@ -786,7 +801,7 @@ API --> CM["ComparisonMatrix.tsx"]
 
 **Section sources**
 - [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
-- [api.ts:164-244](file://frontend/src/lib/api.ts#L164-L244)
+- [api.ts:164-244](file://frontend/src/lib/api.ts#L164-244)
 
 ## Performance Considerations
 - Virtualization: Not implemented; transcripts and metadata panels render lists. Consider virtualizing long lists if performance becomes an issue.
@@ -796,15 +811,18 @@ API --> CM["ComparisonMatrix.tsx"]
   - MetadataPanel JSON tree renders deeply nested structures; keep expansion defaults minimal.
   - PeoplePanel renders person lists with inline editing; consider limiting visible faces for very large datasets.
   - VideoLibrary renders video grids with thumbnails; lazy loading could improve initial load performance.
+  - **TranscriptPanel translation**: Translation requests are batched and cached; consider debouncing rapid language changes.
 - Network:
   - useVideoProcessing simulates upload progress; real progress requires XHR with onprogress. Consider upgrading upload flow for accurate progress.
   - VideoLibrary fetches video list on mount; consider pagination for large archives.
+  - **Translation API**: Single API call translates all segments efficiently; consider caching translations for repeated requests.
 - Memory:
   - VideoUpload creates object URLs; revoke on reset to prevent leaks.
   - PipelineVisualizer and ComparisonMatrix render charts; unmount components to dispose resources.
   - SceneDetection maintains expanded state for individual scenes; consider limiting expanded scenes to improve performance.
   - PeoplePanel maintains editing state for individual faces; clean up state on component unmount.
   - VideoLibrary stores video list in component state; consider memoization for large video collections.
+  - **Translation state**: Map-based translation storage is efficient but should be cleared when video changes to prevent memory leaks.
 
 ## Troubleshooting Guide
 - Upload fails:
@@ -851,6 +869,13 @@ API --> CM["ComparisonMatrix.tsx"]
   - **Updated**: Thumbnail URLs are now resolved using the enhanced resolveThumbnailUrl function.
   - Verify that thumbnail paths are properly formatted and accessible.
   - Check API_BASE_URL environment variable configuration.
+- **TranscriptPanel translation issues**:
+  - **Updated**: Translation dropdown should display supported languages (Arabic, French, Russian).
+  - Verify that DASHSCOPE_API_KEY is configured on the backend server.
+  - Check network requests to `/api/video/{videoId}/translate-transcript` endpoint.
+  - Ensure translation error messages are displayed in red banner when API calls fail.
+  - Verify that RTL text direction is properly applied for Arabic translations.
+  - **Updated**: Translation state should automatically clear when video or transcript changes.
 - **TranscriptPanel timestamp problems**:
   - **Updated**: Timestamp formatting now handles multiple input formats and edge cases.
   - Verify that transcript segments contain valid start/end time values.
@@ -867,18 +892,20 @@ API --> CM["ComparisonMatrix.tsx"]
 - [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-L50)
 - [MetadataPanel.tsx:193-198](file://frontend/src/components/archive/MetadataPanel.tsx#L193-L198)
 - [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-L21)
-- [TranscriptPanel.tsx:30-48](file://frontend/src/components/archive/TranscriptPanel.tsx#L30-L48)
+- [TranscriptPanel.tsx:67-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L67-L121)
+- [TranscriptPanel.tsx:286-297](file://frontend/src/components/archive/TranscriptPanel.tsx#L286-L297)
 
 ## Conclusion
 The component library provides a cohesive, accessible, and extensible foundation for the Dubai Media application. Base components (Button, Card) standardize UI patterns; feature-specific components encapsulate complex workflows while integrating with shared state and APIs. The recent defensive programming improvements ensure reliable operation even with incomplete data, while the accessibility enhancements guarantee consistent text visibility across all form components. 
 
-The new PeoplePanel and VideoLibrary components significantly enhance the Archive feature by providing comprehensive person management and video browsing capabilities. The PeoplePanel offers sophisticated person identification with confidence scoring, source attribution, and inline editing, while the VideoLibrary provides an intuitive browsing interface for archived videos with rich metadata display. Both components integrate seamlessly with the existing video processing pipeline and follow established architectural patterns.
+The enhanced TranscriptPanel component represents a significant advancement in multilingual support, providing comprehensive translation capabilities with real-time status indicators, error handling, and proper RTL support for Arabic translations. The new PeoplePanel and VideoLibrary components significantly enhance the Archive feature by providing comprehensive person management and video browsing capabilities. The PeoplePanel offers sophisticated person identification with confidence scoring, source attribution, and inline editing, while the VideoLibrary provides an intuitive browsing interface for archived videos with rich metadata display. Both components integrate seamlessly with the existing video processing pipeline and follow established architectural patterns.
 
 Key improvements include:
-- **Comprehensive Person Management**: PeoplePanel enables detailed person identification with confidence scoring, source attribution, and reference database integration
-- **Intuitive Video Browsing**: VideoLibrary provides responsive grid layout with thumbnail previews and metadata display for archive navigation
-- **Enhanced Defensive Programming**: Both new components implement robust error handling and null-safe data access patterns
-- **Seamless Integration**: New components follow established patterns and integrate with existing state management and API layers
-- **Accessibility Features**: Both components include proper ARIA labels, keyboard navigation, and screen reader support
+- **Comprehensive Translation Interface**: TranscriptPanel now supports real-time translation into Arabic, French, and Russian with proper RTL text direction and bilingual display
+- **Enhanced Multilingual Support**: Automatic language detection, error handling, and user-friendly status indicators for translation requests
+- **Robust Error Management**: Comprehensive try-catch blocks with user-friendly error messages and graceful fallbacks
+- **Seamless Backend Integration**: Efficient single-call translation API using DashScope Qwen model with marker-based segment parsing
+- **Accessibility Features**: Proper ARIA labels, keyboard navigation, and screen reader support for all multilingual content
+- **Performance Optimization**: Map-based translation caching and automatic state cleanup when videos change
 
 The enhanced VideoTimeline component now provides granular face detection navigation with improved tooltip information, and the MetadataPanel component offers comprehensive multilingual support with proper RTL handling. The SearchDemo component now features robust thumbnail URL resolution that handles various path formats, and the TranscriptPanel provides reliable timestamp formatting across multiple input types. By adhering to the documented props, composition patterns, defensive programming practices, and accessibility guidelines, teams can build consistent experiences across Archive, RFP, and Evaluator features.

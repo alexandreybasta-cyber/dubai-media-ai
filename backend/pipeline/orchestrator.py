@@ -18,6 +18,7 @@ from pipeline.audio_analysis import transcribe_audio
 from pipeline.face_recognition import identify_faces
 from pipeline.metadata_structuring import structure_metadata
 from pipeline.search_index import SearchIndex
+from pipeline.subtitle_generation import generate_all_subtitles
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,16 @@ class PipelineOrchestrator:
             ),
             result_key="transcript",
         )
+
+        # ── Subtitle Generation (non-blocking, resilient) ──────────
+        # Generate WebVTT subtitle tracks (EN + AR/FR/RU) from the
+        # transcript produced by the audio stage. Failures here must never
+        # block the rest of the pipeline.
+        try:
+            await generate_all_subtitles(video_id, settings.UPLOAD_DIR)
+            logger.info("Subtitle generation completed for %s", video_id)
+        except Exception as e:
+            logger.warning("Subtitle generation failed for %s: %s", video_id, e)
 
         # ── Stage 4: Face Recognition ──────────────────────────────
         visual = results.get("visual_analysis", {})

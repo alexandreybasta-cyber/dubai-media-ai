@@ -59,3 +59,21 @@ textarea::placeholder {
   color: #6b7280;
   opacity: 1;
 }
+
+/* WebVTT subtitle cue styling for the archive video player */
+video::cue {
+  background-color: rgba(0, 0, 0, 0.72);
+  color: #ffffff;
+  font-size: 1rem;
+  line-height: 1.4;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Arial, Helvetica, sans-serif;
+  padding: 0.1em 0.3em;
+  white-space: pre-line;
+}
+
+/* Arabic subtitle track renders right-to-left */
+video::cue(:lang(ar)) {
+  direction: rtl;
+  unicode-bidi: bidi-override;
+}
