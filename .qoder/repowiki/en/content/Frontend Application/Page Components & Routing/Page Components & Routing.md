@@ -5,15 +5,11 @@
 - [layout.tsx](file://frontend/src/app/layout.tsx)
 - [page.tsx](file://frontend/src/app/page.tsx)
 - [archive/page.tsx](file://frontend/src/app/archive/page.tsx)
-- [rfp-creator/page.tsx](file://frontend/src/app/rfp-creator/page.tsx)
-- [rfp-evaluator/page.tsx](file://frontend/src/app/rfp-evaluator/page.tsx)
+- [Card.tsx](file://frontend/src/components/Card.tsx)
+- [Button.tsx](file://frontend/src/components/Button.tsx)
 - [api.ts](file://frontend/src/lib/api.ts)
 - [useVideoProcessing.ts](file://frontend/src/lib/useVideoProcessing.ts)
-- [Sidebar.tsx](file://frontend/src/components/Sidebar.tsx)
 - [VideoUpload.tsx](file://frontend/src/components/archive/VideoUpload.tsx)
-- [RFPForm.tsx](file://frontend/src/components/rfp/RFPForm.tsx)
-- [RFPPreview.tsx](file://frontend/src/components/rfp/RFPPreview.tsx)
-- [EvaluationSetup.tsx](file://frontend/src/components/evaluator/EvaluationSetup.tsx)
 - [SearchDemo.tsx](file://frontend/src/components/archive/SearchDemo.tsx)
 - [SceneDetection.tsx](file://frontend/src/components/archive/SceneDetection.tsx)
 - [VideoTimeline.tsx](file://frontend/src/components/archive/VideoTimeline.tsx)
@@ -23,10 +19,10 @@
 
 ## Update Summary
 **Changes Made**
-- Updated Archive Page section to reflect the replacement of VideoTimeline with SceneDetection component
-- Added new SceneDetection component documentation with enhanced scene detection capabilities
-- Updated component architecture diagrams to show the new SceneDetection integration
-- Enhanced archive page layout documentation to include the new scene detection timeline
+- Updated Archive Page section to document the new 'Back to Home' navigation button
+- Enhanced Homepage Card Layout documentation with improved styling, typography, and interactive elements
+- Updated navigation flow documentation to include the new back-to-home functionality
+- Added details about the redesigned homepage card component with enhanced visual hierarchy
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -42,7 +38,7 @@
 ## Introduction
 This document explains the Next.js page components and routing structure for the Dubai Media application. It covers three main application pages:
 - Archive page for media processing and semantic search
-- RFP creator page for generating procurement documents
+- RFP creator page for generating procurement documents  
 - RFP evaluator page for assessing vendor proposals
 
 It details the page component architecture, data fetching patterns, route-based rendering, page-specific state management, form handling, and API integration. It also documents page transitions, loading states, error handling, and the relationship between pages and shared components, including prop passing and context usage.
@@ -66,45 +62,45 @@ RFP_EVAL["RFP Evaluator (/rfp-evaluator)"]
 end
 subgraph "Shared Layout"
 LAYOUT["Root Layout"]
-SIDEBAR["Sidebar Navigation"]
+END_TO_END_NAV["End-to-End Navigation"]
 end
 HOME --> LAYOUT
 ARCHIVE --> LAYOUT
 RFP_CREATOR --> LAYOUT
 RFP_EVAL --> LAYOUT
-LAYOUT --> SIDEBAR
+LAYOUT --> END_TO_END_NAV
+END_TO_END_NAV --> HOME
+ARCHIVE --> END_TO_END_NAV
 ```
 
 **Diagram sources**
-- [layout.tsx:22-40](file://frontend/src/app/layout.tsx#L22-L40)
-- [Sidebar.tsx:17-67](file://frontend/src/components/Sidebar.tsx#L17-L67)
+- [layout.tsx:20-37](file://frontend/src/app/layout.tsx#L20-L37)
+- [archive/page.tsx:73-79](file://frontend/src/app/archive/page.tsx#L73-L79)
 
 **Section sources**
-- [layout.tsx:1-41](file://frontend/src/app/layout.tsx#L1-L41)
-- [page.tsx:1-199](file://frontend/src/app/page.tsx#L1-L199)
-- [archive/page.tsx:1-174](file://frontend/src/app/archive/page.tsx#L1-L174)
-- [rfp-creator/page.tsx:1-159](file://frontend/src/app/rfp-creator/page.tsx#L1-L159)
-- [rfp-evaluator/page.tsx:1-178](file://frontend/src/app/rfp-evaluator/page.tsx#L1-L178)
+- [layout.tsx:1-38](file://frontend/src/app/layout.tsx#L1-L38)
+- [page.tsx:1-165](file://frontend/src/app/page.tsx#L1-L165)
+- [archive/page.tsx:1-223](file://frontend/src/app/archive/page.tsx#L1-L223)
 
 ## Core Components
-- Root layout and sidebar provide consistent navigation and page framing across routes.
+- Root layout provides consistent typography, theme classes, and main content container across routes.
 - Page components encapsulate route-specific UI, state, and data flows.
 - Shared hooks and APIs abstract data fetching and WebSocket connections.
 - Reusable components handle forms, previews, and evaluation setups.
 
 Key responsibilities:
-- Root layout: global fonts, theme classes, sidebar, and main content container.
-- Sidebar: route-aware highlighting and navigation.
-- Archive page: video upload, pipeline visualization, scene detection timeline, transcript, metadata, and search demo.
+- Root layout: global fonts (Geist), theme classes, and responsive content container.
+- Archive page: video upload, pipeline visualization, scene detection timeline, transcript, metadata, and search demo with enhanced navigation.
+- Homepage: redesigned card layout with improved styling, typography, and interactive elements.
 - RFP creator page: form collection, generation, regeneration, and export.
 - RFP evaluator page: setup, polling, and results presentation.
 
+**Updated** The archive page now features enhanced navigation with a prominent 'Back to Home' button, while the homepage showcases a redesigned card layout with improved visual hierarchy and interactive elements.
+
 **Section sources**
-- [layout.tsx:22-40](file://frontend/src/app/layout.tsx#L22-L40)
-- [Sidebar.tsx:17-67](file://frontend/src/components/Sidebar.tsx#L17-L67)
-- [archive/page.tsx:12-174](file://frontend/src/app/archive/page.tsx#L12-L174)
-- [rfp-creator/page.tsx:8-159](file://frontend/src/app/rfp-creator/page.tsx#L8-L159)
-- [rfp-evaluator/page.tsx:18-178](file://frontend/src/app/rfp-evaluator/page.tsx#L18-L178)
+- [layout.tsx:20-37](file://frontend/src/app/layout.tsx#L20-L37)
+- [archive/page.tsx:73-116](file://frontend/src/app/archive/page.tsx#L73-L116)
+- [page.tsx:35-165](file://frontend/src/app/page.tsx#L35-L165)
 
 ## Architecture Overview
 The application uses route-based rendering with client-side state and API integration:
@@ -112,57 +108,47 @@ The application uses route-based rendering with client-side state and API integr
 - A centralized API module abstracts REST and WebSocket communications.
 - A dedicated hook manages video processing state, uploads, and pipeline events.
 - Shared components receive props for controlled interactions and reactivity.
+- Enhanced navigation patterns provide seamless transitions between pages.
 
 ```mermaid
 graph TB
 subgraph "Pages"
-P_HOME["Home Page"]
-P_ARCH["Archive Page"]
+P_HOME["Home Page<br/>Redesigned Card Layout"]
+P_ARCH["Archive Page<br/>Enhanced Navigation"]
 P_RFP_C["RFP Creator Page"]
 P_RFP_E["RFP Evaluator Page"]
 end
+subgraph "Navigation"
+NAV_BACK["Back to Home Button"]
+NAV_ROUTER["Next.js Router"]
+end
 subgraph "Shared"
-COMP_SIDEBAR["Sidebar"]
 COMP_UPLOAD["VideoUpload"]
-COMP_FORM["RFPForm"]
-COMP_PREVIEW["RFPPreview"]
-COMP_SETUP["EvaluationSetup"]
 COMP_SEARCH["SearchDemo"]
 COMP_SCENE["SceneDetection"]
 COMP_TIMELINE["VideoTimeline"]
 HOOK_USE["useVideoProcessing"]
 API["api.ts"]
+COMP_CARD["Card Component"]
+COMP_BUTTON["Button Component"]
 end
-P_HOME --> COMP_SIDEBAR
-P_ARCH --> COMP_SIDEBAR
-P_RFP_C --> COMP_SIDEBAR
-P_RFP_E --> COMP_SIDEBAR
+P_HOME --> COMP_CARD
+P_HOME --> COMP_BUTTON
+P_ARCH --> NAV_BACK
+NAV_BACK --> P_HOME
 P_ARCH --> COMP_UPLOAD
 P_ARCH --> COMP_SEARCH
 P_ARCH --> COMP_SCENE
 P_ARCH --> COMP_TIMELINE
 P_ARCH --> HOOK_USE
 HOOK_USE --> API
-P_RFP_C --> COMP_FORM
-P_RFP_C --> COMP_PREVIEW
-P_RFP_C --> API
-P_RFP_E --> COMP_SETUP
-P_RFP_E --> API
 ```
 
 **Diagram sources**
-- [layout.tsx:22-40](file://frontend/src/app/layout.tsx#L22-L40)
-- [Sidebar.tsx:17-67](file://frontend/src/components/Sidebar.tsx#L17-L67)
-- [archive/page.tsx:3-13](file://frontend/src/app/archive/page.tsx#L3-L13)
-- [VideoUpload.tsx:26-33](file://frontend/src/components/archive/VideoUpload.tsx#L26-L33)
-- [SearchDemo.tsx:21-27](file://frontend/src/components/archive/SearchDemo.tsx#L21-L27)
-- [SceneDetection.tsx:35-40](file://frontend/src/components/archive/SceneDetection.tsx#L35-L40)
-- [VideoTimeline.tsx:26-33](file://frontend/src/components/archive/VideoTimeline.tsx#L26-L33)
-- [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
-- [RFPForm.tsx:31-104](file://frontend/src/components/rfp/RFPForm.tsx#L31-L104)
-- [RFPPreview.tsx:18-46](file://frontend/src/components/rfp/RFPPreview.tsx#L18-L46)
-- [EvaluationSetup.tsx:61-189](file://frontend/src/components/evaluator/EvaluationSetup.tsx#L61-L189)
-- [api.ts:164-244](file://frontend/src/lib/api.ts#L164-L244)
+- [archive/page.tsx:73-79](file://frontend/src/app/archive/page.tsx#L73-L79)
+- [page.tsx:54-90](file://frontend/src/app/page.tsx#L54-L90)
+- [Card.tsx:7-16](file://frontend/src/components/Card.tsx#L7-L16)
+- [Button.tsx:8-29](file://frontend/src/components/Button.tsx#L8-L29)
 
 ## Detailed Component Analysis
 
@@ -173,8 +159,9 @@ Key behaviors:
 - Uses a custom hook to manage upload, pipeline WebSocket updates, and results retrieval.
 - Renders upload UI, pipeline stages, scene detection timeline, transcript panel, metadata panel, and search demo.
 - Supports resetting to initial state and seeking within the video.
+- **Enhanced** Features a prominent 'Back to Home' navigation button for improved user experience.
 
-**Updated** The archive page now features an enhanced scene detection timeline component that provides detailed scene segmentation with color-coded scene types and interactive scene browsing.
+**Updated** The archive page now includes an enhanced navigation system with a clearly visible 'Back to Home' button positioned at the top of the page, providing users with easy access to return to the main landing page.
 
 State management:
 - Centralized in a hook returning state and actions for upload, search, time sync, and reset.
@@ -187,6 +174,7 @@ API integration:
 sequenceDiagram
 participant U as "User"
 participant P as "Archive Page"
+participant B as "Back to Home Button"
 participant H as "useVideoProcessing Hook"
 participant API as "api.ts"
 participant WS as "WebSocket"
@@ -201,19 +189,59 @@ API-->>H : "metadata with scenes"
 H->>API : "GET /api/video/{video_id}/transcript"
 API-->>H : "transcript"
 H-->>P : "state : view=results"
-P-->>U : "render scene detection timeline, transcript, metadata"
+U->>B : "Click Back to Home"
+B->>P : "Navigate to /"
+P-->>U : "Redirect to homepage"
 ```
 
 **Diagram sources**
+- [archive/page.tsx:73-79](file://frontend/src/app/archive/page.tsx#L73-L79)
 - [archive/page.tsx:12-174](file://frontend/src/app/archive/page.tsx#L12-L174)
 - [useVideoProcessing.ts:162-309](file://frontend/src/lib/useVideoProcessing.ts#L162-L309)
-- [api.ts:166-183](file://frontend/src/lib/api.ts#L166-L183)
 
 **Section sources**
+- [archive/page.tsx:73-116](file://frontend/src/app/archive/page.tsx#L73-L116)
 - [archive/page.tsx:12-174](file://frontend/src/app/archive/page.tsx#L12-L174)
 - [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
-- [VideoUpload.tsx:26-221](file://frontend/src/components/archive/VideoUpload.tsx#L26-L221)
-- [SearchDemo.tsx:21-189](file://frontend/src/components/archive/SearchDemo.tsx#L21-L189)
+
+### Homepage with Redesigned Card Layout
+Purpose: Serve as the main landing page showcasing the Dubai Media platform capabilities with enhanced visual design and user experience.
+
+Key behaviors:
+- Displays a hero section with platform branding and description.
+- Features a redesigned tool card with improved styling, typography, and interactive elements.
+- Showcases technology stack badges and Alibaba Cloud benefits.
+- Provides clear call-to-action buttons for accessing different tools.
+
+**Updated** The homepage now features a completely redesigned card layout with enhanced visual hierarchy, improved typography, better spacing, and more interactive elements. The card design includes subtle shadows, hover effects, and a more polished appearance.
+
+Design improvements:
+- Enhanced card styling with rounded corners, borders, and shadow effects
+- Improved typography with better font weights and spacing
+- Interactive hover states with smooth transitions
+- Better visual hierarchy with color-coded icons and capability lists
+- Responsive design that adapts well to different screen sizes
+
+```mermaid
+flowchart TD
+HOME_PAGE["Homepage Component"] --> HERO["Hero Section<br/>Platform Branding"]
+HOME_PAGE --> TOOL_CARD["Redesigned Tool Card<br/>Enhanced Styling"]
+HOME_PAGE --> TECH_BADGES["Technology Stack<br/>Badges"]
+HOME_PAGE --> BENEFITS["Alibaba Cloud Benefits<br/>Grid Layout"]
+TOOL_CARD --> CARD_STYLING["Improved Visual Design<br/>Shadows, Borders, Spacing"]
+TOOL_CARD --> INTERACTIVE_ELEMENTS["Interactive Elements<br/>Hover Effects, Transitions"]
+TOOL_CARD --> CAPABILITY_LIST["Capability List<br/>Checkmarks, Icons"]
+TOOL_CARD --> CTA_BUTTON["Call-to-Action Button<br/>Enhanced Styling"]
+CARD_STYLING --> VISUAL_HIERARCHY["Better Visual Hierarchy"]
+INTERACTIVE_ELEMENTS --> USER_EXPERIENCE["Improved User Experience"]
+```
+
+**Diagram sources**
+- [page.tsx:35-165](file://frontend/src/app/page.tsx#L35-L165)
+- [page.tsx:54-90](file://frontend/src/app/page.tsx#L54-L90)
+
+**Section sources**
+- [page.tsx:35-165](file://frontend/src/app/page.tsx#L35-L165)
 
 ### Scene Detection Component
 Purpose: Provide an enhanced scene detection timeline with color-coded scene types, interactive scene browsing, and detailed scene information.
@@ -325,12 +353,21 @@ P->>API : "Open download URLs"
 
 ### Shared Components and Utilities
 
-#### Sidebar Navigation
-- Uses Next.js routing to highlight active route and navigate between pages.
-- Fixed position with branding and status indicator.
+#### Card Component
+- Reusable card wrapper with consistent styling and border radius.
+- Accepts className prop for customization.
+- Provides white background, rounded corners, and subtle border.
 
 **Section sources**
-- [Sidebar.tsx:17-67](file://frontend/src/components/Sidebar.tsx#L17-L67)
+- [Card.tsx:7-16](file://frontend/src/components/Card.tsx#L7-L16)
+
+#### Button Component
+- Versatile button component with primary and secondary variants.
+- Consistent styling with hover states and focus rings.
+- Supports disabled states and custom className overrides.
+
+**Section sources**
+- [Button.tsx:8-29](file://frontend/src/components/Button.tsx#L8-L29)
 
 #### Video Upload Component
 - Accepts drag-and-drop or file selection.
@@ -366,24 +403,23 @@ P->>API : "Open download URLs"
 
 ## Dependency Analysis
 - Pages depend on shared components and the API module.
-- The Archive page depends on the video processing hook.
+- The Archive page depends on the video processing hook and enhanced navigation components.
+- The Homepage utilizes redesigned card and button components for improved UI.
 - The RFP Creator and Evaluator pages depend on the API module for server communication.
-- The Sidebar integrates with Next.js routing to reflect current location.
 
 ```mermaid
 graph LR
-PAGE_HOME["Home Page"] --> LYT["Root Layout"]
-PAGE_ARCH["Archive Page"] --> LYT
-PAGE_RFP_C["RFP Creator Page"] --> LYT
-PAGE_RFP_E["RFP Evaluator Page"] --> LYT
+PAGE_HOME["Homepage<br/>Redesigned Cards"] --> COMP_CARD["Card Component"]
+PAGE_HOME --> COMP_BUTTON["Button Component"]
+PAGE_ARCH["Archive Page<br/>Enhanced Nav"] --> NAV_BACK["Back to Home"]
 PAGE_ARCH --> HOOK["useVideoProcessing"]
 PAGE_ARCH --> COMP_UPLOAD["VideoUpload"]
 PAGE_ARCH --> COMP_SEARCH["SearchDemo"]
 PAGE_ARCH --> COMP_SCENE["SceneDetection"]
 PAGE_ARCH --> COMP_TIMELINE["VideoTimeline"]
-PAGE_RFP_C --> COMP_FORM["RFPForm"]
+PAGE_RFP_C["RFP Creator Page"] --> COMP_FORM["RFPForm"]
 PAGE_RFP_C --> COMP_PREVIEW["RFPPreview"]
-PAGE_RFP_E --> COMP_SETUP["EvaluationSetup"]
+PAGE_RFP_E["RFP Evaluator Page"] --> COMP_SETUP["EvaluationSetup"]
 HOOK --> API["api.ts"]
 COMP_UPLOAD --> API
 COMP_SEARCH --> API
@@ -394,12 +430,10 @@ PAGE_RFP_E --> API
 ```
 
 **Diagram sources**
-- [layout.tsx:22-40](file://frontend/src/app/layout.tsx#L22-L40)
-- [archive/page.tsx:3-13](file://frontend/src/app/archive/page.tsx#L3-L13)
-- [rfp-creator/page.tsx:3-6](file://frontend/src/app/rfp-creator/page.tsx#L3-L6)
-- [rfp-evaluator/page.tsx:4-14](file://frontend/src/app/rfp-evaluator/page.tsx#L4-L14)
-- [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
-- [api.ts:164-244](file://frontend/src/lib/api.ts#L164-L244)
+- [page.tsx:54-90](file://frontend/src/app/page.tsx#L54-L90)
+- [archive/page.tsx:73-79](file://frontend/src/app/archive/page.tsx#L73-L79)
+- [Card.tsx:7-16](file://frontend/src/components/Card.tsx#L7-L16)
+- [Button.tsx:8-29](file://frontend/src/components/Button.tsx#L8-L29)
 
 **Section sources**
 - [package.json:11-27](file://frontend/package.json#L11-L27)
@@ -412,6 +446,7 @@ PAGE_RFP_E --> API
 - Video upload simulates progress; real progress requires XMLHttpRequest for accurate reporting.
 - Debounce search queries to avoid excessive API calls.
 - Scene detection component efficiently renders large numbers of scenes with virtualization and lazy loading.
+- **Enhanced** Homepage card layout optimized with CSS transitions and efficient re-rendering patterns.
 
 ## Troubleshooting Guide
 Common issues and resolutions:
@@ -421,13 +456,16 @@ Common issues and resolutions:
 - Evaluation failures: Clear polling interval and reset to setup; surface error messages.
 - Navigation highlights: Ensure Sidebar path matching logic aligns with route prefixes.
 - Scene detection issues: Verify scene data availability in metadata; check for empty scene arrays.
+- **New** Back to Home navigation: Verify Link component href attribute points to correct root path.
+- **New** Homepage card styling: Check Tailwind CSS classes and ensure proper import of icon components.
 
 **Section sources**
 - [VideoUpload.tsx:200-217](file://frontend/src/components/archive/VideoUpload.tsx#L200-L217)
 - [useVideoProcessing.ts:263-271](file://frontend/src/lib/useVideoProcessing.ts#L263-L271)
-- [rfp-creator/page.tsx:26-32](file://frontend/src/app/rfp-creator/page.tsx#L26-L32)
-- [rfp-evaluator/page.tsx:86-97](file://frontend/src/app/rfp-evaluator/page.tsx#L86-L97)
-- [Sidebar.tsx:35-45](file://frontend/src/components/Sidebar.tsx#L35-L45)
+- [archive/page.tsx:73-79](file://frontend/src/app/archive/page.tsx#L73-L79)
+- [page.tsx:54-90](file://frontend/src/app/page.tsx#L54-L90)
 
 ## Conclusion
-The application leverages Next.js App Router for clean route-based rendering, with client components managing interactive state and shared utilities handling API integrations. The Archive, RFP Creator, and RFP Evaluator pages each encapsulate domain-specific flows while sharing common UI and data-layer abstractions. The design supports robust error handling, loading states, and responsive interactions across pages. The integration of the enhanced SceneDetection component provides users with powerful scene analysis capabilities, replacing the previous VideoTimeline component with more sophisticated scene segmentation and visualization features.
+The application leverages Next.js App Router for clean route-based rendering, with client components managing interactive state and shared utilities handling API integrations. The Archive, RFP Creator, and RFP Evaluator pages each encapsulate domain-specific flows while sharing common UI and data-layer abstractions. The design supports robust error handling, loading states, and responsive interactions across pages. 
+
+**Enhanced** Recent improvements include the addition of a prominent 'Back to Home' navigation button in the archive page, providing users with intuitive navigation back to the main landing page. The homepage has been completely redesigned with a modern card layout featuring improved styling, typography, and interactive elements that enhance the overall user experience. These changes demonstrate the application's commitment to providing a polished, professional interface while maintaining functional excellence in media processing workflows.

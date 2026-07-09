@@ -9,11 +9,11 @@ import base64
 import json
 import logging
 import os
-import re
 import subprocess
 import tempfile
 from typing import List, Optional
 
+import aiofiles
 import httpx
 
 from config import settings
@@ -29,19 +29,17 @@ TRANSCRIPTION_PROMPT = (
     "Return ONLY the transcribed text, nothing else."
 )
 
-# Prompt variant that asks the model to differentiate speakers inline.
-DIARIZATION_PROMPT = (
-    "Transcribe this audio completely and accurately. "
-    "Include all speech in the original language (English and/or Arabic). "
-    "If multiple speakers are present, identify each distinct speaker and "
-    "prefix their dialogue with a marker like [Speaker 1], [Speaker 2], etc. "
-    "Always use the same speaker number for the same voice. "
-    "If only one speaker is present, prefix everything with [Speaker 1]. "
-    "Return ONLY the transcribed text with speaker markers, nothing else."
+# DashScope Paraformer v2 ASR endpoints.
+# NOTE: this deployment uses an international (ap-southeast-1) DashScope key, so
+# the public host must be the international one (dashscope-intl.aliyuncs.com).
+# The China host (dashscope.aliyuncs.com) rejects this key as InvalidApiKey.
+PARAFORMER_SUBMIT_URL = (
+    "https://dashscope-intl.aliyuncs.com/api/v1/services/audio/asr/transcription"
 )
+PARAFORMER_TASK_URL = "https://dashscope-intl.aliyuncs.com/api/v1/tasks/{task_id}"
 
-# Matches inline speaker markers such as "[Speaker 1]", "[speaker 2]:", "[SPEAKER 3]".
-SPEAKER_MARKER_RE = re.compile(r"\[\s*speaker\s*(\d+)\s*\]\s*:?", re.IGNORECASE)
+# Max audio size for base64 inline submission (50 MB).
+MAX_INLINE_AUDIO_BYTES = 50 * 1024 * 1024
 
 
 async def transcribe_audio(
@@ -129,16 +127,17 @@ async def transcribe_audio(
 
 async def transcribe_with_diarization(audio_path: str, api_key: str = "") -> dict:
     """
-    Transcribe a local audio file with speaker diarization.
+    Transcribe audio with real acoustic speaker diarization using DashScope
+    Paraformer v2.
 
-    Reuses the chunk-based Qwen-Omni-Turbo transcription, but asks the model to
-    prefix each speaker's dialogue with an inline ``[Speaker N]`` marker. The
-    markers are parsed into per-speaker sub-segments with consistent integer
-    ``speaker_id`` values ("0", "1", "2" ...) that the frontend maps to
-    "Speaker N" labels.
+    Submits an asynchronous ASR transcription task (with ``diarization_enabled``)
+    to the DashScope Paraformer v2 service, polls until completion, and parses
+    the per-sentence results into the standard segment format with integer
+    ``speaker_id`` values assigned by the model's acoustic diarization.
 
-    Falls back to :func:`transcribe_audio` (with ``speaker_id: "unknown"``) when
-    no speaker markers are detected or the diarization pass produces no speech.
+    Falls back to :func:`transcribe_audio` (single-speaker, ``speaker_id:
+    "unknown"``) if Paraformer fails or the audio is too large for inline
+    base64 submission.
 
     Args:
         audio_path: Local path to the audio file (WAV).
@@ -156,117 +155,129 @@ async def transcribe_with_diarization(audio_path: str, api_key: str = "") -> dic
         logger.error("Audio file not found: %s", audio_path)
         return _empty_result(f"Audio file not found: {audio_path}")
 
-    logger.info("Starting diarized audio transcription for %s", audio_path)
+    logger.info("Starting Paraformer diarized transcription for %s", audio_path)
 
-    duration = await _get_audio_duration(audio_path)
-    if duration <= 0:
-        return _empty_result("Could not determine audio duration")
-
-    logger.info("Audio duration: %.1f seconds", duration)
-
-    chunks = await _split_audio(audio_path, duration, CHUNK_DURATION)
-    if not chunks:
-        return _empty_result("Failed to split audio into chunks")
-
-    logger.info(
-        "Split audio into %d chunks of ~%ds each (diarization)",
-        len(chunks), CHUNK_DURATION,
-    )
-
-    segments: List[dict] = []
-    full_text_parts: List[str] = []
-    speaker_ids = set()
-    saw_any_marker = False
-
-    for i, (chunk_path, chunk_start, chunk_end) in enumerate(chunks):
-        logger.info(
-            "Transcribing chunk %d/%d with diarization (%.1fs - %.1fs)",
-            i + 1, len(chunks), chunk_start, chunk_end,
+    # Guard against oversized inline base64 payloads.
+    file_size = os.path.getsize(audio_path)
+    if file_size > MAX_INLINE_AUDIO_BYTES:
+        logger.warning(
+            "Audio file too large for base64 (%d bytes), falling back", file_size
         )
-
-        text = await _transcribe_chunk(chunk_path, api_key, prompt=DIARIZATION_PROMPT)
-
-        try:
-            os.remove(chunk_path)
-        except OSError:
-            pass
-
-        if not text or not text.strip() or text.strip() in ("[Music]", "[music]"):
-            continue
-
-        parsed = _parse_speaker_segments(text)
-        if parsed:
-            saw_any_marker = True
-            chunk_dur = max(chunk_end - chunk_start, 0.0)
-            total_chars = sum(len(t) for _, t in parsed) or 1
-            cursor = chunk_start
-            for spk_num, spk_text in parsed:
-                # 1-based markers -> 0-based speaker_id for the frontend.
-                speaker_id = str(max(spk_num - 1, 0))
-                frac = len(spk_text) / total_chars
-                seg_end = min(cursor + chunk_dur * frac, chunk_end)
-                if seg_end <= cursor:
-                    seg_end = chunk_end
-                segments.append({
-                    "start_time": cursor,
-                    "end_time": seg_end,
-                    "text": spk_text,
-                    "speaker_id": speaker_id,
-                    "language": "unknown",
-                    "words": [],
-                })
-                full_text_parts.append(spk_text)
-                speaker_ids.add(speaker_id)
-                cursor = seg_end
-        else:
-            # No markers in this chunk — keep the text with an unknown speaker.
-            clean = text.strip()
-            segments.append({
-                "start_time": chunk_start,
-                "end_time": chunk_end,
-                "text": clean,
-                "speaker_id": "unknown",
-                "language": "unknown",
-                "words": [],
-            })
-            full_text_parts.append(clean)
-
-    if not segments:
-        return _empty_result("No speech detected in audio")
-
-    # If the model never produced a single speaker marker, diarization did not
-    # work; fall back to the plain transcription so behaviour is unchanged.
-    if not saw_any_marker:
-        logger.info("No speaker markers detected; falling back to plain transcription")
         return await transcribe_audio(audio_path, api_key)
 
-    return {
-        "segments": segments,
-        "full_text": " ".join(full_text_parts),
-        "language": "mixed",
-        "speaker_count": len(speaker_ids),
-    }
+    try:
+        # 1. Read audio file and encode as base64 data URL.
+        async with aiofiles.open(audio_path, "rb") as f:
+            audio_bytes = await f.read()
+        audio_b64 = base64.b64encode(audio_bytes).decode("utf-8")
 
+        ext = os.path.splitext(audio_path)[1].lower().lstrip(".")
+        if ext == "wav":
+            mime = "audio/wav"
+        elif ext == "mp3":
+            mime = "audio/mpeg"
+        else:
+            mime = f"audio/{ext}"
 
-def _parse_speaker_segments(text: str) -> List[tuple]:
-    """Split diarized transcription text into ``(speaker_num, text)`` tuples.
+        file_url = f"data:{mime};base64,{audio_b64}"
 
-    Uses inline ``[Speaker N]`` markers. Returns an empty list when no marker
-    is present so callers can fall back to single-speaker handling.
-    """
-    matches = list(SPEAKER_MARKER_RE.finditer(text))
-    if not matches:
-        return []
+        # 2. Submit the asynchronous transcription task.
+        async with httpx.AsyncClient(timeout=30) as client:
+            submit_resp = await client.post(
+                PARAFORMER_SUBMIT_URL,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "X-DashScope-Async": "enable",
+                },
+                json={
+                    "model": "paraformer-v2",
+                    "input": {"file_urls": [file_url]},
+                    "parameters": {
+                        "diarization_enabled": True,
+                        "language_hints": ["en", "ar"],
+                    },
+                },
+            )
+            submit_data = submit_resp.json()
 
-    result: List[tuple] = []
-    for idx, m in enumerate(matches):
-        speaker_num = int(m.group(1))
-        start = m.end()
-        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        seg_text = text[start:end].strip()
-        if seg_text:
-            result.append((speaker_num, seg_text))
-    return result
+        task_id = submit_data["output"]["task_id"]
+        logger.info("Paraformer task submitted: %s", task_id)
+
+        # 3. Poll for completion (up to ~5 minutes).
+        max_polls = 60
+        poll_data = None
+        for _ in range(max_polls):
+            await asyncio.sleep(5)
+            async with httpx.AsyncClient(timeout=30) as client:
+                poll_resp = await client.get(
+                    PARAFORMER_TASK_URL.format(task_id=task_id),
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+                poll_data = poll_resp.json()
+
+            status = poll_data["output"]["task_status"]
+            if status == "SUCCEEDED":
+                break
+            if status in ("FAILED", "CANCELED"):
+                raise RuntimeError(f"Paraformer task {status}: {poll_data}")
+            # PENDING or RUNNING -> keep polling.
+        else:
+            raise RuntimeError("Paraformer task timed out after polling")
+
+        # 4. Fetch the transcription JSON from the result URL.
+        transcription_url = poll_data["output"]["results"][0]["transcription_url"]
+        async with httpx.AsyncClient(timeout=30) as client:
+            result_resp = await client.get(transcription_url)
+            result_json = result_resp.json()
+
+        # 5. Parse into the standard segment format.
+        transcripts = result_json.get("transcripts", [])
+        if not transcripts:
+            raise RuntimeError("No transcripts in Paraformer response")
+
+        sentences = transcripts[0].get("sentences", [])
+        segments: List[dict] = []
+        for sentence in sentences:
+            segments.append({
+                "start_time": sentence["begin_time"] / 1000.0,
+                "end_time": sentence["end_time"] / 1000.0,
+                "text": sentence["text"].strip(),
+                "speaker_id": str(sentence.get("speaker_id", "unknown")),
+                "language": "unknown",
+                "words": sentence.get("words", []),
+            })
+
+        if not segments:
+            raise RuntimeError("No sentences in Paraformer response")
+
+        full_text = transcripts[0].get(
+            "text", " ".join(s["text"] for s in segments)
+        )
+        speaker_ids = set(
+            s["speaker_id"] for s in segments if s["speaker_id"] != "unknown"
+        )
+
+        logger.info(
+            "Paraformer diarization complete: %d segments, %d speakers",
+            len(segments),
+            len(speaker_ids),
+        )
+
+        return {
+            "segments": segments,
+            "full_text": full_text,
+            "language": "mixed",
+            "speaker_count": len(speaker_ids),
+        }
+
+    except Exception as e:
+        logger.warning(
+            "Paraformer diarization failed, falling back to standard "
+            "transcription: %r",
+            e,
+        )
+        return await transcribe_audio(audio_path, api_key)
 
 
 async def _get_audio_duration(audio_path: str) -> float:
