@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useRef } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useVideoProcessing } from "@/lib/useVideoProcessing";
 import VideoUpload from "@/components/archive/VideoUpload";
@@ -69,6 +70,14 @@ function ArchivePageInner() {
 
   return (
     <div className="max-w-[1400px] mx-auto">
+      {/* Back to Home */}
+      <Link
+        href="/"
+        className="inline-flex items-center gap-1 mb-4 text-sm font-medium text-orange-500 hover:text-orange-600 transition-colors"
+      >
+        <span aria-hidden="true">&larr;</span> Back to Home
+      </Link>
+
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>

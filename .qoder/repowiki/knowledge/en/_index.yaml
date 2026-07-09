@@ -3,11 +3,11 @@ schema_version: 1
 locale: en-US
 branch: main
 nodes_managed: true
-exported_at: "2026-07-08T16:40:01Z"
+exported_at: "2026-07-09T05:03:19Z"
 modules:
     "":
-        dir_name: Dubai Media AI — Video Ingestion, Metadata Pipeline & RFP Engine
-        title: Dubai Media AI — Video Ingestion, Metadata Pipeline & RFP Engine
+        dir_name: Dubai Media AI — Video Ingestion, Metadata Extraction & Dubbing Service
+        title: Dubai Media AI — Video Ingestion, Metadata Extraction & Dubbing Service
         scope: []
         source_files: []
         children: []

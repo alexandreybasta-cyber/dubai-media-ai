@@ -14,6 +14,13 @@
 - [api.ts](file://frontend/src/lib/api.ts)
 </cite>
 
+## Update Summary
+**Changes Made**
+- Updated Audio Assembly section to document enhanced normalization parameters and format consistency handling
+- Enhanced Silence Generation section to reflect improved Edge-TTS format matching (24kHz mono)
+- Updated Error Logging section to document increased stderr truncation limits for better debugging
+- Added detailed technical specifications for FFmpeg audio processing improvements
+
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
@@ -79,7 +86,7 @@ API --> FS["Filesystem<br/>./uploads/<video_id>"]
 - [orchestrator.py:1-410](file://backend/pipeline/orchestrator.py#L1-L410)
 - [audio_analysis.py:1-435](file://backend/pipeline/audio_analysis.py#L1-L435)
 - [subtitle_generation.py:1-443](file://backend/pipeline/subtitle_generation.py#L1-L443)
-- [dubbing.py:1-508](file://backend/pipeline/dubbing.py#L1-L508)
+- [dubbing.py:1-521](file://backend/pipeline/dubbing.py#L1-L521)
 - [video.py:1-860](file://backend/routers/video.py#L1-L860)
 - [DubbingPanel.tsx:1-338](file://frontend/src/components/archive/DubbingPanel.tsx#L1-L338)
 - [api.ts:1-339](file://frontend/src/lib/api.ts#L1-L339)
@@ -228,8 +235,8 @@ Merge --> AEnd(["segments + full_text"])
 ```
 
 **Diagram sources**
-- [audio_analysis.py:47-127](file://backend/pipeline/audio_analysis.py#L47-L127)
-- [audio_analysis.py:130-248](file://backend/pipeline/audio_analysis.py#L130-L248)
+- [audio_analysis.py:47-127](file://backend/pipeline/audio_analysis.py#L47-127)
+- [audio_analysis.py:130-248](file://backend/pipeline/audio_analysis.py#L130-248)
 
 **Section sources**
 - [audio_analysis.py:1-435](file://backend/pipeline/audio_analysis.py#L1-L435)
@@ -248,8 +255,8 @@ Cache --> SEnd(["Cached subtitles ready"])
 ```
 
 **Diagram sources**
-- [subtitle_generation.py:286-328](file://backend/pipeline/subtitle_generation.py#L286-L328)
-- [subtitle_generation.py:331-367](file://backend/pipeline/subtitle_generation.py#L331-L367)
+- [subtitle_generation.py:286-328](file://backend/pipeline/subtitle_generation.py#L286-328)
+- [subtitle_generation.py:331-367](file://backend/pipeline/subtitle_generation.py#L331-367)
 
 **Section sources**
 - [subtitle_generation.py:1-443](file://backend/pipeline/subtitle_generation.py#L1-L443)
@@ -285,7 +292,60 @@ Dub-->>API : {status, audio_path, video_path, segments}
 - [dubbing.py:421-457](file://backend/pipeline/dubbing.py#L421-L457)
 
 **Section sources**
-- [dubbing.py:1-508](file://backend/pipeline/dubbing.py#L1-L508)
+- [dubbing.py:1-521](file://backend/pipeline/dubbing.py#L1-L521)
+
+### Enhanced Audio Assembly Process
+**Updated** Enhanced with advanced normalization parameters to handle format inconsistencies during FFmpeg operations.
+
+The audio assembly process has been significantly improved with robust format normalization to prevent encoding failures:
+
+- **Format Normalization**: All audio pieces are normalized to a consistent 44.1kHz stereo format before encoding using FFmpeg's `aresample` filter
+- **Encoding Parameters**: Uses `-af aresample=44100`, `-ar 44100`, `-ac 2` to ensure uniform stream format for the libmp3lame encoder
+- **Error Prevention**: Prevents "inadequate AVFrame plane padding" errors that occur when mixing different audio formats
+- **Silence Generation**: Generated silence matches Edge-TTS output format (24kHz mono) to maintain format consistency throughout the pipeline
+
+```mermaid
+flowchart TD
+AStart(["Segment Audio Files"]) --> Normalize["Apply aresample=44100<br/>Normalize to 44.1kHz Stereo"]
+Normalize --> Concat["Concatenate with Silence Gaps"]
+Concat --> Encode["Encode with libmp3lame<br/>Quality: q:a=2"]
+Encode --> AEnd(["Final MP3 Track"])
+```
+
+**Diagram sources**
+- [dubbing.py:346-363](file://backend/pipeline/dubbing.py#L346-L363)
+- [dubbing.py:381-407](file://backend/pipeline/dubbing.py#L381-L407)
+
+**Section sources**
+- [dubbing.py:297-378](file://backend/pipeline/dubbing.py#L297-378)
+- [dubbing.py:381-407](file://backend/pipeline/dubbing.py#L381-L407)
+
+### Improved Silence Generation
+**Updated** Enhanced silence generation to match Edge-TTS output format for seamless concatenation.
+
+Silence generation has been optimized to maintain format consistency with Edge-TTS synthesized speech:
+
+- **Format Matching**: Generates silence at 24kHz mono to match Edge-TTS output specifications
+- **Seamless Concatenation**: Eliminates format switching between silence and speech segments
+- **Encoder Stability**: Prevents encoder reconfiguration issues during concatenation
+- **Timing Precision**: Maintains exact timing gaps between speech segments
+
+**Section sources**
+- [dubbing.py:381-407](file://backend/pipeline/dubbing.py#L381-L407)
+
+### Enhanced Error Logging
+**Updated** Increased stderr truncation limits for better debugging capabilities.
+
+Error logging has been enhanced to provide more comprehensive diagnostic information:
+
+- **Audio Assembly Errors**: Increased stderr truncation from 400 to 800 characters for detailed FFmpeg error reporting
+- **Muxing Errors**: Maintains 400-character truncation for video muxing operations
+- **Debugging Support**: Provides sufficient context for troubleshooting complex audio processing issues
+- **Performance Impact**: Minimal overhead while significantly improving diagnostic capabilities
+
+**Section sources**
+- [dubbing.py:372-375](file://backend/pipeline/dubbing.py#L372-L375)
+- [dubbing.py:464-467](file://backend/pipeline/dubbing.py#L464-L467)
 
 ### API Endpoints for Dubbing
 - Request dubbing: POST /api/video/{video_id}/dub
@@ -379,7 +439,7 @@ FE["DubbingPanel.tsx"] --> API["lib/api.ts"]
 - [main.py:1-44](file://backend/main.py#L1-L44)
 - [video.py:1-860](file://backend/routers/video.py#L1-L860)
 - [orchestrator.py:1-410](file://backend/pipeline/orchestrator.py#L1-L410)
-- [dubbing.py:1-508](file://backend/pipeline/dubbing.py#L1-L508)
+- [dubbing.py:1-521](file://backend/pipeline/dubbing.py#L1-L521)
 - [DubbingPanel.tsx:1-338](file://frontend/src/components/archive/DubbingPanel.tsx#L1-L338)
 - [api.ts:1-339](file://frontend/src/lib/api.ts#L1-L339)
 
@@ -389,8 +449,8 @@ FE["DubbingPanel.tsx"] --> API["lib/api.ts"]
 - Resilient subtitle generation: Subtitle translation failures do not block other languages; results are cached to disk.
 - Task deduplication: In-memory tracking prevents duplicate dubbing tasks for the same video/language pair.
 - Media operations: FFmpeg commands use executors to avoid blocking the event loop; durations are probed via ffprobe.
-
-[No sources needed since this section provides general guidance]
+- **Enhanced audio processing**: Format normalization prevents encoding failures and improves reliability across diverse input formats.
+- **Optimized silence generation**: Matching Edge-TTS format eliminates encoder reconfiguration overhead during concatenation.
 
 ## Troubleshooting Guide
 Common issues and checks:
@@ -406,12 +466,21 @@ Common issues and checks:
   - Ensure the uploads directory is writable and accessible by the backend process.
 - Long-running jobs
   - Use GET /api/video/{id}/dub/status to poll progress; the frontend simulates a progress bar while polling.
+- **Audio assembly failures**
+  - Check enhanced error logs with 800-character stderr truncation for detailed FFmpeg diagnostics
+  - Verify FFmpeg version supports aresample filter for format normalization
+- **Format inconsistency errors**
+  - The system now automatically normalizes audio formats to prevent "inadequate AVFrame plane padding" errors
+  - Monitor logs for any remaining format mismatch warnings
 
 **Section sources**
 - [video.py:450-558](file://backend/routers/video.py#L450-L558)
 - [config.py:5-29](file://backend/config.py#L5-L29)
 - [dubbing.py:56-161](file://backend/pipeline/dubbing.py#L56-L161)
 - [audio_analysis.py:47-127](file://backend/pipeline/audio_analysis.py#L47-L127)
+- [dubbing.py:372-375](file://backend/pipeline/dubbing.py#L372-L375)
 
 ## Conclusion
 The dubbing pipeline integrates transcription, translation, speech synthesis, and media assembly into a cohesive workflow. It leverages a robust orchestration strategy with background execution, resilient subtitle generation, and clear API contracts. The frontend provides an intuitive interface to initiate dubbing, monitor progress, and consume results. With proper configuration and tooling (FFmpeg), the system can reliably produce high-quality dubbed videos across multiple languages.
+
+**Recent Enhancements**: The latest improvements include advanced audio format normalization, optimized silence generation matching Edge-TTS specifications, and enhanced error logging with increased stderr truncation limits. These changes significantly improve reliability and debugging capabilities while maintaining backward compatibility with existing workflows.

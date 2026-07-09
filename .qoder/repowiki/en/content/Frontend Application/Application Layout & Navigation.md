@@ -3,11 +3,9 @@
 <cite>
 **Referenced Files in This Document**
 - [layout.tsx](file://frontend/src/app/layout.tsx)
-- [Sidebar.tsx](file://frontend/src/components/Sidebar.tsx)
 - [globals.css](file://frontend/src/app/globals.css)
 - [page.tsx](file://frontend/src/app/page.tsx)
 - [archive/page.tsx](file://frontend/src/app/archive/page.tsx)
-- [rfp-creator/page.tsx](file://frontend/src/app/rfp-creator/page.tsx)
 - [Button.tsx](file://frontend/src/components/Button.tsx)
 - [Card.tsx](file://frontend/src/components/Card.tsx)
 - [SceneDetection.tsx](file://frontend/src/components/archive/SceneDetection.tsx)
@@ -23,11 +21,12 @@
 
 ## Update Summary
 **Changes Made**
-- Updated archive page layout documentation to include the new SceneDetection component integration
-- Added comprehensive documentation for the SceneDetection component with scene timeline visualization and interactive features
-- Enhanced archive page component analysis to reflect the new three-column layout with SceneDetection integrated alongside TranscriptPanel and MetadataPanel
-- Updated component interaction patterns to show how SceneDetection works with other archive components
-- Added detailed coverage of scene detection functionality including timeline bars, scene types, and interactive seeking
+- Removed all references to Sidebar component as it no longer exists in the codebase
+- Updated layout documentation to reflect the new full-width interface without side navigation
+- Streamlined main landing page documentation to focus on core media processing features only
+- Removed references to RFP Creator and RFP Evaluator pages that have been removed
+- Updated architecture diagrams to show simplified layout structure
+- Enhanced documentation for the streamlined single-tool approach
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -46,95 +45,85 @@
 14. [Conclusion](#conclusion)
 
 ## Introduction
-This document explains the Next.js application layout and navigation system used in the frontend. It covers the RootLayout component structure, font configuration with Geist and Geist Mono, responsive design implementation, the sidebar navigation component (menu items, active state management, and mobile responsiveness), the main content area layout, padding, and background styling. It also provides examples of layout customization, theme integration, navigation patterns, and how layout components relate to page rendering, including SSR/SSG considerations and performance optimizations.
+This document explains the Next.js application layout and navigation system used in the frontend. It covers the RootLayout component structure, font configuration with Geist and Geist Mono fonts, responsive design implementation, and the main content area layout with padding and background styling. The application now provides a streamlined, full-width interface focused on core media processing features without side navigation. It also provides examples of layout customization, theme integration, and how layout components relate to page rendering, including SSR/SSG considerations and performance optimizations.
 
-**Updated** Enhanced with comprehensive styling improvements including new color palette system, enhanced form input accessibility, typography consistency, and Tailwind CSS theme customization with primary color variations from 50 to 900 shades. The archive page now includes the new SceneDetection component for advanced scene analysis and timeline visualization.
+**Updated** The application has been streamlined to provide a focused, full-width interface centered around core media processing capabilities. The sidebar navigation has been removed in favor of a clean, direct user experience that emphasizes the Video Archive Metadata tool as the primary feature.
 
 ## Project Structure
-The layout system centers around a single RootLayout that wraps all pages and a fixed sidebar navigation. Pages render inside the main content area with consistent padding and background styling. Fonts are configured via Next.js font optimization, and Tailwind CSS provides responsive utilities and theme tokens with comprehensive color palette support.
+The layout system centers around a single RootLayout that wraps all pages with a full-width interface. Pages render inside the main content area with consistent padding and background styling. Fonts are configured via Next.js font optimization, and Tailwind CSS provides responsive utilities and theme tokens with comprehensive color palette support.
 
 ```mermaid
 graph TB
-RootLayout["RootLayout<br/>(layout.tsx)"] --> Sidebar["Sidebar<br/>(components/Sidebar.tsx)"]
-RootLayout --> Main["Main Content<br/>(<main>)"]
+RootLayout["RootLayout<br/>(layout.tsx)"] --> Main["Main Content<br/>(<main>)"]
 Main --> PageHome["Home Page<br/>(app/page.tsx)"]
 Main --> PageArchive["Archive Page<br/>(app/archive/page.tsx)"]
-Main --> PageCreator["RFP Creator Page<br/>(app/rfp-creator/page.tsx)"]
 RootLayout --> Fonts["Geist Sans & Mono<br/>(layout.tsx)"]
 RootLayout --> Theme["Tailwind Theme Tokens<br/>(app/globals.css)"]
 RootLayout --> Colors["Primary Color Palette<br/>(50-900 shades)"]
 ```
 
 **Diagram sources**
-- [layout.tsx:22-40](file://frontend/src/app/layout.tsx#L22-L40)
-- [Sidebar.tsx:17-66](file://frontend/src/components/Sidebar.tsx#L17-L66)
+- [layout.tsx:20-37](file://frontend/src/app/layout.tsx#L20-L37)
 - [globals.css:8-23](file://frontend/src/app/globals.css#L8-L23)
-- [page.tsx:69-198](file://frontend/src/app/page.tsx#L69-L198)
-- [archive/page.tsx:167-173](file://frontend/src/app/archive/page.tsx#L167-L173)
-- [rfp-creator/page.tsx:8-158](file://frontend/src/app/rfp-creator/page.tsx#L8-L158)
+- [page.tsx:35-162](file://frontend/src/app/page.tsx#L35-L162)
+- [archive/page.tsx](file://frontend/src/app/archive/page.tsx)
 
 **Section sources**
-- [layout.tsx:1-41](file://frontend/src/app/layout.tsx#L1-L41)
-- [Sidebar.tsx:1-67](file://frontend/src/components/Sidebar.tsx#L1-L67)
-- [globals.css:1-140](file://frontend/src/app/globals.css#L1-L140)
+- [layout.tsx:1-38](file://frontend/src/app/layout.tsx#L1-L38)
+- [globals.css:1-98](file://frontend/src/app/globals.css#L1-L98)
 
 ## Core Components
-- RootLayout: Provides the HTML skeleton, font variables, global styles, fixed sidebar, and main content container with padding.
-- Sidebar: Fixed left navigation with active-state highlighting based on current route.
+- RootLayout: Provides the HTML skeleton, font variables, global styles, and full-width main content container with padding.
 - Global Styles: Tailwind-based theme tokens and comprehensive color palette, plus font family variables.
-- Pages: Home, Archive, RFP Creator, and RFP Evaluator pages render within the main content area.
-- Archive Page: Enhanced with SceneDetection component for scene analysis and timeline visualization.
+- Pages: Home and Archive pages render within the main content area with their own layouts.
+- Archive Page: Complex video processing interface with specialized panels for different aspects of video analysis.
 
 Key responsibilities:
-- RootLayout sets up the base HTML element with font variables and ensures the body is a flex container.
-- Sidebar handles navigation links, active state detection, and branding.
+- RootLayout sets up the base HTML element with font variables and ensures the body fills the viewport.
 - Global styles define theme tokens and comprehensive color scheme for light/dark modes.
 - Pages define their own content and responsive layouts within the main content area.
 - Archive page manages complex video processing state with multiple specialized panels.
 
 **Section sources**
-- [layout.tsx:22-40](file://frontend/src/app/layout.tsx#L22-L40)
-- [Sidebar.tsx:17-66](file://frontend/src/components/Sidebar.tsx#L17-L66)
+- [layout.tsx:20-37](file://frontend/src/app/layout.tsx#L20-L37)
 - [globals.css:8-23](file://frontend/src/app/globals.css#L8-L23)
-- [archive/page.tsx:113-149](file://frontend/src/app/archive/page.tsx#L113-L149)
 
 ## Architecture Overview
-The layout architecture follows a strict hierarchy: RootLayout wraps all pages, hosts the Sidebar, and defines the main content container. Pages render inside the main content area with their own responsive grids and components.
+The layout architecture follows a simplified hierarchy: RootLayout wraps all pages and defines the main content container. Pages render inside the main content area with their own responsive grids and components.
 
 ```mermaid
 graph TB
-html["<html> with font variables<br/>(layout.tsx)"] --> body["<body> flex container<br/>(layout.tsx)"]
-body --> aside["<aside> Fixed Sidebar<br/>(Sidebar.tsx)"]
+html["<html> with font variables<br/>(layout.tsx)"] --> body["<body> Full-height container<br/>(layout.tsx)"]
 body --> main["<main> Main Content<br/>(layout.tsx)"]
 main --> divPadding["<div> Padding Container<br/>(layout.tsx)"]
 divPadding --> page["Page Component<br/>(page.tsx, archive)"]
 ```
 
 **Diagram sources**
-- [layout.tsx:22-40](file://frontend/src/app/layout.tsx#L22-L40)
-- [Sidebar.tsx:20-64](file://frontend/src/components/Sidebar.tsx#L20-L64)
-- [page.tsx:69-198](file://frontend/src/app/page.tsx#L69-L198)
+- [layout.tsx:20-37](file://frontend/src/app/layout.tsx#L20-L37)
+- [page.tsx:35-162](file://frontend/src/app/page.tsx#L35-L162)
 
 ## Detailed Component Analysis
 
 ### RootLayout Component
 RootLayout is the application shell:
 - Sets HTML language and applies font variables for Geist Sans and Geist Mono.
-- Wraps children in a flex body and fixed sidebar.
-- Renders the main content area with a left margin equal to the sidebar width and a light gray background.
-- Adds a minimum height to ensure the content fills the viewport.
+- Wraps children in a full-height body and full-width main content area.
+- Renders the main content area with a light gray background and inner padding container.
+- Adds minimum height to ensure the content fills the viewport.
 
 Responsive and accessibility considerations:
 - Uses antialiased class for improved text rendering.
 - Ensures min-height for the body and main content to avoid layout shifts.
+- Provides a clean, distraction-free interface optimized for content consumption.
 
 Customization examples:
-- To change sidebar width, adjust the left margin on the main content and the sidebar width class.
 - To modify background, update the background class on the main content area.
 - To alter font families, replace the font variable classes applied to the HTML element.
+- To change padding, adjust the inner div's padding classes.
 
 **Section sources**
-- [layout.tsx:22-40](file://frontend/src/app/layout.tsx#L22-L40)
+- [layout.tsx:20-37](file://frontend/src/app/layout.tsx#L20-L37)
 
 ### Font Configuration (Geist Sans and Geist Mono)
 Font configuration:
@@ -149,39 +138,12 @@ Dark mode compatibility:
 - Fonts remain consistent under light/dark modes via CSS variables.
 
 **Section sources**
-- [layout.tsx:6-14](file://frontend/src/app/layout.tsx#L6-L14)
+- [layout.tsx:5-13](file://frontend/src/app/layout.tsx#L5-L13)
 - [globals.css:11-12](file://frontend/src/app/globals.css#L11-L12)
-
-### Sidebar Navigation Component
-Sidebar responsibilities:
-- Fixed positioning on the left with a white background and border.
-- Brand header with a link to home.
-- Navigation items for Archive Metadata, RFP Creator, and RFP Evaluator.
-- Active state detection using the current pathname with prefix matching for nested routes.
-- Icons per menu item and hover/active styles for visual feedback.
-- Status indicator at the bottom.
-
-Active state logic:
-- Compares the current pathname to the item's href and whether it starts with the href plus a trailing slash.
-- Applies primary color classes for active state and neutral hover states otherwise.
-
-Mobile responsiveness:
-- The sidebar is fixed and does not collapse on smaller screens.
-- The main content area has a left margin equal to the sidebar width to prevent overlap.
-- Pages should use responsive utilities to adapt content layout for small screens.
-
-Customization examples:
-- Add/remove menu items by editing the navigation array.
-- Change active state styling by adjusting the conditional classes.
-- Modify spacing and typography by updating the Tailwind classes within the component.
-
-**Section sources**
-- [Sidebar.tsx:11-15](file://frontend/src/components/Sidebar.tsx#L11-L15)
-- [Sidebar.tsx:17-66](file://frontend/src/components/Sidebar.tsx#L17-L66)
 
 ### Main Content Area Layout
 Main content area characteristics:
-- Positioned to the right of the fixed sidebar with a left margin equal to the sidebar width.
+- Full-width layout with no sidebar constraints.
 - Light gray background for visual separation.
 - Minimum height to fill the viewport.
 - Inner padding container adds horizontal padding around page content.
@@ -195,49 +157,55 @@ Background and padding examples:
 - Padding can be adjusted by changing the inner div's padding classes.
 
 **Section sources**
-- [layout.tsx:34-36](file://frontend/src/app/layout.tsx#L34-L36)
+- [layout.tsx:30-33](file://frontend/src/app/layout.tsx#L30-L33)
 
 ### Global Styles and Theme Integration
 Theme tokens:
 - CSS variables define background and foreground colors.
 - Tailwind theme inline directive maps color palettes and font variables to CSS custom properties.
-- Dark mode media query switches background and foreground variables.
 
 Font integration:
 - Tailwind theme tokens reference the Geist font variables, ensuring consistent typography.
 
 Customization examples:
 - Adjust primary color scale by updating the primary color variables.
-- Change default background/foreground by modifying the CSS variables in :root and dark mode block.
+- Change default background/foreground by modifying the CSS variables in :root.
 - Extend the color palette by adding more variables and referencing them in Tailwind utilities.
 
 **Section sources**
 - [globals.css:3-23](file://frontend/src/app/globals.css#L3-L23)
-- [globals.css:128-133](file://frontend/src/app/globals.css#L128-L133)
+
+### Home Page Layout and Features
+The home page represents a streamlined, focused interface showcasing the core media processing capabilities:
+
+#### Single Tool Focus
+The home page now features a single, prominent tool card for "Video Archive Metadata":
+- **Hero Section**: Clear branding and value proposition with Alibaba Cloud integration badge
+- **Feature Card**: Comprehensive overview of video processing capabilities
+- **Technology Stack**: Display of AI models and technologies used
+- **Value Propositions**: Three key benefits highlighting Arabic-first AI, data sovereignty, and unified vendor approach
+
+#### Responsive Design
+- **Grid Layout**: Uses `grid-cols-1 lg:grid-cols-3` for adaptive card display
+- **Mobile Optimization**: Stacks vertically on smaller screens
+- **Touch-Friendly**: Large tap targets and clear call-to-action buttons
+
+#### Content Organization
+- **Tool Capabilities**: Detailed list of supported features including speech-to-text, scene detection, face recognition, and metadata export
+- **Model Information**: Clear presentation of underlying AI technologies
+- **Strategic Benefits**: Emphasis on regional compliance and vendor consolidation
+
+**Section sources**
+- [page.tsx:35-162](file://frontend/src/app/page.tsx#L35-L162)
 
 ### Archive Page Layout and Component Integration
-The archive page represents the most complex layout in the application, featuring a sophisticated three-column design with the new SceneDetection component integrated alongside existing panels.
+The archive page represents the most complex layout in the application, featuring a sophisticated three-column design with specialized components for comprehensive video analysis.
 
 #### Three-Column Layout Architecture
 The archive page implements a responsive grid system:
 - **Left Column (66% width)**: Contains VideoTimeline and SceneDetection components stacked vertically
 - **Right Column (33% width)**: Contains MetadataPanel and APITransparencyPanel stacked vertically
-- **Responsive Breakpoints**: Uses lg:grid-cols-5 for desktop, collapsing to single column on smaller screens
-
-#### SceneDetection Component Integration
-The SceneDetection component is strategically positioned between VideoTimeline and TranscriptPanel to provide comprehensive scene analysis:
-
-```typescript
-// SceneDetection integration in archive page
-<SceneDetection
-  scenes={state.metadata?.scenes || []}
-  duration={state.metadata?.duration || 0}
-  currentTime={state.currentTime}
-  onSeek={seekTo}
-/>
-```
-
-**Updated** The SceneDetection component provides advanced scene analysis with timeline visualization, interactive seeking, and scene type categorization.
+- **Responsive Breakpoints**: Uses `lg:grid-cols-5` for desktop, collapsing to single column on smaller screens
 
 #### Component Interaction Patterns
 The archive page demonstrates sophisticated component interaction:
@@ -247,8 +215,7 @@ The archive page demonstrates sophisticated component interaction:
 - **Responsive Design**: Grid layout adapts to different screen sizes while maintaining component functionality
 
 **Section sources**
-- [archive/page.tsx:113-149](file://frontend/src/app/archive/page.tsx#L113-L149)
-- [archive/page.tsx:127-132](file://frontend/src/app/archive/page.tsx#L127-L132)
+- [archive/page.tsx](file://frontend/src/app/archive/page.tsx)
 
 ### SceneDetection Component
 The SceneDetection component provides comprehensive scene analysis and visualization capabilities:
@@ -289,8 +256,9 @@ The component supports multiple scene types with distinct visual treatments:
 
 ### Page Rendering and Layout Relationship
 Home page:
-- Demonstrates responsive grid layouts and card-based content.
+- Demonstrates streamlined, focused design with single tool emphasis.
 - Uses Tailwind utilities for spacing, typography, and responsive breakpoints.
+- Features modern card-based layout with clear visual hierarchy.
 
 Archive page:
 - **Complex State Management**: Integrates useVideoProcessing hook for comprehensive video processing lifecycle
@@ -298,27 +266,21 @@ Archive page:
 - **Real-time Synchronization**: Components coordinate through shared state for seamless user experience
 - **Conditional Rendering**: Components only display when relevant data is available
 
-RFP Creator page:
-- Uses responsive grid layouts for forms and previews.
-- Implements loading states and conditional rendering based on application state.
-- Leverages the enhanced color palette system for visual consistency.
-
 Layout relationship:
 - All pages render inside the main content area defined by RootLayout.
-- Pages do not need to manage sidebar or global layout concerns.
+- Pages benefit from the full-width interface without sidebar constraints.
 - Archive page serves as the most complex example of component integration and state management.
 
 **Section sources**
-- [page.tsx:89-150](file://frontend/src/app/page.tsx#L89-L150)
-- [archive/page.tsx:33-165](file://frontend/src/app/archive/page.tsx#L33-L165)
-- [rfp-creator/page.tsx:96-155](file://frontend/src/app/rfp-creator/page.tsx#L96-L155)
+- [page.tsx:35-162](file://frontend/src/app/page.tsx#L35-L162)
+- [archive/page.tsx](file://frontend/src/app/archive/page.tsx)
 
 ## Enhanced Styling System
 
-**Updated** The application now features a comprehensive styling system with enhanced color palette management, form input accessibility, and typography consistency.
+**Updated** The application maintains its comprehensive styling system with enhanced color palette management, form input accessibility, and typography consistency.
 
 ### Comprehensive Color Palette System
-The new color palette system provides extensive primary color variations from 50 to 900 shades:
+The color palette system provides extensive primary color variations from 50 to 900 shades:
 
 ```css
 --color-primary-50: #fff7ed;
@@ -381,8 +343,8 @@ Typography features:
 
 **Section sources**
 - [globals.css:8-23](file://frontend/src/app/globals.css#L8-L23)
-- [globals.css:31-42](file://frontend/src/app/globals.css#L31-L42)
-- [globals.css:121-126](file://frontend/src/app/globals.css#L121-L126)
+- [globals.css:50-61](file://frontend/src/app/globals.css#L50-L61)
+- [globals.css:11-12](file://frontend/src/app/globals.css#L11-L12)
 
 ## Color Palette Management
 
@@ -405,9 +367,9 @@ The color palette follows a systematic approach from light to dark tints:
 | 900 | #7c2d12 | Strongest emphasis |
 
 Implementation in components:
-- **Sidebar active state**: `bg-primary-50 text-primary-700`
 - **Button variants**: `bg-primary-500 text-white hover:bg-primary-600`
 - **Status indicators**: `text-primary-500` for API connectivity status
+- **Accent colors**: Various shades for interactive elements and highlights
 
 ### Tailwind CSS Theme Integration
 The color palette integrates seamlessly with Tailwind CSS utilities:
@@ -453,8 +415,7 @@ Dark mode adaptations:
 
 **Section sources**
 - [globals.css:13-22](file://frontend/src/app/globals.css#L13-L22)
-- [globals.css:55-64](file://frontend/src/app/globals.css#L55-L64)
-- [globals.css:128-133](file://frontend/src/app/globals.css#L128-L133)
+- [globals.css:8-23](file://frontend/src/app/globals.css#L8-L23)
 
 ## Form Input Accessibility
 
@@ -513,8 +474,7 @@ Component integration:
 - **Maintainability**: Centralized styling rules reduce code duplication
 
 **Section sources**
-- [globals.css:31-42](file://frontend/src/app/globals.css#L31-L42)
-- [globals.css:73-84](file://frontend/src/app/globals.css#L73-L84)
+- [globals.css:50-61](file://frontend/src/app/globals.css#L50-L61)
 - [Button.tsx:14-22](file://frontend/src/components/Button.tsx#L14-L22)
 - [Card.tsx:7-15](file://frontend/src/components/Card.tsx#L7-L15)
 
@@ -557,11 +517,6 @@ Fallback advantages:
 Components utilize the typography system effectively:
 
 ```typescript
-// Example from Sidebar component
-<h1 className="text-lg font-bold text-gray-900 leading-tight">
-  Dubai Media
-</h1>
-
 // Example from Button component
 "inline-flex items-center justify-center px-4 py-2.5 rounded-lg text-sm font-medium"
 ```
@@ -574,9 +529,7 @@ Typography implementation:
 
 **Section sources**
 - [globals.css:11-12](file://frontend/src/app/globals.css#L11-L12)
-- [globals.css:121-126](file://frontend/src/app/globals.css#L121-L126)
-- [globals.css:25-29](file://frontend/src/app/globals.css#L25-L29)
-- [Sidebar.tsx:24-30](file://frontend/src/components/Sidebar.tsx#L24-L30)
+- [globals.css:25-31](file://frontend/src/app/globals.css#L25-L31)
 - [Button.tsx:14-15](file://frontend/src/components/Button.tsx#L14-L15)
 
 ## Component Styling Examples
@@ -614,6 +567,27 @@ Card characteristics:
 - **Rounded corners**: Large radius (12px) for contemporary design
 - **Padding consistency**: 24px padding for comfortable content spacing
 
+### Home Page Component Styling
+The home page demonstrates streamlined, focused design patterns:
+
+```typescript
+// Hero section styling
+<div className="text-center mb-12 pt-4">
+
+// Feature card styling
+<div className={`rounded-xl border bg-white p-6 transition-all hover:shadow-md ${tool.borderColor} flex flex-col`}>
+
+// Technology badges styling
+<div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-50 border border-gray-200">
+```
+
+Home page styling patterns:
+- **Clean hero section**: Centered layout with clear value proposition
+- **Prominent CTA**: Large, accessible call-to-action buttons
+- **Information hierarchy**: Clear visual distinction between sections
+- **Responsive design**: Adapts gracefully to different screen sizes
+- **Modern aesthetics**: Subtle shadows, rounded corners, and consistent spacing
+
 ### Archive Page Component Styling
 The archive page demonstrates sophisticated component integration:
 
@@ -638,10 +612,10 @@ Archive styling patterns:
 **Section sources**
 - [Button.tsx:8-29](file://frontend/src/components/Button.tsx#L8-L29)
 - [Card.tsx:7-16](file://frontend/src/components/Card.tsx#L7-L16)
+- [page.tsx:35-162](file://frontend/src/app/page.tsx#L35-L162)
 - [SceneDetection.tsx:58-179](file://frontend/src/components/archive/SceneDetection.tsx#L58-L179)
 - [TranscriptPanel.tsx:102-167](file://frontend/src/components/archive/TranscriptPanel.tsx#L102-L167)
 - [MetadataPanel.tsx:344-378](file://frontend/src/components/archive/MetadataPanel.tsx#L344-L378)
-- [archive/page.tsx:116-148](file://frontend/src/app/archive/page.tsx#L116-L148)
 
 ## Theme Integration
 
@@ -697,9 +671,6 @@ Dark mode features:
 Components utilize the theme system effectively:
 
 ```typescript
-// Example from Sidebar component
-"bg-white border-gray-200 hover:bg-gray-50 hover:text-gray-900"
-
 // Example from Button component
 "bg-primary-500 text-white hover:bg-primary-600"
 ```
@@ -712,13 +683,11 @@ Theme usage patterns:
 
 **Section sources**
 - [globals.css:8-23](file://frontend/src/app/globals.css#L8-L23)
-- [globals.css:128-133](file://frontend/src/app/globals.css#L128-L133)
-- [Sidebar.tsx:41-45](file://frontend/src/components/Sidebar.tsx#L41-L45)
 - [Button.tsx:17-22](file://frontend/src/components/Button.tsx#L17-L22)
 
 ## Performance Considerations
 - Font optimization: Using Next.js font optimization ensures font resources are preloaded and optimized, reducing layout shifts and improving Core Web Vitals.
-- Minimal layout overhead: Fixed sidebar and main content area rely on simple CSS positioning and flexbox, minimizing reflows.
+- Minimal layout overhead: Full-width layout relies on simple CSS positioning and flexbox, minimizing reflows.
 - Tailwind utilities: Prefer utility classes for layout to avoid custom CSS bloat and leverage PurgeCSS in production builds.
 - Conditional rendering: Pages use conditional rendering to avoid unnecessary DOM nodes, especially in loading states.
 - SSR/SSG: Pages are server-rendered by default in Next.js; consider static generation for fully static pages where appropriate to reduce server load.
@@ -727,11 +696,11 @@ Theme usage patterns:
 - **Enhanced** Typography system: Font variables reduce font loading overhead and improve text rendering performance.
 - **Enhanced** Theme integration: CSS custom properties provide efficient theming with minimal performance impact.
 - **Enhanced** SceneDetection performance: Efficient rendering with virtualized lists and optimized scene boundary calculations.
+- **Streamlined** Reduced complexity: Removal of sidebar navigation eliminates additional DOM nodes and event listeners, improving initial load performance.
 
 ## Troubleshooting Guide
 Common issues and resolutions:
 - Fonts not applying: Ensure font variables are present on the HTML element and Tailwind theme tokens reference them.
-- Sidebar overlapping content: Verify the main content has sufficient left margin to accommodate the sidebar width.
 - Active state not highlighting: Confirm the pathname comparison logic matches the intended href values and nested route prefixes.
 - Dark mode not switching colors: Check the dark mode media query and CSS variable overrides.
 - Responsive layout breaking: Use Tailwind responsive modifiers consistently within page components.
@@ -744,19 +713,19 @@ Common issues and resolutions:
 - **Enhanced** SceneDetection component not rendering: Verify scenes array is populated and duration is greater than zero.
 - **Enhanced** Scene timeline not interactive: Check onSeek prop is properly passed and currentTime state is updating.
 - **Enhanced** Archive page layout broken: Verify grid classes are correctly applied and responsive breakpoints are configured.
+- **New** Full-width layout issues: Ensure main content area has proper width and padding classes applied.
+- **New** Missing sidebar navigation: Verify that navigation is handled through page links rather than sidebar components.
 
 **Section sources**
-- [layout.tsx:30-36](file://frontend/src/app/layout.tsx#L30-L36)
-- [Sidebar.tsx:35-45](file://frontend/src/components/Sidebar.tsx#L35-L45)
+- [layout.tsx:20-37](file://frontend/src/app/layout.tsx#L20-L37)
 - [globals.css:44-49](file://frontend/src/app/globals.css#L44-L49)
 - [globals.css:13-22](file://frontend/src/app/globals.css#L13-L22)
 - [Button.tsx:17-22](file://frontend/src/components/Button.tsx#L17-L22)
 - [SceneDetection.tsx:43-44](file://frontend/src/components/archive/SceneDetection.tsx#L43-L44)
-- [archive/page.tsx:127-132](file://frontend/src/app/archive/page.tsx#L127-L132)
 
 ## Conclusion
-The layout and navigation system is intentionally minimal and efficient. RootLayout centralizes global structure, fonts, and theme tokens, while the fixed sidebar provides persistent navigation with active-state awareness. Pages render within the main content area, leveraging Tailwind utilities for responsive design. The system supports customization through theme variables, font configuration, and component-level styling, while maintaining strong performance characteristics via Next.js font optimization and utility-first CSS.
+The layout and navigation system is intentionally streamlined and efficient. RootLayout centralizes global structure, fonts, and theme tokens, providing a clean, full-width interface without sidebar distractions. Pages render within the main content area, leveraging Tailwind utilities for responsive design. The system supports customization through theme variables, font configuration, and component-level styling, while maintaining strong performance characteristics via Next.js font optimization and utility-first CSS.
 
-**Updated** The enhanced styling system provides comprehensive color palette management with 50-900 shade variations, improved form input accessibility with readable text and placeholder colors, consistent typography through font variable integration, and seamless Tailwind CSS theme customization. These improvements significantly enhance the user experience by providing better visual consistency, accessibility compliance, and performance optimization across all components and pages.
+**Updated** The streamlined approach focuses on delivering a distraction-free user experience centered around core media processing capabilities. The removal of sidebar navigation and RFP-related features creates a cleaner, more focused interface that emphasizes the Video Archive Metadata tool as the primary feature. The enhanced styling system continues to provide comprehensive color palette management with 50-900 shade variations, improved form input accessibility with readable text and placeholder colors, consistent typography through font variable integration, and seamless Tailwind CSS theme customization.
 
-The addition of the SceneDetection component to the archive page demonstrates the system's ability to handle complex, data-driven layouts while maintaining responsive design principles and performance optimization. The component integrates seamlessly with existing panels and provides advanced functionality for video scene analysis and timeline visualization.
+The addition of the SceneDetection component to the archive page demonstrates the system's ability to handle complex, data-driven layouts while maintaining responsive design principles and performance optimization. The component integrates seamlessly with existing panels and provides advanced functionality for video scene analysis and timeline visualization. The full-width interface allows for better utilization of screen real estate and improved focus on content delivery.
