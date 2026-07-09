@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+.env
+uploads/
+*.mp4
+data/search_index/

@@ -20,12 +20,11 @@
 
 ## Update Summary
 **Changes Made**
-- Enhanced search index functionality with title, thumbnail, and persons fields in both indexing and search result processing
-- Updated _index_segment() method to include title and thumbnail information (now _index_segment replaced by metadata inclusion in add_video)
-- Updated _process_results() method to return title and thumbnail data (now _process_results replaced by metadata inclusion in search)
-- Added comprehensive field extraction from metadata and ingestion results
-- Enhanced segment building with shared metadata for all segments
-- Updated search results to include title, thumbnail, and persons information
+- Added comprehensive video removal functionality with new `remove_video()` method to SearchIndex class
+- Enhanced index maintenance capabilities with support for both FAISS and numpy fallback implementations
+- Updated API integration to automatically purge deleted videos from search index
+- Added robust error handling and logging for video removal operations
+- Improved index consistency by reconstructing vector indexes after metadata filtering
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -40,7 +39,7 @@
 10. [Appendices](#appendices)
 
 ## Introduction
-This document explains the search index creation and FAISS vector embedding stage of the media archive pipeline. It covers how searchable segments are constructed from scenes, transcripts, and face recognition results, how FAISS vector indexes are built and persisted, how embeddings are generated using DashScope, and how similarity search works. The system now includes enhanced metadata fields including title, thumbnail, and persons information for richer search results. The system maintains a robust numpy-based fallback mechanism when FAISS is unavailable, optimizing batch processing for workspace API limitations. It also documents integration with the IPTC taxonomy for content categorization and semantic enhancement, along with performance characteristics, maintenance, and troubleshooting guidance.
+This document explains the search index creation and FAISS vector embedding stage of the media archive pipeline. It covers how searchable segments are constructed from scenes, transcripts, and face recognition results, how FAISS vector indexes are built and persisted, how embeddings are generated using DashScope, and how similarity search works. The system now includes enhanced metadata fields including title, thumbnail, and persons information for richer search results. The system maintains a robust numpy-based fallback mechanism when FAISS is unavailable, optimizing batch processing for workspace API limitations. It also documents integration with the IPTC taxonomy for content categorization and semantic enhancement, along with performance characteristics, maintenance, and troubleshooting guidance. **Updated** The system now includes comprehensive video removal capabilities through the new `remove_video()` method, enabling efficient index maintenance and cleanup operations.
 
 ## Project Structure
 The search index stage is part of a multi-stage pipeline orchestrated by a central orchestrator. The key components involved are:
@@ -48,6 +47,7 @@ The search index stage is part of a multi-stage pipeline orchestrated by a centr
 - An orchestrator that aggregates segments into a unified searchable corpus with enhanced metadata
 - A FAISS-backed search index with numpy fallback that embeds text and supports similarity search
 - API endpoints and frontend integration for search with rich result presentation
+- **Updated** Video deletion workflow that integrates search index removal with file system cleanup
 
 ```mermaid
 graph TB
@@ -75,6 +75,7 @@ IPTC -. "used by metadata structuring" .-> MS
 REF -. "used by face recognition" .-> FR
 ROUTER --> ORCH
 ROUTER --> SI
+ROUTER -. "calls remove_video()" .-> SI
 ```
 
 **Diagram sources**
@@ -83,21 +84,21 @@ ROUTER --> SI
 - [face_recognition.py:1-215](file://backend/pipeline/face_recognition.py#L1-L215)
 - [metadata_structuring.py:1-252](file://backend/pipeline/metadata_structuring.py#L1-L252)
 - [orchestrator.py:1-374](file://backend/pipeline/orchestrator.py#L1-L374)
-- [search_index.py:1-306](file://backend/pipeline/search_index.py#L1-L306)
-- [video.py:1-268](file://backend/routers/video.py#L1-L268)
+- [search_index.py:1-385](file://backend/pipeline/search_index.py#L1-L385)
+- [video.py:1-930](file://backend/routers/video.py#L1-L930)
 
 **Section sources**
-- [search_index.py:1-306](file://backend/pipeline/search_index.py#L1-L306)
+- [search_index.py:1-385](file://backend/pipeline/search_index.py#L1-L385)
 - [orchestrator.py:1-374](file://backend/pipeline/orchestrator.py#L1-L374)
-- [video.py:1-268](file://backend/routers/video.py#L1-L268)
+- [video.py:1-930](file://backend/routers/video.py#L1-L930)
 
 ## Core Components
-- **SearchIndex**: FAISS-based vector search index with DashScope text embeddings and numpy fallback. Handles loading/saving the index, building searchable segments, generating embeddings, normalizing vectors, adding to the index, and performing similarity search with enhanced metadata fields.
+- **SearchIndex**: FAISS-based vector search index with DashScope text embeddings and numpy fallback. Handles loading/saving the index, building searchable segments, generating embeddings, normalizing vectors, adding to the index, performing similarity search with enhanced metadata fields, and **updated** removing videos from the index with comprehensive metadata filtering and index reconstruction.
 - **_NumpyFlatIP**: Minimal numpy-based fallback class providing FAISS IndexFlatIP functionality when FAISS is unavailable, enabling seamless deployment flexibility.
 - **PipelineOrchestrator**: Coordinates pipeline stages and builds searchable segments from visual analysis, transcript, and face recognition outputs with comprehensive metadata enrichment.
 - **Enhanced Metadata Fields**: Title, thumbnail, and persons information are now included in both indexing and search result processing for richer user experience.
 - **DashScope integrations**: Embedding generation for searchable content and various AI tasks (visual analysis, ASR, face matching, metadata structuring).
-- **API endpoints**: Expose upload, status, metadata, transcript, and search endpoints; the search endpoint delegates to the SearchIndex.
+- **API endpoints**: Expose upload, status, metadata, transcript, search, and **updated** video deletion endpoints; the search endpoint delegates to the SearchIndex while deletion triggers index cleanup.
 - **Frontend**: Provides a semantic search UI that triggers search requests and displays results with thumbnails, titles, and person information.
 
 Key implementation references:
@@ -106,6 +107,7 @@ Key implementation references:
 - Embedding generation via DashScope embeddings API with retries and exponential backoff
 - Vector normalization and inner-product-based cosine similarity search
 - Index persistence to disk and error handling
+- **Updated** Comprehensive video removal with metadata filtering and index reconstruction
 - **Updated** Numpy fallback mechanism for deployment without FAISS
 - **Updated** Enhanced metadata fields (title, thumbnail, persons) throughout the pipeline
 
@@ -115,8 +117,10 @@ Key implementation references:
 - [search_index.py:143-210](file://backend/pipeline/search_index.py#L143-L210)
 - [search_index.py:211-251](file://backend/pipeline/search_index.py#L211-L251)
 - [search_index.py:253-306](file://backend/pipeline/search_index.py#L253-L306)
+- [search_index.py:214-264](file://backend/pipeline/search_index.py#L214-L264)
 - [orchestrator.py:307-359](file://backend/pipeline/orchestrator.py#L307-L359)
 - [video.py:200-216](file://backend/routers/video.py#L200-L216)
+- [video.py:655-696](file://backend/routers/video.py#L655-L696)
 
 ## Architecture Overview
 The search index stage participates in a six-stage pipeline:
@@ -127,7 +131,7 @@ The search index stage participates in a six-stage pipeline:
 5. Metadata structuring (IPTC taxonomy)
 6. Search index (FAISS + embeddings or numpy fallback)
 
-The orchestrator aggregates segments from stages 2–5 and adds them to the FAISS index with enhanced metadata fields. The API exposes a POST /api/search endpoint that performs semantic search across the index. The system gracefully falls back to numpy-based search when FAISS is unavailable and provides rich results with title, thumbnail, and person information.
+The orchestrator aggregates segments from stages 2–5 and adds them to the FAISS index with enhanced metadata fields. The API exposes a POST /api/search endpoint that performs semantic search across the index. The system gracefully falls back to numpy-based search when FAISS is unavailable and provides rich results with title, thumbnail, and person information. **Updated** The video deletion workflow now automatically purges removed videos from the search index, maintaining consistency between file storage and searchable content.
 
 ```mermaid
 sequenceDiagram
@@ -144,6 +148,7 @@ SI->>SI : "index.search(query, k)"
 SI-->>ORCH : "results[{video_id, timestamp, description, score, title, thumbnail, persons}]"
 ORCH-->>API : "results"
 API-->>FE : "{query, results, total}"
+Note over SI : New remove_video() method handles comprehensive video removal
 ```
 
 **Diagram sources**
@@ -151,6 +156,7 @@ API-->>FE : "{query, results, total}"
 - [orchestrator.py:34-42](file://backend/pipeline/orchestrator.py#L34-L42)
 - [search_index.py:211-251](file://backend/pipeline/search_index.py#L211-L251)
 - [search_index.py:253-306](file://backend/pipeline/search_index.py#L253-L306)
+- [search_index.py:214-264](file://backend/pipeline/search_index.py#L214-L264)
 
 ## Detailed Component Analysis
 
@@ -161,6 +167,7 @@ The SearchIndex class encapsulates:
 - **Embedding generation**: batching and calling DashScope embeddings API with optimized batch size
 - **Vector normalization and addition to FAISS index or numpy fallback**
 - **Similarity search**: normalized query vectors, inner product (cosine similarity), top-k retrieval with enriched result metadata
+- **Updated** **Comprehensive video removal**: filters metadata entries by video_id, reconstructs vector index with remaining vectors, updates metadata arrays, and persists changes with proper error handling
 
 ```mermaid
 classDiagram
@@ -174,6 +181,7 @@ class SearchIndex {
 +bool _use_faiss
 +__init__(api_key, model, base_url, index_dir)
 +add_video(video_id, segments) async
++remove_video(video_id) void
 +search(query, top_k) async
 -_load_index() void
 -_save_index() void
@@ -197,6 +205,7 @@ class _NumpyFlatIP {
 - [search_index.py:143-210](file://backend/pipeline/search_index.py#L143-L210)
 - [search_index.py:211-251](file://backend/pipeline/search_index.py#L211-L251)
 - [search_index.py:253-306](file://backend/pipeline/search_index.py#L253-L306)
+- [search_index.py:214-264](file://backend/pipeline/search_index.py#L214-L264)
 
 Key behaviors:
 - **Embedding dimension**: 1024 (DashScope text-embedding-v3)
@@ -206,10 +215,12 @@ Key behaviors:
 - **Robustness**: retries with exponential backoff; zero-vector fallback on embedding failure
 - **Fallback mechanism**: automatic numpy-based search when FAISS is unavailable
 - **Enhanced metadata**: title, thumbnail, and persons fields stored with each segment for richer search results
+- **Updated** **Video removal**: comprehensive filtering and index reconstruction with error handling
 
 Example usage references:
 - Adding segments for a video with optimized batch processing and enhanced metadata
 - Performing a similarity search with configurable top_k using either FAISS or numpy backend with enriched results
+- **Updated** Removing videos from the index with automatic metadata filtering and index rebuilding
 
 **Section sources**
 - [search_index.py:18-19](file://backend/pipeline/search_index.py#L18-L19)
@@ -218,6 +229,7 @@ Example usage references:
 - [search_index.py:143-210](file://backend/pipeline/search_index.py#L143-L210)
 - [search_index.py:211-251](file://backend/pipeline/search_index.py#L211-L251)
 - [search_index.py:253-306](file://backend/pipeline/search_index.py#L253-L306)
+- [search_index.py:214-264](file://backend/pipeline/search_index.py#L214-L264)
 
 ### _NumpyFlatIP: Numpy-Based FAISS Fallback System
 The `_NumpyFlatIP` class provides a minimal numpy-based implementation of FAISS IndexFlatIP functionality when FAISS is unavailable. This enables seamless deployment flexibility across different environments.
@@ -227,12 +239,14 @@ Key features:
 - **Memory-efficient storage**: Stores vectors as numpy arrays in memory
 - **Cosine similarity**: Achieved through L2-normalization of vectors and query
 - **API compatibility**: Matches FAISS IndexFlatIP interface for seamless fallback
+- **Updated** **Index reconstruction support**: Enables rebuild operations during video removal by supporting array slicing and concatenation
 
 Implementation details:
 - **Vector storage**: Maintains `_vectors` as numpy array with shape (N, dim)
 - **Add operation**: Concatenates new vectors using `np.vstack`
 - **Search operation**: Uses matrix multiplication (`@`) for efficient similarity computation
 - **Index management**: Tracks `ntotal` for vector count and handles empty states
+- **Updated** **Array slicing support**: Facilitates vector subset extraction during index reconstruction
 
 **Section sources**
 - [search_index.py:22-46](file://backend/pipeline/search_index.py#L22-L46)
@@ -280,6 +294,7 @@ Add --> End(["Segments Indexed with title, thumbnail, persons"])
 - **Normalization**: vectors and query are L2-normalized before similarity computation
 - **Deployment flexibility**: automatic fallback to numpy-based search when FAISS unavailable
 - **Enhanced metadata**: title, thumbnail, and persons fields are stored with each vector for comprehensive search results
+- **Updated** **Index reconstruction**: supports rebuilding indexes after video removal operations
 
 ```mermaid
 sequenceDiagram
@@ -292,18 +307,21 @@ SI->>SI : "Sort by index and normalize vectors"
 SI->>SI : "faiss.IndexFlatIP.add(vectors) or numpy fallback"
 SI->>SI : "Store metadata with title, thumbnail, persons"
 SI->>SI : "pickle metadata"
+Note over SI : New remove_video() method reconstructs index after filtering
 ```
 
 **Diagram sources**
 - [search_index.py:184-195](file://backend/pipeline/search_index.py#L184-L195)
 - [search_index.py:253-306](file://backend/pipeline/search_index.py#L253-L306)
 - [search_index.py:80-120](file://backend/pipeline/search_index.py#L80-L120)
+- [search_index.py:214-264](file://backend/pipeline/search_index.py#L214-L264)
 
 **Section sources**
 - [search_index.py:18-19](file://backend/pipeline/search_index.py#L18-L19)
 - [search_index.py:184-195](file://backend/pipeline/search_index.py#L184-L195)
 - [search_index.py:253-306](file://backend/pipeline/search_index.py#L253-L306)
 - [search_index.py:80-120](file://backend/pipeline/search_index.py#L80-L120)
+- [search_index.py:214-264](file://backend/pipeline/search_index.py#L214-L264)
 
 ### Enhanced Similarity Search Capabilities
 - **Query processing**: generate embedding for the query, normalize
@@ -331,11 +349,53 @@ R --> QEnd(["Return enriched results"])
 **Section sources**
 - [search_index.py:211-251](file://backend/pipeline/search_index.py#L211-L251)
 
+### Comprehensive Video Removal Functionality
+**New** The `remove_video()` method provides comprehensive video removal from the search index, ensuring data consistency between file storage and searchable content. This method handles both FAISS-based and numpy fallback implementations with robust error handling.
+
+Key features:
+- **Metadata filtering**: Filters out all metadata entries matching the target video_id
+- **Index reconstruction**: Rebuilds the vector index with remaining vectors only
+- **Dual backend support**: Works seamlessly with both FAISS and numpy fallback implementations
+- **Error handling**: Comprehensive exception handling with detailed logging
+- **Persistence**: Automatically saves the updated index and metadata after removal
+- **Efficiency**: Early exit optimization when no matching videos are found
+
+Implementation details:
+- **Metadata filtering**: Creates a list of indices to keep by excluding entries with matching video_id
+- **FAISS reconstruction**: Uses `reconstruct()` method to extract surviving vectors and rebuild the index
+- **Numpy reconstruction**: Performs array slicing to exclude removed rows and creates new index instance
+- **Metadata synchronization**: Updates metadata array to match the rebuilt vector store
+- **Logging**: Provides detailed information about removal operations and remaining vector counts
+
+```mermaid
+flowchart TD
+Start(["remove_video(video_id)"]) --> Check{"Index exists<br/>and metadata not empty?"}
+Check --> |No| Exit["Return immediately"]
+Check --> |Yes| Filter["Filter metadata by video_id"]
+Filter --> Count{"Any matches found?"}
+Count --> |No| Exit
+Count --> |Yes| Backend{"FAISS available?"}
+Backend --> |Yes| FAISS["Reconstruct FAISS index<br/>with kept vectors"]
+Backend --> |No| NumPy["Rebuild numpy index<br/>with sliced arrays"]
+FAISS --> Sync["Update metadata array"]
+NumPy --> Sync
+Sync --> Save["Persist updated index"]
+Save --> Log["Log removal completion"]
+Log --> End(["Operation complete"])
+```
+
+**Diagram sources**
+- [search_index.py:214-264](file://backend/pipeline/search_index.py#L214-L264)
+
+**Section sources**
+- [search_index.py:214-264](file://backend/pipeline/search_index.py#L214-L264)
+
 ### Integration with IPTC Taxonomy for Content Categorization
 While the IPTC taxonomy is not directly used by the SearchIndex, it is leveraged during metadata structuring to enrich content with topic codes and bilingual descriptions. These topics can indirectly improve semantic richness of the indexed content because:
 - Topic codes and names enhance the textual descriptions used for embeddings
 - Structured metadata improves downstream search quality
 - **Updated** Title information is extracted from IPTC metadata for richer search results
+- **Updated** Video removal operations maintain IPTC-derived metadata consistency
 
 ```mermaid
 graph LR
@@ -363,25 +423,30 @@ ORCH --> SI["search_index.py"]
 - **Fallback persistence**: numpy-based indexes store vectors as .npy files for easy deployment without FAISS
 - **Enhanced metadata**: title, thumbnail, and persons fields are stored alongside vectors for comprehensive search results
 - **Metadata structure**: Each segment stores video_id, timestamp, description, scene_type, type, title, thumbnail, and persons array
+- **Updated** **Removal persistence**: Video removal operations automatically persist the updated index state
 
 References:
 - Index and metadata save/load paths
 - Directory configuration
 - **Updated** numpy fallback persistence mechanism
 - **Updated** Enhanced metadata storage with title, thumbnail, and persons fields
+- **Updated** Automatic persistence after video removal operations
 
 **Section sources**
 - [search_index.py:80-120](file://backend/pipeline/search_index.py#L80-L120)
 - [search_index.py:121-142](file://backend/pipeline/search_index.py#L121-L142)
 - [search_index.py:18-19](file://backend/pipeline/search_index.py#L18-L19)
 - [search_index.py:160-182](file://backend/pipeline/search_index.py#L160-L182)
+- [search_index.py:214-264](file://backend/pipeline/search_index.py#L214-L264)
 
 ### API and Frontend Integration with Enhanced Result Presentation
 - **API endpoint**: POST /api/search accepts a query and top_k, returns results with video_id, timestamp, description, scene_type, score, title, thumbnail, and persons
+- **Updated** **Video deletion endpoint**: DELETE /api/videos accepts multiple video_ids, removes files and purges from search index
 - **Frontend**: SearchDemo component allows users to enter queries and displays results with thumbnails, titles, timestamps, scores, and person information
 - **Real-time pipeline progress**: available via WebSocket
 - **Fallback transparency**: search continues to work regardless of FAISS availability
 - **Enhanced UI**: Results now display thumbnails, titles, person mentions, and improved layout
+- **Updated** **Integrated cleanup**: Video deletion automatically triggers search index removal
 
 ```mermaid
 sequenceDiagram
@@ -389,10 +454,14 @@ participant FE as "Frontend SearchDemo"
 participant API as "FastAPI Router"
 participant ORCH as "PipelineOrchestrator"
 participant SI as "SearchIndex"
-FE->>API : "POST /api/search {query, top_k}"
-API->>SI : "search(query, top_k)"
-SI-->>API : "results with title, thumbnail, persons"
-API-->>FE : "JSON results with enhanced metadata"
+FE->>API : "DELETE /api/videos {video_ids}"
+API->>API : "Delete files and directories"
+API->>ORCH : "search_index.remove_video(video_id)"
+ORCH->>SI : "remove_video(video_id)"
+SI->>SI : "Filter metadata and rebuild index"
+SI->>SI : "Persist updated index"
+SI-->>API : "Operation completed"
+API-->>FE : "Deletion results"
 ```
 
 **Diagram sources**
@@ -400,11 +469,15 @@ API-->>FE : "JSON results with enhanced metadata"
 - [useVideoProcessing.ts:424-440](file://frontend/src/lib/useVideoProcessing.ts#L424-L440)
 - [video.py:200-216](file://backend/routers/video.py#L200-L216)
 - [search_index.py:211-251](file://backend/pipeline/search_index.py#L211-L251)
+- [video.py:655-696](file://backend/routers/video.py#L655-L696)
+- [search_index.py:214-264](file://backend/pipeline/search_index.py#L214-L264)
 
 **Section sources**
 - [video.py:200-216](file://backend/routers/video.py#L200-L216)
+- [video.py:655-696](file://backend/routers/video.py#L655-L696)
 - [SearchDemo.tsx:137-180](file://frontend/src/components/archive/SearchDemo.tsx#L137-L180)
 - [useVideoProcessing.ts:424-440](file://frontend/src/lib/useVideoProcessing.ts#L424-L440)
+- [search_index.py:214-264](file://backend/pipeline/search_index.py#L214-L264)
 
 ## Dependency Analysis
 - **External dependencies**:
@@ -414,9 +487,10 @@ API-->>FE : "JSON results with enhanced metadata"
   - pickle: serialization of metadata
 - **Internal dependencies**:
   - PipelineOrchestrator depends on SearchIndex and other pipeline stages
-  - API router depends on orchestrator and SearchIndex for search
+  - API router depends on orchestrator and SearchIndex for search and **updated** video deletion
   - Frontend integrates with API endpoints
   - **Updated** Frontend now expects enhanced metadata fields in search results
+  - **Updated** Video deletion workflow depends on SearchIndex.remove_video() method
 
 ```mermaid
 graph TB
@@ -431,6 +505,7 @@ ORCH --> FR["face_recognition.py"]
 ORCH --> MS["metadata_structuring.py"]
 ROUTER["video.py"] --> ORCH
 ROUTER --> SI
+ROUTER -. "calls remove_video()" .-> SI
 FE["SearchDemo.tsx"] --> API["useVideoProcessing.ts"]
 API --> ROUTER
 ```
@@ -445,6 +520,7 @@ API --> ROUTER
 - [requirements.txt:10](file://backend/requirements.txt#L10)
 - [orchestrator.py:14-20](file://backend/pipeline/orchestrator.py#L14-L20)
 - [video.py:17-19](file://backend/routers/video.py#L17-L19)
+- [video.py:655-696](file://backend/routers/video.py#L655-L696)
 - [SearchDemo.tsx:1-214](file://frontend/src/components/archive/SearchDemo.tsx#L1-L214)
 - [useVideoProcessing.ts:1-497](file://frontend/src/lib/useVideoProcessing.ts#L1-L497)
 
@@ -455,6 +531,7 @@ API --> ROUTER
 - [requirements.txt:10](file://backend/requirements.txt#L10)
 - [orchestrator.py:14-20](file://backend/pipeline/orchestrator.py#L14-L20)
 - [video.py:17-19](file://backend/routers/video.py#L17-L19)
+- [video.py:655-696](file://backend/routers/video.py#L655-L696)
 
 ## Performance Considerations
 - **Embedding cost**: Each segment incurs an embedding call; optimized batching reduces overhead (6 vectors per call vs 25)
@@ -466,6 +543,8 @@ API --> ROUTER
 - **Fallback performance**: Numpy-based search provides acceptable performance for smaller datasets
 - **Enhanced metadata overhead**: Additional memory usage for title, thumbnail, and persons fields
 - **Deployment flexibility**: Reduced batch size accommodates workspace API limitations
+- **Updated** **Removal performance**: Video removal involves index reconstruction; consider batch operations for large-scale deletions
+- **Updated** **Memory efficiency**: Index reconstruction creates temporary copies; monitor memory usage during removal operations
 
 ## Troubleshooting Guide
 Common issues and resolutions:
@@ -477,6 +556,9 @@ Common issues and resolutions:
 - **Numpy fallback issues**: Verify numpy installation and sufficient memory for vector storage
 - **Enhanced metadata issues**: Missing title/thumbnail/persons fields indicate metadata extraction problems
 - **Frontend display issues**: Check that SearchDemo component properly handles new metadata fields
+- **Updated** **Video removal failures**: Check logs for specific error messages; verify video_id format and index integrity
+- **Updated** **Index inconsistency**: If search results don't match file system state, run reindex operation
+- **Updated** **Performance degradation**: Large-scale removals may cause temporary slowdowns; consider off-peak scheduling
 
 Operational checks:
 - Verify index directory exists and is writable
@@ -485,6 +567,7 @@ Operational checks:
 - **Updated** Check FAISS availability for optimal performance
 - **Updated** Monitor numpy fallback usage when FAISS is unavailable
 - **Updated** Verify metadata extraction from IPTC and ingestion stages
+- **Updated** Test video removal operations regularly to ensure index consistency
 
 **Section sources**
 - [search_index.py:54-56](file://backend/pipeline/search_index.py#L54-L56)
@@ -493,9 +576,10 @@ Operational checks:
 - [search_index.py:281-295](file://backend/pipeline/search_index.py#L281-L295)
 - [search_index.py:113-119](file://backend/pipeline/search_index.py#L113-L119)
 - [search_index.py:54-56](file://backend/pipeline/search_index.py#L54-L56)
+- [search_index.py:214-264](file://backend/pipeline/search_index.py#L214-L264)
 
 ## Conclusion
-The search index stage creates a robust, FAISS-backed semantic search capability by combining scene descriptions, transcripts, and face identification results into a unified corpus with enhanced metadata. Using DashScope embeddings with optimized batch processing (6 vectors per call), it normalizes vectors and stores them with comprehensive metadata including title, thumbnail, and persons information for efficient similarity search. The system now includes a comprehensive numpy-based fallback mechanism that ensures deployment flexibility across different environments. Integration with IPTC taxonomy during metadata structuring further enriches content semantics by extracting title information. The system balances performance with resilience through batching, normalization, retries, persistence, and graceful fallback mechanisms, while providing enhanced user experience through rich metadata presentation.
+The search index stage creates a robust, FAISS-backed semantic search capability by combining scene descriptions, transcripts, and face identification results into a unified corpus with enhanced metadata. Using DashScope embeddings with optimized batch processing (6 vectors per call), it normalizes vectors and stores them with comprehensive metadata including title, thumbnail, and persons information for efficient similarity search. The system now includes a comprehensive numpy-based fallback mechanism that ensures deployment flexibility across different environments. Integration with IPTC taxonomy during metadata structuring further enriches content semantics by extracting title information. **Updated** The system now provides comprehensive video removal capabilities through the new `remove_video()` method, enabling efficient index maintenance and cleanup operations with robust error handling and automatic persistence. The system balances performance with resilience through batching, normalization, retries, persistence, graceful fallback mechanisms, and comprehensive removal operations, while providing enhanced user experience through rich metadata presentation and integrated video lifecycle management.
 
 ## Appendices
 
@@ -519,10 +603,12 @@ These are merged into a flat list with comprehensive metadata and passed to Sear
 - **Index size grows linearly with number of segments; monitor ntotal and adjust top_k accordingly**
 - **Enhanced metadata**: Each vector now stores additional metadata fields (title, thumbnail, persons) increasing memory usage
 - **Updated** Numpy fallback stores vectors and metadata in memory for efficient access
+- **Updated** Video removal operations temporarily double memory usage during index reconstruction
 
 **Section sources**
 - [search_index.py:18-19](file://backend/pipeline/search_index.py#L18-L19)
 - [search_index.py:25-28](file://backend/pipeline/search_index.py#L25-L28)
+- [search_index.py:214-264](file://backend/pipeline/search_index.py#L214-L264)
 
 ### Example: Enhanced Search Queries, Ranking, and Relevance
 - **Query**: natural language description
@@ -530,6 +616,7 @@ These are merged into a flat list with comprehensive metadata and passed to Sear
 - **Relevance factors**: textual match quality, scene type descriptors, speaker identity mentions
 - **Enhanced results**: include title, thumbnail, and persons information for richer user experience
 - **Updated** Works seamlessly with both FAISS and numpy backends
+- **Updated** Search results automatically reflect video removal operations
 
 **Section sources**
 - [search_index.py:211-251](file://backend/pipeline/search_index.py#L211-L251)
@@ -539,20 +626,24 @@ These are merged into a flat list with comprehensive metadata and passed to Sear
 - **Numpy fallback mode**: Vectors file: data/search_index/vectors.npy, Metadata file: data/search_index/metadata.pkl
 - **Enhanced metadata**: Metadata now includes title, thumbnail, and persons fields for each segment
 - **Updated** Separate persistence mechanism for numpy fallback
+- **Updated** Automatic persistence after video removal operations
 
 **Section sources**
 - [search_index.py:82-84](file://backend/pipeline/search_index.py#L82-L84)
 - [search_index.py:127-139](file://backend/pipeline/search_index.py#L127-L139)
+- [search_index.py:214-264](file://backend/pipeline/search_index.py#L214-L264)
 
 ### Example: Enhanced Frontend Search Interaction
 - **UI component**: SearchDemo renders results with thumbnails, titles, timestamps, scores, and person information
 - **Hook**: useVideoProcessing manages search state and invokes API
 - **Enhanced display**: Results show thumbnail placeholders, video titles, person mentions, and improved layout
 - **Updated** Search continues to work regardless of backend implementation
+- **Updated** Video deletion operations trigger automatic search index cleanup
 
 **Section sources**
 - [SearchDemo.tsx:137-180](file://frontend/src/components/archive/SearchDemo.tsx#L137-L180)
 - [useVideoProcessing.ts:424-440](file://frontend/src/lib/useVideoProcessing.ts#L424-L440)
+- [video.py:655-696](file://backend/routers/video.py#L655-L696)
 
 ### Example: Enhanced Deployment Flexibility
 - **FAISS environment**: Full-featured FAISS-based search with optimal performance and enhanced metadata
@@ -560,8 +651,32 @@ These are merged into a flat list with comprehensive metadata and passed to Sear
 - **Workspace constraints**: Optimized batch size (6 vectors per call) accommodates API limitations
 - **Enhanced metadata**: Both environments support title, thumbnail, and persons fields
 - **Updated** Seamless fallback between implementations
+- **Updated** Video removal operations work consistently across both backends
 
 **Section sources**
-- [search_index.py:48-56](file://backend/pipeline/search_index.py#L48-L56)
-- [search_index.py:184-186](file://backend/pipeline/search_index.py#L184-L186)
+- [search_index.py:48-56](file://backend/pipeline/search_index.py#L48-56)
+- [search_index.py:184-186](file://backend/pipeline/search_index.py#L184-186)
 - [requirements.txt:11](file://backend/requirements.txt#L11)
+- [search_index.py:214-264](file://backend/pipeline/search_index.py#L214-L264)
+
+### Example: Video Removal Operations
+**New** The `remove_video()` method provides comprehensive video removal from the search index:
+
+- **Input**: video_id string identifying the video to remove
+- **Process**: 
+  - Filters metadata entries by video_id
+  - Reconstructs vector index with remaining vectors
+  - Updates metadata arrays to match rebuilt index
+  - Persists changes to disk
+- **Output**: Logs removal completion with remaining vector count
+- **Error handling**: Comprehensive exception handling with detailed error logging
+- **Performance**: Early exit optimization when no matching videos found
+
+Usage examples:
+- Single video removal: `search_index.remove_video("video-123")`
+- Batch removal: Loop through multiple video_ids after file deletion
+- Error recovery: Catch exceptions and log failures for manual intervention
+
+**Section sources**
+- [search_index.py:214-264](file://backend/pipeline/search_index.py#L214-L264)
+- [video.py:655-696](file://backend/routers/video.py#L655-L696)

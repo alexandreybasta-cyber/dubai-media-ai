@@ -22,15 +22,17 @@
 - [frontend/src/components/archive/TranscriptPanel.tsx](file://frontend/src/components/archive/TranscriptPanel.tsx)
 - [frontend/src/components/archive/VideoTimeline.tsx](file://frontend/src/components/archive/VideoTimeline.tsx)
 - [frontend/src/components/archive/DubbingPanel.tsx](file://frontend/src/components/archive/DubbingPanel.tsx)
+- [frontend/src/components/archive/VideoLibrary.tsx](file://frontend/src/components/archive/VideoLibrary.tsx)
 - [README.md](file://README.md)
 </cite>
 
 ## Update Summary
 **Changes Made**
-- Enhanced Arabic translation handling with improved language identification ('Modern Standard Arabic (العربية)') and better AI model guidance to prevent Chinese output defaults
-- Updated /api/video/{video_id}/languages endpoint response structure with clearer field names (dubbed_languages, supported_languages)
-- Improved subtitle generation system with enhanced Arabic language support and explicit script specification
-- Enhanced transcript translation system with better Arabic language disambiguation
+- Added comprehensive documentation for the new DELETE /api/videos batch video deletion endpoint
+- Updated API reference section with detailed request/response schemas for the deletion endpoint
+- Enhanced troubleshooting guide with deletion-specific error handling and cleanup procedures
+- Updated practical examples section with curl and JavaScript implementations for batch deletion
+- Added frontend integration details showing how the VideoLibrary component implements batch deletion functionality
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -42,11 +44,12 @@
 7. [Subtitle Generation System](#subtitle-generation-system)
 8. [Dubbing System](#dubbing-system)
 9. [Transcript Translation System](#transcript-translation-system)
-10. [Dependency Analysis](#dependency-analysis)
-11. [Performance Considerations](#performance-considerations)
-12. [Troubleshooting Guide](#troubleshooting-guide)
-13. [Conclusion](#conclusion)
-14. [Appendices](#appendices)
+10. [Batch Video Deletion System](#batch-video-deletion-system)
+11. [Dependency Analysis](#dependency-analysis)
+12. [Performance Considerations](#performance-considerations)
+13. [Troubleshooting Guide](#troubleshooting-guide)
+14. [Conclusion](#conclusion)
+15. [Appendices](#appendices)
 
 ## Introduction
 This document provides comprehensive API documentation for the video processing endpoints that power the AI-powered media archive. It covers:
@@ -64,19 +67,21 @@ This document provides comprehensive API documentation for the video processing 
 - POST /api/video/{video_id}/faces/name for assigning names to detected persons with optional reference database integration
 - GET/POST /api/search for semantic search with dual HTTP method support and person-specific filtering
 - POST /api/reindex for rebuilding search indexes from existing processed videos
+- **NEW** DELETE /api/videos for batch video deletion with comprehensive cleanup including file system removal and search index purging
 
-The documentation includes request/response schemas, error codes, file upload handling, subtitle generation workflows, dubbing capabilities, and practical examples using curl commands and JavaScript implementations.
+The documentation includes request/response schemas, error codes, file upload handling, subtitle generation workflows, dubbing capabilities, batch deletion operations, and practical examples using curl commands and JavaScript implementations.
 
-**Updated** The system now features comprehensive dubbing capabilities with automatic multi-language voice synthesis using Edge-TTS and professional translation services. The dubbing system integrates seamlessly with the existing pipeline, providing instant access to dubbed video content while maintaining temporal accuracy and preserving speaker attribution throughout the translation and synthesis process.
+**Updated** The system now features comprehensive batch video deletion capabilities with automatic cleanup of uploaded files, output directories, and search index entries. The deletion endpoint provides detailed response reporting distinguishing between successfully deleted videos and failures, ensuring reliable resource management and data integrity.
 
 ## Project Structure
 The video processing system consists of:
 - FastAPI backend with routers and pipeline orchestration using subprocess-based execution for process isolation
 - Standalone pipeline runner that executes as a separate process for enhanced reliability
 - **Enhanced** AI pipeline stages powered by Alibaba Cloud DashScope models with advanced face recognition and transcript translation
-- Frontend client utilities for uploading, consuming APIs, managing person identification, transcript translation, subtitle management, and dubbing operations
+- Frontend client utilities for uploading, consuming APIs, managing person identification, transcript translation, subtitle management, dubbing operations, and batch video deletion
 - **New** Subtitle generation module with automatic multi-language subtitle creation and caching
 - **New** Dubbing module with Edge-TTS voice synthesis and FFmpeg audio assembly
+- **New** Batch deletion module with comprehensive cleanup operations and search index synchronization
 - Reference database system for persistent person recognition across videos
 
 ```mermaid
@@ -89,10 +94,11 @@ FE_PEOPLE["PeoplePanel.tsx<br/>Person identification UI"]
 FE_TRANSCRIPT["TranscriptPanel.tsx<br/>Translation UI"]
 FE_TIMELINE["VideoTimeline.tsx<br/>Subtitle track management"]
 FE_DUBBING["DubbingPanel.tsx<br/>Dubbing management UI"]
+FE_LIBRARY["VideoLibrary.tsx<br/>Batch deletion UI"]
 end
 subgraph "Backend"
 MAIN["main.py<br/>FastAPI app"]
-ROUTER["routers/video.py<br/>Video endpoints + Dubbing"]
+ROUTER["routers/video.py<br/>Video endpoints + Batch deletion"]
 RUNNER["run_pipeline.py<br/>Standalone pipeline runner"]
 ORCH["pipeline/orchestrator.py<br/>Pipeline orchestrator"]
 CFG["config.py<br/>Settings"]
@@ -118,6 +124,7 @@ FE_PEOPLE --> FE_HOOK
 FE_TRANSCRIPT --> FE_HOOK
 FE_TIMELINE --> FE_API
 FE_DUBBING --> FE_API
+FE_LIBRARY --> FE_API
 MAIN --> ROUTER
 ROUTER --> RUNNER
 ROUTER --> SUBGEN
@@ -141,15 +148,16 @@ DUBBING --> FFMPEG
 
 **Diagram sources**
 - [backend/main.py:1-44](file://backend/main.py#L1-L44)
-- [backend/routers/video.py:1-918](file://backend/routers/video.py#L1-L918)
+- [backend/routers/video.py:1-930](file://backend/routers/video.py#L1-L930)
 - [backend/run_pipeline.py:1-29](file://backend/run_pipeline.py#L1-L29)
 - [backend/pipeline/orchestrator.py:1-403](file://backend/pipeline/orchestrator.py#L1-L403)
 - [backend/config.py:1-33](file://backend/config.py#L1-L33)
-- [backend/pipeline/search_index.py:1-333](file://backend/pipeline/search_index.py#L1-L333)
+- [backend/pipeline/search_index.py:1-385](file://backend/pipeline/search_index.py#L1-L385)
 - [backend/pipeline/face_recognition.py:1-660](file://backend/pipeline/face_recognition.py#L1-L660)
 - [backend/pipeline/subtitle_generation.py:1-577](file://backend/pipeline/subtitle_generation.py#L1-L577)
 - [backend/pipeline/dubbing.py:1-508](file://backend/pipeline/dubbing.py#L1-L508)
 - [frontend/src/components/archive/DubbingPanel.tsx:1-338](file://frontend/src/components/archive/DubbingPanel.tsx#L1-L338)
+- [frontend/src/components/archive/VideoLibrary.tsx:1-297](file://frontend/src/components/archive/VideoLibrary.tsx#L1-L297)
 
 **Section sources**
 - [README.md:148-168](file://README.md#L148-L168)
@@ -158,15 +166,16 @@ DUBBING --> FFMPEG
 ## Core Components
 - Video upload router: Handles multipart/form-data uploads, saves files, initializes status, and launches the pipeline as a completely separate subprocess for process isolation and enhanced reliability
 - **Enhanced** Transcript translation router: Provides real-time translation of transcript segments into Arabic, French, and Russian using DashScope Qwen models with exponential backoff retry logic and improved Arabic language identification
+- **NEW** Batch deletion router: Manages batch video deletion with comprehensive cleanup including file system removal and search index purging with detailed response reporting
 - **NEW** Dubbing router: Manages dubbing job submission, progress tracking, and dubbed video delivery with Edge-TTS voice synthesis and FFmpeg audio assembly
 - **Enhanced** Subtitle generation router: Manages WebVTT and SRT subtitle generation with automatic multi-language support, enhanced Arabic language handling, and intelligent caching
 - **Enhanced** Face naming router: Manages person identification with manual naming, reference database integration, and immediate search indexing
 - Standalone pipeline runner: Executes the pipeline in a separate Python process with full isolation from the main API server
 - **Enhanced** Pipeline orchestrator: Coordinates six stages with progress tracking, error handling, integrated face recognition with OCR/transcript context, and automatic subtitle generation
-- **Enhanced** Search index: Manages FAISS-based vector search with DashScope text embeddings, person-specific search, and rebuild capability
+- **Enhanced** Search index: Manages FAISS-based vector search with DashScope text embeddings, person-specific search, rebuild capability, and video removal functionality
 - **Enhanced** Face recognition system: Advanced person identification using batch processing, OCR text analysis, transcript context, and reference database matching
 - **NEW** Dubbing system: Automatic voice synthesis with Edge-TTS, professional translation via DashScope Qwen, and FFmpeg audio assembly with timing preservation
-- Frontend API utilities: Provide standard fetch-based upload functionality, typed helpers for uploads, status polling, WebSocket progress streaming, person management, transcript translation, subtitle management, and dubbing operations
+- Frontend API utilities: Provide standard fetch-based upload functionality, typed helpers for uploads, status polling, WebSocket progress streaming, person management, transcript translation, subtitle management, dubbing operations, and batch deletion functionality
 
 Key capabilities:
 - Process isolation through subprocess execution prevents pipeline failures from affecting the main API server
@@ -177,15 +186,17 @@ Key capabilities:
 - **New** Professional translation quality using DashScope Qwen models with exponential backoff retry logic and enhanced Arabic language disambiguation
 - **New** High-quality voice synthesis using Microsoft Edge-TTS neural voices with proper language-specific voices
 - **New** Precise timing preservation during audio assembly using FFmpeg concat operations and silence gaps
+- **New** Comprehensive batch deletion with automatic cleanup of uploaded files, output directories, and search index entries
 - **Enhanced** Advanced face recognition with OCR text fallback, transcript context, and reference database matching
 - **Enhanced** Structured metadata generation (EBUCore XML, IPTC) with person mentions
 - Speech-to-text with speaker diarization
 - Semantic search with dual HTTP method support and person-specific filtering
 - Batch reindexing from existing processed videos
 
-**Updated** The system now implements comprehensive dubbing capabilities with automatic multi-language voice synthesis and enhanced Arabic language support. The dubbing system automatically generates dubbed video tracks after audio transcription completion, providing instant access to professionally translated and synthesized audio in multiple languages while maintaining temporal accuracy and preserving speaker attribution throughout the translation and synthesis process.
+**Updated** The system now implements comprehensive batch video deletion capabilities with automatic cleanup of all associated resources. When users request deletion of one or more videos, the system performs thorough cleanup including removal of uploaded video files, output directories containing processing artifacts, and corresponding entries from the search index. The deletion process provides detailed response reporting, distinguishing between successfully deleted videos and those that failed, ensuring reliable resource management and data integrity.
 
 **Section sources**
+- [backend/routers/video.py:655-696](file://backend/routers/video.py#L655-L696)
 - [backend/routers/video.py:450-501](file://backend/routers/video.py#L450-L501)
 - [backend/routers/video.py:504-539](file://backend/routers/video.py#L504-L539)
 - [backend/routers/video.py:542-558](file://backend/routers/video.py#L542-L558)
@@ -194,11 +205,12 @@ Key capabilities:
 - [backend/routers/video.py:41-365](file://backend/routers/video.py#L41-L365)
 - [backend/run_pipeline.py:1-29](file://backend/run_pipeline.py#L1-L29)
 - [backend/pipeline/orchestrator.py:131-139](file://backend/pipeline/orchestrator.py#L131-L139)
-- [backend/pipeline/search_index.py:59-333](file://backend/pipeline/search_index.py#L59-L333)
+- [backend/pipeline/search_index.py:214-265](file://backend/pipeline/search_index.py#L214-L265)
 - [backend/pipeline/face_recognition.py:185-262](file://backend/pipeline/face_recognition.py#L185-L262)
 - [backend/pipeline/subtitle_generation.py:238-280](file://backend/pipeline/subtitle_generation.py#L238-L280)
 - [backend/pipeline/dubbing.py:56-161](file://backend/pipeline/dubbing.py#L56-L161)
 - [frontend/src/components/archive/DubbingPanel.tsx:27-138](file://frontend/src/components/archive/DubbingPanel.tsx#L27-L138)
+- [frontend/src/components/archive/VideoLibrary.tsx:100-116](file://frontend/src/components/archive/VideoLibrary.tsx#L100-L116)
 
 ## Architecture Overview
 The system follows a staged pipeline architecture with subprocess-based execution and process isolation:
@@ -211,8 +223,9 @@ The system follows a staged pipeline architecture with subprocess-based executio
 7. Progress updates are streamed via WebSocket and persisted to status.json
 8. Results are saved as individual JSON artifacts per stage
 9. **Enhanced** Search index is built incrementally during processing with person-specific entries and can be rebuilt via /api/reindex
+10. **NEW** Batch deletion endpoint provides comprehensive cleanup of files, directories, and search index entries
 
-**Updated** The system now features comprehensive dubbing capabilities as an on-demand service with enhanced Arabic language support. When users request dubbing for a specific language, the system creates a background task that translates transcript segments using DashScope Qwen models with improved Arabic language identification, synthesizes speech using Edge-TTS neural voices, and assembles the final dubbed video using FFmpeg. The dubbing process maintains precise timing synchronization and provides real-time progress updates through dedicated status endpoints.
+**Updated** The system now features comprehensive batch video deletion capabilities as an atomic operation that ensures complete cleanup of all associated resources. When users request deletion of multiple videos, the system processes each video individually, removing uploaded files, output directories, and corresponding search index entries. The deletion process maintains transaction-like behavior by providing detailed response reporting, allowing clients to understand exactly which deletions succeeded and which failed with specific error reasons.
 
 ```mermaid
 sequenceDiagram
@@ -222,12 +235,9 @@ participant FS as "Filesystem"
 participant Subproc as "Subprocess"
 participant Runner as "run_pipeline.py"
 participant Orchestrator as "Pipeline Orchestrator"
-participant AudioStage as "Audio Analysis"
-participant DubbingTask as "Dubbing Background Task"
-participant Translator as "DashScope Qwen"
-participant TTS as "Edge-TTS"
-participant FFmpeg as "FFmpeg"
+participant SearchIndex as "Search Index"
 participant Stage as "Pipeline Stage"
+Note over Client,Stage : "Video Processing Flow"
 Client->>API : "POST /api/video/upload (multipart/form-data)"
 API->>FS : "Save video file"
 API->>Subproc : "subprocess.Popen(run_pipeline.py, video_id, video_path)"
@@ -236,41 +246,31 @@ Subproc->>Runner : "Execute standalone pipeline runner"
 Runner->>Orchestrator : "process_video(video_id, video_path)"
 Orchestrator->>Stage : "Run ingestion"
 Stage-->>Orchestrator : "Stage result"
-Orchestrator->>AudioStage : "Run audio analysis"
-AudioStage-->>Orchestrator : "Transcript segments"
 Orchestrator->>Stage : "Run next stage"
 Stage-->>Orchestrator : "Stage result"
+Orchestrator->>SearchIndex : "Build search index"
+SearchIndex-->>Orchestrator : "Index updated"
 Orchestrator->>FS : "Write status.json"
 Orchestrator-->>Runner : "Pipeline complete"
 Runner-->>Subproc : "Exit subprocess"
 API-->>Client : "{video_id, status}"
 Note over API : "Server remains unaffected<br/>by subprocess execution"
-Client->>API : "POST /api/video/{id}/dub {target_language : 'ar'}"
-API->>DubbingTask : "asyncio.create_task(_run_dubbing_task)"
-DubbingTask->>Translator : "Translate segments (AR/FR/RU/etc.)"
-Note over Translator : "Enhanced Arabic language<br/>identification with explicit<br/>script specification"
-Translator-->>DubbingTask : "Translated segments"
-DubbingTask->>TTS : "Synthesize speech (edge-tts)"
-TTS-->>DubbingTask : "Audio segments"
-DubbingTask->>FFmpeg : "Assemble audio track"
-FFmpeg-->>DubbingTask : "Combined audio.mp3"
-DubbingTask->>FFmpeg : "Mux audio into video"
-FFmpeg-->>DubbingTask : "Final dubbed video.mp4"
-DubbingTask-->>API : "Task completed"
-Client->>API : "GET /api/video/{id}/dub/status?language=ar"
-API-->>Client : "{status : 'processing', stage : 'synthesizing'}"
-Client->>API : "GET /api/video/{id}/dubbed/ar"
-API-->>Client : "video/mp4 stream"
+Note over Client,SearchIndex : "Batch Deletion Flow"
+Client->>API : "DELETE /api/videos {video_ids : [...]}"
+API->>FS : "Remove uploaded files & directories"
+loop For each successful deletion
+API->>SearchIndex : "remove_video(video_id)"
+SearchIndex-->>API : "Index updated"
+end
+API-->>Client : "{deleted : [...], failed : [...]}"
 ```
 
 **Diagram sources**
-- [backend/routers/video.py:85-95](file://backend/routers/video.py#L85-L95)
-- [backend/routers/video.py:450-501](file://backend/routers/video.py#L450-L501)
-- [backend/routers/video.py:504-539](file://backend/routers/video.py#L504-L539)
-- [backend/routers/video.py:542-558](file://backend/routers/video.py#L542-L558)
+- [backend/routers/video.py:67-129](file://backend/routers/video.py#L67-L129)
+- [backend/routers/video.py:655-696](file://backend/routers/video.py#L655-L696)
 - [backend/run_pipeline.py:15-28](file://backend/run_pipeline.py#L15-L28)
 - [backend/pipeline/orchestrator.py:131-139](file://backend/pipeline/orchestrator.py#L131-L139)
-- [backend/pipeline/dubbing.py:56-161](file://backend/pipeline/dubbing.py#L56-L161)
+- [backend/pipeline/search_index.py:214-265](file://backend/pipeline/search_index.py#L214-L265)
 
 ## Detailed Component Analysis
 
@@ -336,7 +336,7 @@ console.log("video_id:", result.video_id);
 ```
 
 **Section sources**
-- [backend/routers/video.py:51-113](file://backend/routers/video.py#L51-L113)
+- [backend/routers/video.py:67-129](file://backend/routers/video.py#L67-L129)
 - [backend/run_pipeline.py:15-28](file://backend/run_pipeline.py#L15-L28)
 
 ### GET /api/video/{video_id}/status
@@ -377,8 +377,7 @@ WebSocket alternative:
 - Automatic fallback to REST polling when WebSocket connections fail
 
 **Section sources**
-- [backend/routers/video.py:118-133](file://backend/routers/video.py#L118-L133)
-- [backend/routers/video.py:461-508](file://backend/routers/video.py#L461-L508)
+- [backend/routers/video.py:134-149](file://backend/routers/video.py#L134-L149)
 - [backend/pipeline/orchestrator.py:62-72](file://backend/pipeline/orchestrator.py#L62-L72)
 
 ### GET /api/video/{video_id}/metadata
@@ -449,7 +448,7 @@ console.log("identified persons:", metadata.faces.filter(f => f.identified).leng
 ```
 
 **Section sources**
-- [backend/routers/video.py:138-172](file://backend/routers/video.py#L138-L172)
+- [backend/routers/video.py:154-188](file://backend/routers/video.py#L154-L188)
 - [backend/pipeline/ingestion.py:44-51](file://backend/pipeline/ingestion.py#L44-L51)
 - [backend/pipeline/metadata_structuring.py:81-163](file://backend/pipeline/metadata_structuring.py#L81-L163)
 - [backend/pipeline/face_recognition.py:185-262](file://backend/pipeline/face_recognition.py#L185-L262)
@@ -488,313 +487,72 @@ console.log("segments count:", transcript.segments.length);
 ```
 
 **Section sources**
-- [backend/routers/video.py:190-206](file://backend/routers/video.py#L190-L206)
+- [backend/routers/video.py:206-222](file://backend/routers/video.py#L206-L222)
 - [backend/pipeline/audio_analysis.py:22-59](file://backend/pipeline/audio_analysis.py#L22-L59)
 
-### **NEW** POST /api/video/{video_id}/dub
-Purpose: Submit a dubbing job for a video to create a dubbed version in the specified target language.
+### **NEW** DELETE /api/videos
+Purpose: Batch-delete one or more videos with comprehensive cleanup including file system removal and search index purging.
 
-- Method: POST
-- Path: /api/video/{video_id}/dub
-- Path Parameters:
-  - video_id: UUID of the video
+- Method: DELETE
+- Path: /api/videos
 - Request Body:
-  - target_language: string (optional, default: "ar") - Supported languages: ar, en, fr, es, de, ru, hi, zh
-- Response:
-  - status: "processing" | "completed" (if cached)
-  - video_id: string
-  - target_language: string
-  - cached: boolean (true if already exists)
-  - video_path: string (only if cached)
+  - video_ids: array of strings (required) - List of video IDs to delete
+- Response Schema:
+  - deleted: array of strings (successfully deleted video IDs)
+  - failed: array of objects (failed deletions with error details)
+    - video_id: string (the video ID that failed)
+    - error: string (error message describing why deletion failed)
 
 **Enhanced** Features:
-- **Multi-Language Support**: Supports 8 languages with native neural voices (Arabic, English, French, Spanish, German, Russian, Hindi, Chinese)
-- **Background Processing**: Runs as asynchronous task to prevent blocking the main API server
-- **Duplicate Prevention**: Prevents multiple simultaneous dubbing jobs for the same video/language combination
-- **Caching**: Returns immediately if dubbed version already exists
-- **Professional Translation**: Uses DashScope Qwen models for high-quality translation with enhanced Arabic language identification
-- **Neural Voice Synthesis**: Employs Microsoft Edge-TTS for natural-sounding speech synthesis
-- **Timing Preservation**: Maintains precise timing synchronization with original video using FFmpeg
+- **Batch Operations**: Supports deletion of multiple videos in a single API call
+- **Comprehensive Cleanup**: Removes both uploaded video files and output directories
+- **Search Index Synchronization**: Automatically removes deleted videos from the search index
+- **Detailed Response Reporting**: Provides granular success/failure information for each video
+- **Atomic Transaction Behavior**: Processes deletions sequentially with consistent state management
+- **Robust Error Handling**: Continues processing even if individual deletions fail
+- **Resource Management**: Ensures complete cleanup of all associated filesystem resources
 
 Behavior:
-- Validates target language against supported languages list from configuration
-- Checks for video existence and transcript availability (required for dubbing)
-- Returns cached result if dubbed video already exists
-- Creates background asyncio task for non-blocking dubbing processing
-- Prevents duplicate job submissions for the same video/language combination
-- Stores strong task reference to prevent garbage collection during processing
+- Validates input video IDs array
+- For each video ID, attempts to remove both the uploaded file ({video_id}.mp4) and output directory ({video_id}/)
+- Tracks successful deletions and failures with detailed error information
+- After successful file deletions, removes corresponding entries from the search index
+- Returns comprehensive response with both successful and failed deletion results
 
 Error codes:
-- 400: Unsupported language or transcript not available
-- 404: Video ID not found or source video file not found
-- 500: Internal server error during job initialization
+- 400: Invalid request (empty video_ids array)
+- 500: Internal server error during deletion operations
 
 curl example:
 ```bash
-curl -X POST "http://localhost:8000/api/video/<video_id>/dub" \
+curl -X DELETE "http://localhost:8000/api/videos" \
   -H "Content-Type: application/json" \
-  -d '{"target_language": "ar"}'
+  -d '{"video_ids": ["video-id-1", "video-id-2", "video-id-3"]}'
 ```
 
 JavaScript fetch example:
 ```javascript
-const response = await fetch(`http://localhost:8000/api/video/${videoId}/dub`, {
-  method: "POST",
+const response = await fetch("http://localhost:8000/api/videos", {
+  method: "DELETE",
   headers: {
     "Content-Type: application/json",
   },
   body: JSON.stringify({
-    target_language: "fr"
+    video_ids: ["video-id-1", "video-id-2", "video-id-3"]
   })
 });
 
 const result = await response.json();
-console.log("Job status:", result.status);
-console.log("Target language:", result.target_language);
+console.log("Successfully deleted:", result.deleted.length);
+console.log("Failed deletions:", result.failed.length);
+result.failed.forEach(failure => {
+  console.error(`Failed to delete ${failure.video_id}: ${failure.error}`);
+});
 ```
 
 **Section sources**
-- [backend/routers/video.py:450-501](file://backend/routers/video.py#L450-L501)
-- [backend/pipeline/dubbing.py:56-161](file://backend/pipeline/dubbing.py#L56-L161)
-
-### **NEW** GET /api/video/{video_id}/dub/status
-Purpose: Monitor the progress and status of dubbing jobs for a video.
-
-- Method: GET
-- Path: /api/video/{video_id}/dub/status
-- Path Parameters:
-  - video_id: UUID of the video
-- Query Parameters:
-  - language: string (optional, default: configured default language) - Target language code
-- Response Schema:
-  - video_id: string
-  - target_language: string
-  - status: "not_started" | "processing" | "completed" | "failed"
-  - stage: string (current processing stage)
-  - error: string (error message if failed)
-
-**Enhanced** Features:
-- **Real-time Progress Tracking**: Provides detailed status updates during dubbing processing
-- **Multiple Status Sources**: Reads from both dubbing_{lang}.json and status_{lang}.json files
-- **Active Task Detection**: Integrates with in-memory task tracking for accurate processing status
-- **Graceful Degradation**: Falls back to basic status when detailed information is unavailable
-
-Status progression:
-- "not_started": No dubbing job has been initiated
-- "processing": Dubbing job is currently running
-- "completed": Dubbing job finished successfully
-- "failed": Dubbing job encountered an error
-
-Processing stages:
-- "Loading transcript": Reading and parsing transcript data
-- "Translating segments": Converting text to target language
-- "Synthesizing speech": Generating audio using Edge-TTS
-- "Assembling audio track": Combining audio segments with timing
-- "Muxing audio into video": Creating final dubbed video file
-
-curl example:
-```bash
-curl "http://localhost:8000/api/video/<video_id>/dub/status?language=ar"
-```
-
-JavaScript fetch example:
-```javascript
-const response = await fetch(`http://localhost:8000/api/video/${videoId}/dub/status?language=ru`);
-const status = await response.json();
-console.log("Dubbing status:", status.status);
-console.log("Current stage:", status.stage);
-```
-
-**Section sources**
-- [backend/routers/video.py:504-523](file://backend/routers/video.py#L504-L523)
-- [backend/pipeline/dubbing.py:462-494](file://backend/pipeline/dubbing.py#L462-L494)
-
-### **NEW** GET /api/video/{video_id}/dub/languages
-Purpose: Check available dubbed languages and supported language options for a video.
-
-- Method: GET
-- Path: /api/video/{video_id}/dub/languages
-- Path Parameters:
-  - video_id: UUID of the video
-- Response Schema:
-  - video_id: string
-  - dubbed_languages: array of strings (languages with existing dubbed versions)
-  - supported_languages: array of strings (all supported language codes)
-
-**Updated** Response structure now uses clearer field names for better API consistency and developer experience.
-
-**Enhanced** Features:
-- **Available Languages**: Lists languages for which dubbed versions already exist
-- **Supported Languages**: Shows all languages that can be used for dubbing
-- **Configuration Integration**: Reads supported languages from server configuration
-- **Automatic Discovery**: Scans dubbed directory for existing video files
-
-Language detection:
-- Scans {video_id}/dubbed/ directory for files matching pattern "video_{language}.mp4"
-- Extracts language codes from filenames
-- Compares with configured supported languages list
-
-curl example:
-```bash
-curl "http://localhost:8000/api/video/<video_id>/dub/languages"
-```
-
-JavaScript fetch example:
-```javascript
-const response = await fetch(`http://localhost:8000/api/video/${videoId}/dub/languages`);
-const languages = await response.json();
-console.log("Available dubs:", languages.dubbed_languages);
-console.log("Supported languages:", languages.supported_languages);
-```
-
-**Section sources**
-- [backend/routers/video.py:526-539](file://backend/routers/video.py#L526-L539)
-- [backend/config.py:16-17](file://backend/config.py#L16-L17)
-
-### **NEW** GET /api/video/{video_id}/dubbed/{language}
-Purpose: Stream or download a dubbed video file for the specified language.
-
-- Method: GET
-- Path: /api/video/{video_id}/dubbed/{language}
-- Path Parameters:
-  - video_id: UUID of the video
-  - language: string - Target language code (e.g., "ar", "en", "fr")
-- Response:
-  - Content-Type: video/mp4
-  - Body: MP4 video file with dubbed audio track
-
-**Enhanced** Features:
-- **Streaming Support**: Efficiently streams large video files without loading entire file into memory
-- **Proper MIME Types**: Returns correct video/mp4 content type for browser compatibility
-- **Filename Handling**: Sets appropriate filename for downloads
-- **Direct File Access**: Serves files directly from filesystem for optimal performance
-
-curl example:
-```bash
-curl -o dubbed_video_ar.mp4 "http://localhost:8000/api/video/<video_id>/dubbed/ar"
-```
-
-JavaScript fetch example:
-```javascript
-// For direct download
-window.open(`http://localhost:8000/api/video/${videoId}/dubbed/fr`, '_blank');
-
-// For programmatic handling
-const response = await fetch(`http://localhost:8000/api/video/${videoId}/dubbed/es`);
-const blob = await response.blob();
-const url = URL.createObjectURL(blob);
-const a = document.createElement('a');
-a.href = url;
-a.download = `dubbed_${videoId}_es.mp4`;
-a.click();
-```
-
-**Section sources**
-- [backend/routers/video.py:542-558](file://backend/routers/video.py#L542-L558)
-
-### GET /api/video/{video_id}/subtitles
-Purpose: Retrieve WebVTT subtitle content for a video in the specified language with automatic generation and caching.
-
-- Method: GET
-- Path: /api/video/{video_id}/subtitles
-- Path Parameters:
-  - video_id: UUID of the video
-- Query Parameters:
-  - language: string (optional, default: "en") - Supported languages: en, ar, fr, ru
-- Response:
-  - Content-Type: text/vtt
-  - Body: WebVTT formatted subtitle content
-
-**Enhanced** Features:
-- **Multi-language Support**: Provides subtitles in English (source), Arabic, French, and Russian
-- **Automatic Generation**: Generates WebVTT content on-the-fly if not already cached
-- **Intelligent Caching**: Persists generated subtitles for faster subsequent requests
-- **Real-time Translation**: Translates transcript segments using DashScope Qwen models with exponential backoff retry logic and enhanced Arabic language identification
-- **Format Compliance**: Produces standards-compliant WebVTT files compatible with HTML5 video players
-- **Error Handling**: Graceful degradation with detailed error responses for missing transcripts or API failures
-
-Behavior:
-- Validates target language against supported languages list
-- Checks for video existence and transcript availability
-- Retrieves cached VTT file if available, otherwise generates on-demand
-- For non-English languages, translates transcript segments using DashScope Qwen models with improved Arabic language handling
-- Implements exponential backoff retry logic for translation API calls
-- Caches generated content for future requests
-- Returns WebVTT content with proper MIME type
-
-Error codes:
-- 400: Unsupported language
-- 404: Video ID not found or transcript not available
-- 502: Subtitle generation failed (transcription or translation errors)
-
-curl example:
-```bash
-curl "http://localhost:8000/api/video/<video_id>/subtitles?language=ar"
-```
-
-JavaScript fetch example:
-```javascript
-const response = await fetch(`http://localhost:8000/api/video/${videoId}/subtitles?language=fr`);
-const vttContent = await response.text();
-console.log("VTT length:", vttContent.length);
-```
-
-**Section sources**
-- [backend/routers/video.py:349-378](file://backend/routers/video.py#L349-L378)
-- [backend/pipeline/subtitle_generation.py:283-319](file://backend/pipeline/subtitle_generation.py#L283-319)
-
-### GET /api/video/{video_id}/subtitles/download
-Purpose: Download subtitles as downloadable SRT or VTT files with proper attachment headers.
-
-- Method: GET
-- Path: /api/video/{video_id}/subtitles/download
-- Path Parameters:
-  - video_id: UUID of the video
-- Query Parameters:
-  - language: string (optional, default: "en") - Supported languages: en, ar, fr, ru
-  - format: string (optional, default: "srt") - Supported formats: srt, vtt
-- Response:
-  - Content-Type: application/x-subrip (SRT) or text/vtt (VTT)
-  - Content-Disposition: attachment; filename="{video_id}_{language}.{format}"
-  - Body: Subtitle file content for download
-
-**Enhanced** Features:
-- **Multiple Formats**: Supports both SRT and VTT subtitle formats
-- **Automatic Conversion**: Converts between formats while preserving timing and content
-- **Download Headers**: Properly configured Content-Disposition headers for browser downloads
-- **MIME Type Detection**: Returns appropriate Content-Type based on requested format
-- **Caching Integration**: Reuses cached VTT content to avoid redundant translations
-- **Error Handling**: Comprehensive error handling with user-friendly error messages
-
-Behavior:
-- Validates language and format parameters
-- Ensures video exists and transcript is available
-- Uses ensure_subtitle_content() to generate or retrieve subtitle content
-- For SRT format, converts from cached VTT to maintain consistency
-- Sets proper download headers with descriptive filenames
-- Returns subtitle file content with appropriate MIME type
-
-Error codes:
-- 400: Unsupported language or format
-- 404: Video ID not found or transcript not available
-- 502: Subtitle generation failed
-
-curl example:
-```bash
-curl -o subtitles_ar.srt "http://localhost:8000/api/video/<video_id>/subtitles/download?language=ar&format=srt"
-```
-
-JavaScript fetch example:
-```javascript
-const response = await fetch(`http://localhost:8000/api/video/${videoId}/subtitles/download?language=ru&format=vtt`);
-const blob = await response.blob();
-const url = URL.createObjectURL(blob);
-window.open(url, '_blank');
-```
-
-**Section sources**
-- [backend/routers/video.py:381-420](file://backend/routers/video.py#L381-L420)
-- [backend/pipeline/subtitle_generation.py:322-345](file://backend/pipeline/subtitle_generation.py#L322-345)
+- [backend/routers/video.py:655-696](file://backend/routers/video.py#L655-L696)
+- [backend/pipeline/search_index.py:214-265](file://backend/pipeline/search_index.py#L214-L265)
 
 ### **NEW** Dubbing System
 
@@ -860,7 +618,7 @@ The DubbingPanel component provides comprehensive dubbing management:
 
 **Section sources**
 - [backend/pipeline/dubbing.py:56-161](file://backend/pipeline/dubbing.py#L56-L161)
-- [backend/routers/video.py:450-501](file://backend/routers/video.py#L450-L501)
+- [backend/routers/video.py:448-522](file://backend/routers/video.py#L448-L522)
 - [frontend/src/components/archive/DubbingPanel.tsx:27-138](file://frontend/src/components/archive/DubbingPanel.tsx#L27-L138)
 - [frontend/src/components/archive/DubbingPanel.tsx:114-138](file://frontend/src/components/archive/DubbingPanel.tsx#L114-L138)
 
@@ -937,7 +695,7 @@ The TranscriptPanel component provides intuitive translation controls:
 - Error state management and user feedback
 
 **Section sources**
-- [backend/routers/video.py:231-316](file://backend/routers/video.py#L231-L316)
+- [backend/routers/video.py:234-327](file://backend/routers/video.py#L234-L327)
 - [frontend/src/components/archive/TranscriptPanel.tsx:82-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L82-121)
 - [frontend/src/lib/api.ts:222-233](file://frontend/src/lib/api.ts#L222-233)
 
@@ -1010,7 +768,7 @@ console.log("Added to reference:", result.added_to_reference);
 ```
 
 **Section sources**
-- [backend/routers/video.py:631-717](file://backend/routers/video.py#L631-L717)
+- [backend/routers/video.py:701-787](file://backend/routers/video.py#L701-L787)
 
 ### GET/POST /api/search
 Purpose: Perform semantic search across all indexed videos with dual HTTP method support and enhanced person filtering.
@@ -1075,7 +833,7 @@ console.log("Person appearances:", results.results.filter(r => r.type === "perso
 ```
 
 **Section sources**
-- [backend/routers/video.py:722-764](file://backend/routers/video.py#L722-L764)
+- [backend/routers/video.py:792-834](file://backend/routers/video.py#L792-L834)
 
 ### POST /api/reindex
 Purpose: Rebuild the search index from all existing processed video results with enhanced person indexing.
@@ -1121,7 +879,7 @@ console.log("Total vectors:", result.total_vectors);
 ```
 
 **Section sources**
-- [backend/routers/video.py:769-800](file://backend/routers/video.py#L769-L800)
+- [backend/routers/video.py:839-878](file://backend/routers/video.py#L839-L878)
 - [backend/pipeline/orchestrator.py:307-367](file://backend/pipeline/orchestrator.py#L307-L367)
 - [backend/pipeline/search_index.py:143-213](file://backend/pipeline/search_index.py#L143-L213)
 
@@ -1190,9 +948,10 @@ The video processing endpoints depend on:
 - **Enhanced** Reference database system for persistent person recognition
 - **New** Subtitle generation module with automatic multi-language subtitle creation and enhanced Arabic language handling
 - **New** Dubbing module with Edge-TTS voice synthesis and FFmpeg audio assembly
+- **New** Batch deletion module with comprehensive cleanup operations and search index synchronization
 - **New** DashScope Qwen models for transcript translation services with improved Arabic language identification
 
-**Updated** The system now depends on enhanced dubbing capabilities with automatic multi-language voice synthesis, intelligent job queuing, and robust error handling. The dubbing system integrates seamlessly with the existing DashScope infrastructure, Edge-TTS service, and FFmpeg tools while maintaining process isolation and resource management. Enhanced Arabic language support ensures accurate translation and synthesis for Middle Eastern content.
+**Updated** The system now depends on enhanced batch deletion capabilities with automatic cleanup of filesystem resources and search index synchronization. The deletion system integrates seamlessly with the existing search index infrastructure, providing reliable resource management and data integrity while maintaining process isolation and error handling.
 
 ```mermaid
 graph LR
@@ -1201,6 +960,7 @@ Router --> RefDB["reference_faces.json"]
 Router --> DashScope["DashScope Qwen<br/>Translation Service<br/>(Enhanced Arabic Support)"]
 Router --> DubbingAPI["Dubbing API Endpoints"]
 Router --> SubtitleAPI["Subtitle API Endpoints"]
+Router --> DeleteAPI["Batch Deletion API"]
 Runner --> Orchestrator["pipeline/orchestrator.py"]
 Orchestrator --> Config["config.py"]
 Orchestrator --> Ingestion["pipeline/ingestion.py"]
@@ -1215,6 +975,7 @@ SubtitleGen --> DashScope
 DubbingAPI --> DashScope
 DubbingAPI --> EdgeTTS["Edge-TTS<br/>Voice Synthesis"]
 DubbingAPI --> FFmpeg["FFmpeg<br/>Audio Assembly"]
+DeleteAPI --> SearchIndex
 FrontendAPI["frontend/src/lib/api.ts"] --> Router
 FrontendHook["frontend/src/lib/useVideoProcessing.ts"] --> FrontendAPI
 FrontendUpload["frontend/src/components/archive/VideoUpload.tsx"] --> FrontendHook
@@ -1222,19 +983,22 @@ FrontendPeople["frontend/src/components/archive/PeoplePanel.tsx"] --> FrontendHo
 FrontendTranscript["frontend/src/components/archive/TranscriptPanel.tsx"] --> FrontendHook
 FrontendTimeline["frontend/src/components/archive/VideoTimeline.tsx"] --> FrontendAPI
 FrontendDubbing["frontend/src/components/archive/DubbingPanel.tsx"] --> FrontendAPI
+FrontendLibrary["frontend/src/components/archive/VideoLibrary.tsx"] --> FrontendAPI
 ```
 
 **Diagram sources**
 - [backend/routers/video.py:17-26](file://backend/routers/video.py#L17-L26)
-- [backend/routers/video.py:450-501](file://backend/routers/video.py#L450-L501)
+- [backend/routers/video.py:655-696](file://backend/routers/video.py#L655-L696)
 - [backend/run_pipeline.py:12-17](file://backend/run_pipeline.py#L12-17)
 - [backend/pipeline/orchestrator.py:14-21](file://backend/pipeline/orchestrator.py#L14-21)
 - [backend/config.py:4-17](file://backend/config.py#L4-L17)
 - [backend/pipeline/face_recognition.py:17-18](file://backend/pipeline/face_recognition.py#L17-L18)
 - [backend/pipeline/subtitle_generation.py:15-26](file://backend/pipeline/subtitle_generation.py#L15-26)
 - [backend/pipeline/dubbing.py:23-25](file://backend/pipeline/dubbing.py#L23-25)
-- [frontend/src/lib/api.ts:263-276](file://frontend/src/lib/api.ts#L263-L276)
+- [backend/pipeline/search_index.py:214-265](file://backend/pipeline/search_index.py#L214-L265)
+- [frontend/src/lib/api.ts:245-249](file://frontend/src/lib/api.ts#L245-L249)
 - [frontend/src/components/archive/DubbingPanel.tsx:4-5](file://frontend/src/components/archive/DubbingPanel.tsx#L4-L5)
+- [frontend/src/components/archive/VideoLibrary.tsx:100-116](file://frontend/src/components/archive/VideoLibrary.tsx#L100-L116)
 
 **Section sources**
 - [backend/main.py:35-38](file://backend/main.py#L35-L38)
@@ -1252,6 +1016,7 @@ FrontendDubbing["frontend/src/components/archive/DubbingPanel.tsx"] --> Frontend
 - **New** Intelligent job queuing prevents duplicate dubbing requests for the same video/language
 - **New** Edge-TTS voice synthesis is optimized for batch processing with parallel segment synthesis
 - **New** FFmpeg audio assembly uses efficient concat operations for minimal processing overhead
+- **New** Batch deletion operations are optimized for sequential processing with comprehensive cleanup
 - **Enhanced** Subtitle generation uses intelligent caching to minimize redundant translation API calls with enhanced Arabic language handling
 - **Enhanced** Reference database lookups are cached and optimized for fast person matching
 - **Updated** Process isolation ensures that memory leaks or resource exhaustion in pipeline stages don't affect server stability
@@ -1262,6 +1027,8 @@ FrontendDubbing["frontend/src/components/archive/DubbingPanel.tsx"] --> Frontend
 - **New** Audio synthesis failures are handled gracefully with silence insertion for missing segments
 - **New** Video muxing operations are optimized with streaming to handle large files efficiently
 - **New** Background task management prevents memory leaks through proper task lifecycle management
+- **New** Batch deletion operations use efficient filesystem operations with proper error handling
+- **New** Search index removal operations are optimized to maintain index integrity during bulk deletions
 
 ## Troubleshooting Guide
 Common issues and resolutions:
@@ -1289,6 +1056,9 @@ Common issues and resolutions:
 - **New** Language support errors: Ensure target language is one of the supported codes (ar, en, fr, es, de, ru, hi, zh)
 - **New** Format conversion errors: Verify subtitle content integrity during SRT/VTT conversion
 - **New** HTML5 player issues: Check WebVTT format compliance and browser subtitle track support
+- **New** Batch deletion failures: Check filesystem permissions and verify video IDs exist before deletion
+- **New** Search index corruption: Use /api/reindex endpoint to rebuild search index after deletion operations
+- **New** File permission errors: Ensure server has write permissions for upload directory and output directories
 - **Enhanced** Arabic translation issues: Verify language identification is set to "Modern Standard Arabic (العربية)" and check for Chinese output defaults
 - **Enhanced** Subtitle generation problems: Check enhanced Arabic language handling in subtitle generation pipeline
 
@@ -1311,17 +1081,20 @@ Error handling patterns:
 - **New** Background task failures are logged and cleaned up automatically
 - **New** Edge-TTS failures fall back to silence insertion for affected segments
 - **New** FFmpeg errors include detailed stderr output for troubleshooting
+- **New** Batch deletion errors provide detailed failure reasons for each video ID
+- **New** Filesystem errors include specific error messages about permission or path issues
 - **Enhanced** Arabic translation errors include specific guidance about language identification and script requirements
 
 **Section sources**
-- [backend/routers/video.py:57-59](file://backend/routers/video.py#L57-L59)
-- [backend/routers/video.py:129-131](file://backend/routers/video.py#L129-L131)
-- [backend/routers/video.py:184-185](file://backend/routers/video.py#L184-L185)
+- [backend/routers/video.py:84-86](file://backend/routers/video.py#L84-L86)
+- [backend/routers/video.py:147-149](file://backend/routers/video.py#L147-L149)
+- [backend/routers/video.py:220-222](file://backend/routers/video.py#L220-L222)
 - [backend/routers/video.py:238-253](file://backend/routers/video.py#L238-L253)
 - [backend/routers/video.py:358-376](file://backend/routers/video.py#L358-L376)
 - [backend/routers/video.py:387-413](file://backend/routers/video.py#L387-L413)
 - [backend/routers/video.py:463-474](file://backend/routers/video.py#L463-L474)
 - [backend/routers/video.py:504-523](file://backend/routers/video.py#L504-L523)
+- [backend/routers/video.py:685-687](file://backend/routers/video.py#L685-L687)
 - [backend/pipeline/orchestrator.py:259-282](file://backend/pipeline/orchestrator.py#L259-L282)
 - [backend/pipeline/dubbing.py:485-494](file://backend/pipeline/dubbing.py#L485-L494)
 - [frontend/src/lib/api.ts:43-95](file://frontend/src/lib/api.ts#L43-L95)
@@ -1333,7 +1106,7 @@ The video processing endpoints provide a robust foundation for AI-powered media 
 
 **Enhanced** The enhanced face recognition system provides sophisticated person identification through multi-source analysis including OCR text, transcript context, and reference database matching. The face naming endpoint enables seamless integration between manual and automatic identification, while the reference database grows over time to improve future recognition accuracy.
 
-**New** The dubbing workflow automatically processes on-demand requests with background task management, providing instant access to professionally dubbed video content in multiple languages. The system intelligently manages job queues, caches results, and provides both streaming playback and downloadable formats, ensuring optimal user experience across different devices and browsers.
+**New** The batch deletion system provides comprehensive resource cleanup with automatic removal of uploaded files, output directories, and search index entries. The deletion endpoint offers reliable batch operations with detailed response reporting, ensuring data integrity and proper resource management across the entire video processing pipeline.
 
 **Enhanced** The subtitle generation system provides sophisticated multi-language support with automatic WebVTT creation, intelligent caching, and seamless integration with HTML5 video players. The subtitle system leverages DashScope Qwen models to deliver high-quality translations while maintaining temporal accuracy and preserving speaker attribution throughout the translation process. Enhanced Arabic language identification ensures accurate Modern Standard Arabic output.
 
@@ -1372,6 +1145,15 @@ Transcript response:
 - full_text: string
 - language: string
 - speaker_count: number
+
+**New** Batch deletion request (DELETE /api/videos):
+- video_ids: array of strings (required) - List of video IDs to delete
+
+**New** Batch deletion response (DELETE /api/videos):
+- deleted: array of strings (successfully deleted video IDs)
+- failed: array of objects (failed deletions with error details)
+  - video_id: string (the video ID that failed)
+  - error: string (error message describing why deletion failed)
 
 **New** Dubbing request (POST /dub):
 - target_language: string (optional, default: "ar") - Supported: ar, en, fr, es, de, ru, hi, zh
@@ -1482,7 +1264,86 @@ ws.onmessage = (event) => {
 };
 ```
 
-**New** JavaScript dubbing workflow:
+**New** JavaScript batch deletion workflow:
+```javascript
+// Delete multiple videos at once
+const response = await fetch("http://localhost:8000/api/videos", {
+  method: "DELETE",
+  headers: {
+    "Content-Type: application/json",
+  },
+  body: JSON.stringify({
+    video_ids: ["video-id-1", "video-id-2", "video-id-3"]
+  })
+});
+
+const result = await response.json();
+console.log("Successfully deleted:", result.deleted.length);
+console.log("Failed deletions:", result.failed.length);
+
+// Handle failures
+result.failed.forEach(failure => {
+  console.error(`Failed to delete ${failure.video_id}: ${failure.error}`);
+});
+```
+
+**New** Frontend batch deletion integration:
+```javascript
+// Using the VideoLibrary component with batch deletion
+import VideoLibrary from '@/components/archive/VideoLibrary';
+
+function ArchivePage() {
+  const handleRefresh = () => {
+    // Refresh video library after deletion
+    window.location.reload();
+  };
+
+  return (
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-4">Video Archive</h1>
+      <VideoLibrary 
+        onSelect={(videoId) => console.log('Selected:', videoId)}
+        onRefresh={handleRefresh}
+      />
+    </div>
+  );
+}
+```
+
+**New** Batch deletion with confirmation modal:
+```javascript
+// Confirmation dialog before batch deletion
+async function confirmAndDeleteVideos(videoIds) {
+  const confirmed = window.confirm(
+    `Are you sure you want to delete ${videoIds.length} videos? This action cannot be undone.`
+  );
+  
+  if (!confirmed) return;
+  
+  try {
+    const response = await fetch("http://localhost:8000/api/videos", {
+      method: "DELETE",
+      headers: {
+        "Content-Type: application/json",
+      },
+      body: JSON.stringify({ video_ids: videoIds })
+    });
+    
+    const result = await response.json();
+    
+    if (result.failed.length > 0) {
+      alert(`Some deletions failed:\n${result.failed.map(f => `${f.video_id}: ${f.error}`).join('\n')}`);
+    } else {
+      alert(`Successfully deleted ${result.deleted.length} videos`);
+    }
+  } catch (error) {
+    console.error("Deletion failed:", error);
+    alert("An error occurred during deletion");
+  }
+}
+```
+
+JavaScript dubbing workflow:
 ```javascript
 // Start dubbing job
 const response = await fetch(`http://localhost:8000/api/video/${videoId}/dub`, {
@@ -1708,3 +1569,16 @@ The transcript translation system follows this workflow:
 7. **Error Handling**: Graceful degradation with detailed logging and user feedback
 
 This workflow provides reliable multi-language translation while preserving temporal accuracy and maintaining the integrity of the original transcript structure.
+
+### Batch Deletion Workflow
+
+The batch deletion system follows this comprehensive cleanup workflow:
+
+1. **Input Validation**: Validates video IDs array and prepares deletion operations
+2. **Sequential Processing**: Processes each video ID individually for reliable error handling
+3. **File Removal**: Removes uploaded video files ({video_id}.mp4) and output directories ({video_id}/)
+4. **Search Index Synchronization**: Removes deleted videos from the search index
+5. **Response Compilation**: Aggregates successful deletions and detailed failure information
+6. **Transaction-like Behavior**: Maintains consistent state across all deletion operations
+
+This workflow provides reliable batch deletion with comprehensive cleanup and detailed response reporting, ensuring data integrity and proper resource management.

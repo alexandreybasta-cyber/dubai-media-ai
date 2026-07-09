@@ -1,8 +1,6 @@
 import Link from "next/link";
 import {
   FilmIcon,
-  DocumentTextIcon,
-  ChartBarIcon,
   GlobeAltIcon,
   ShieldCheckIcon,
   CpuChipIcon,
@@ -25,38 +23,6 @@ const tools = [
       "Semantic vector search across archive",
     ],
   },
-  {
-    name: "RFP Creator",
-    description:
-      "Generate professional, bilingual Request for Proposal documents tailored to UAE procurement standards.",
-    href: "/rfp-creator",
-    icon: DocumentTextIcon,
-    color: "bg-orange-50 text-orange-600",
-    borderColor: "border-orange-200 hover:border-orange-300",
-    capabilities: [
-      "Bilingual output (English + Arabic)",
-      "10 professional sections auto-generated",
-      "Customizable tone & evaluation criteria",
-      "Export to DOCX and PDF",
-      "Section-by-section regeneration",
-    ],
-  },
-  {
-    name: "RFP Evaluator",
-    description:
-      "Score and compare vendor proposals with AI-powered analysis, weighted scoring, and exportable reports.",
-    href: "/rfp-evaluator",
-    icon: ChartBarIcon,
-    color: "bg-emerald-50 text-emerald-600",
-    borderColor: "border-emerald-200 hover:border-emerald-300",
-    capabilities: [
-      "PDF/DOCX proposal text extraction",
-      "Criterion-by-criterion scoring (1-10)",
-      "Weighted comparison matrix",
-      "AI-generated recommendation narrative",
-      "Export to XLSX and PDF reports",
-    ],
-  },
 ];
 
 const models = [
@@ -76,13 +42,11 @@ export default function HomePage() {
           Powered by Qwen models on Alibaba Cloud
         </div>
         <h1 className="text-4xl font-bold text-gray-900 tracking-tight">
-          Dubai Media{" "}
-          <span className="text-orange-500">× Alibaba Cloud AI</span>
+          Prototype : Media
         </h1>
         <p className="mt-4 text-lg text-gray-500 max-w-2xl mx-auto leading-relaxed">
-          An AI-powered MVP demonstrating intelligent media archive management,
-          automated RFP generation, and AI-driven vendor evaluation — purpose-built for
-          Dubai Media Incorporated.
+          An AI-powered MVP demonstrating intelligent media archive management
+          — purpose-built for Dubai Media Incorporated.
         </p>
       </div>
 

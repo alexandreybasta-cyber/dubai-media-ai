@@ -1,6 +1,8 @@
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8800";
-const WS_BASE_URL = API_BASE_URL.replace(/^http/, "ws");
+  process.env.NEXT_PUBLIC_API_URL || "";
+const WS_BASE_URL = API_BASE_URL
+  ? API_BASE_URL.replace(/^http/, "ws")
+  : `ws://${typeof window !== "undefined" ? window.location.host : "localhost:8800"}`;
 
 // ─── Typed Fetch Wrapper ────────────────────────────────────────────────
 
@@ -145,67 +147,6 @@ export interface LibraryVideo {
   summary: string;
 }
 
-// ─── RFP Types ──────────────────────────────────────────────────────────
-
-export interface RFPSection {
-  name: string;
-  content_en?: string;
-  content_ar?: string;
-}
-
-// ─── Evaluation Types ───────────────────────────────────────────────────
-
-export interface ScoreItem {
-  criterion: string;
-  score: number;
-  justification: string;
-  evidence: string;
-}
-
-export interface MandatoryCompliance {
-  requirement: string;
-  status: string;
-  note: string;
-}
-
-export interface VendorResult {
-  vendor_name: string;
-  scores: ScoreItem[];
-  weighted_total: number;
-  strengths: string[];
-  gaps: string[];
-  risks: string[];
-  mandatory_compliance: MandatoryCompliance[];
-}
-
-export interface EvaluationResults {
-  vendors: VendorResult[];
-  recommendation: string;
-  follow_up_questions: Record<string, string[]>;
-}
-
-export interface RFPCreatePayload {
-  project_title: string;
-  project_overview: string;
-  scope_of_work?: string;
-  technical_requirements?: string[];
-  evaluation_criteria?: { name: string; weight: number; description: string }[];
-  timeline?: { start_date: string; end_date: string; milestones: { name: string; date: string }[] };
-  budget_range?: { min: number; max: number; currency: string } | null;
-  compliance_requirements?: string[];
-  industry?: string;
-  language?: string;
-  tone?: string;
-}
-
-export interface RFPCreateResponse {
-  rfp_id: string;
-  title: string;
-  status: string;
-  sections: RFPSection[];
-  language: string;
-}
-
 // ─── Convenience API Methods ────────────────────────────────────────────
 
 export const api = {
@@ -279,63 +220,6 @@ export const api = {
       apiFetch<{ video_id: string; dubbed_languages: string[]; supported_languages: string[] }>(
         `/api/video/${videoId}/dub/languages`
       ),
-  },
-
-  // RFP endpoints
-  rfp: {
-    create: (data: RFPCreatePayload) =>
-      apiFetch<RFPCreateResponse>("/api/rfp/create", {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
-    regenerateSection: (data: {
-      rfp_id: string;
-      section_name: string;
-      instructions?: string;
-    }) =>
-      apiFetch<{ rfp_id: string; section_name: string; content: string; status: string }>("/api/rfp/regenerate-section", {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
-    exportDocx: (rfpId: string) => {
-      const url = `${API_BASE_URL}/api/rfp/${rfpId}/export/docx`;
-      window.open(url, "_blank");
-    },
-    exportPdf: (rfpId: string) => {
-      const url = `${API_BASE_URL}/api/rfp/${rfpId}/export/pdf`;
-      window.open(url, "_blank");
-    },
-    evaluate: (formData: FormData) => {
-      return fetch(`${API_BASE_URL}/api/rfp/evaluate`, {
-        method: "POST",
-        body: formData,
-      }).then(async (res) => {
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.detail || `Evaluate Error: ${res.status}`);
-        }
-        return res.json();
-      });
-    },
-    getEvaluationStatus: (evalId: string) =>
-      apiFetch<{
-        eval_id: string;
-        status: string;
-        progress: number;
-        proposals_evaluated: number;
-        error: string | null;
-        message: string;
-      }>(`/api/rfp/evaluation/${evalId}/status`),
-    getEvaluationResults: (evalId: string) =>
-      apiFetch<{ eval_id: string; status: string; results: EvaluationResults }>(
-        `/api/rfp/evaluation/${evalId}/results`
-      ),
-    exportEvaluationXlsx: (evalId: string) => {
-      window.open(`${API_BASE_URL}/api/rfp/evaluation/${evalId}/export/xlsx`, "_blank");
-    },
-    exportEvaluationPdf: (evalId: string) => {
-      window.open(`${API_BASE_URL}/api/rfp/evaluation/${evalId}/export/pdf`, "_blank");
-    },
   },
 
   // Health check

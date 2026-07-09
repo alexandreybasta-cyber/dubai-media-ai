@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from config import settings
-from routers import video, rfp
+from routers import video
 
 
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Dubai Media × Alibaba Cloud AI",
-    description="AI-powered media archive metadata extraction, RFP creation, and evaluation",
+    description="AI-powered media archive metadata extraction",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -35,7 +35,6 @@ app.add_middleware(
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 app.include_router(video.router)
-app.include_router(rfp.router)
 
 
 @app.get("/api/health")

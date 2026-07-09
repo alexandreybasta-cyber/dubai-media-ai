@@ -1,0 +1,1 @@
+FastAPI + Uvicorn; Alibaba Cloud DashScope API (qwen-vl-max video, paraformer-v2 ASR, qwen-max text, text-embedding-v3 vectors) accessed via httpx.AsyncClient; FAISS CPU for vector similarity search; python-docx/reportlab/openpyxl for DOCX/PDF/XLSX RFP export; pydantic-settings for config; Next.js frontend served through nginx.

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,9 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Dubai Media × Alibaba Cloud AI",
-  description:
-    "AI-powered media archive metadata extraction, RFP creation, and evaluation",
+  title: "Prototype : Media",
+  description: "AI-powered media archive metadata extraction",
 };
 
 export default function RootLayout({
@@ -29,9 +27,8 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex">
-        <Sidebar />
-        <main className="flex-1 ml-64 bg-gray-50 min-h-screen">
+      <body className="min-h-full">
+        <main className="w-full bg-gray-50 min-h-screen">
           <div className="p-8">{children}</div>
         </main>
       </body>

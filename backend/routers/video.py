@@ -24,7 +24,6 @@ from config import settings
 from pipeline.orchestrator import PipelineOrchestrator
 from pipeline.search_index import SearchIndex
 from pipeline import subtitle_generation
-from pipeline import dubbing
 
 logger = logging.getLogger(__name__)
 
@@ -432,10 +431,9 @@ async def download_subtitles(video_id: str, language: str = "en", format: str = 
 
 # ── Dubbing ─────────────────────────────────────────────────────────
 
-# Track in-flight dubbing tasks to avoid launching duplicates AND to hold a
-# strong reference to each asyncio.Task so it is not garbage-collected while
-# still running: {(video_id, lang): asyncio.Task}
-_active_dubbing: Dict = {}
+# Dubbing runs in a fully detached subprocess (run_dubbing.py) so it can
+# NEVER block the API server's event loop. All progress is tracked entirely
+# through the per-language status_{lang}.json file that dub_video() writes.
 
 
 def _supported_dub_languages() -> List[str]:
@@ -445,28 +443,6 @@ def _supported_dub_languages() -> List[str]:
         for c in settings.DUBBING_SUPPORTED_LANGUAGES.split(",")
         if c.strip()
     ]
-
-
-async def _run_dubbing_task(video_id: str, video_path: str, output_dir: str, lang: str):
-    """Background task wrapper that runs the dubbing pipeline and clears the lock."""
-    try:
-        await dubbing.dub_video(video_id, video_path, output_dir, lang)
-    except Exception as e:
-        logger.error("Dubbing task failed for %s (%s): %s", video_id, lang, e)
-        # Write a failure status so the frontend stops polling and shows an error
-        dubbed_dir = os.path.join(output_dir, "dubbed")
-        os.makedirs(dubbed_dir, exist_ok=True)
-        try:
-            status_path = os.path.join(dubbed_dir, f"status_{lang}.json")
-            with open(status_path, "w", encoding="utf-8") as f:
-                json.dump(
-                    {"target_language": lang, "status": "failed", "stage": str(e)[:200]},
-                    f, ensure_ascii=False, indent=2,
-                )
-        except Exception:
-            pass
-    finally:
-        _active_dubbing.pop((video_id, lang), None)
 
 
 @router.post("/video/{video_id}/dub")
@@ -506,43 +482,67 @@ async def request_dubbing(video_id: str, request: Request):
             "video_path": f"/uploads/{video_id}/dubbed/video_{lang}.mp4",
         }
 
-    # Avoid launching a duplicate task for the same video/language.
-    if (video_id, lang) in _active_dubbing:
+    # Avoid launching a duplicate: if the status file says it's already
+    # processing, don't re-launch the subprocess.
+    status_file = os.path.join(output_dir, "dubbed", f"status_{lang}.json")
+    existing = _read_json(status_file)
+    if existing and existing.get("status") == "processing":
         return {"status": "processing", "video_id": video_id, "target_language": lang}
 
     video_file = _find_video_file(video_id)
     if not video_file:
         raise HTTPException(status_code=404, detail=f"Source video file for {video_id} not found")
-    video_path = os.path.join(settings.UPLOAD_DIR, video_file)
 
-    # Store a strong reference to the task to prevent it being garbage-collected
-    # before it finishes (asyncio only keeps a weak reference otherwise).
-    task = asyncio.create_task(_run_dubbing_task(video_id, video_path, output_dir, lang))
-    _active_dubbing[(video_id, lang)] = task
+    # Write an initial processing status so duplicate requests are rejected
+    # and the frontend can start polling immediately.
+    dubbed_dir = os.path.join(output_dir, "dubbed")
+    os.makedirs(dubbed_dir, exist_ok=True)
+    with open(status_file, "w", encoding="utf-8") as f:
+        json.dump(
+            {"target_language": lang, "status": "processing", "stage": "Starting"},
+            f, ensure_ascii=False, indent=2,
+        )
+
+    # Launch dubbing in a completely separate process (like run_pipeline.py).
+    # This NEVER blocks the server's event loop regardless of Edge-TTS or
+    # DashScope call duration.
+    import subprocess as sp
+
+    cmd = [sys.executable, "run_dubbing.py", video_id, lang]
+    sp.Popen(
+        cmd,
+        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        stdout=sp.DEVNULL,
+        stderr=sp.DEVNULL,
+        stdin=sp.DEVNULL,   # macOS requirement: prevents process suspension
+        start_new_session=True,
+    )
+    logger.info("Launched dubbing subprocess for %s (%s)", video_id, lang)
 
     return {"status": "processing", "video_id": video_id, "target_language": lang}
 
 
 @router.get("/video/{video_id}/dub/status")
 async def get_dubbing_status(video_id: str, language: str = ""):
-    """Get dubbing status for a video (optionally for a specific language)."""
-    dubbed_dir = os.path.join(settings.UPLOAD_DIR, video_id, "dubbed")
-    if not os.path.isdir(dubbed_dir):
-        return {"video_id": video_id, "status": "not_started", "languages": []}
+    """Get dubbing status for a video (optionally for a specific language).
 
+    Status is read directly from the per-language JSON files written by the
+    dubbing subprocess. If none exist, the dubbing has not started.
+    """
+    dubbed_dir = os.path.join(settings.UPLOAD_DIR, video_id, "dubbed")
     lang = (language or settings.DUBBING_DEFAULT_LANGUAGE).lower()
+
+    if not os.path.isdir(dubbed_dir):
+        return {"video_id": video_id, "target_language": lang, "status": "not_started"}
 
     # Prefer the detailed dubbing_{lang}.json, fall back to status_{lang}.json.
     for fname in (f"dubbing_{lang}.json", f"status_{lang}.json"):
         data = _read_json(os.path.join(dubbed_dir, fname))
         if data is not None:
             data["video_id"] = video_id
-            if (video_id, lang) in _active_dubbing:
-                data["status"] = "processing"
             return data
 
-    status = "processing" if (video_id, lang) in _active_dubbing else "not_started"
-    return {"video_id": video_id, "target_language": lang, "status": status}
+    return {"video_id": video_id, "target_language": lang, "status": "not_started"}
 
 
 @router.get("/video/{video_id}/dub/languages")

@@ -348,6 +348,14 @@ async def _assemble_audio(
         "-f", "concat",
         "-safe", "0",
         "-i", concat_list,
+        # Normalize every piece to a single, consistent format before encoding.
+        # Edge-TTS emits 24kHz mono while generated silence may differ; feeding
+        # frames with changing params straight to libmp3lame triggers
+        # "inadequate AVFrame plane padding" and aborts the encode. The aresample
+        # filter guarantees a uniform stream for the encoder.
+        "-af", "aresample=44100",
+        "-ar", "44100",
+        "-ac", "2",
         "-c:a", "libmp3lame",
         "-q:a", "2",
         "-y",
@@ -363,7 +371,7 @@ async def _assemble_audio(
             return True
         logger.error(
             "ffmpeg audio assembly failed: %s",
-            result.stderr.decode()[:400] if result.stderr else "unknown",
+            result.stderr.decode()[-800:] if result.stderr else "unknown",
         )
     except Exception as e:
         logger.error("ffmpeg audio assembly error: %s", e)
@@ -371,11 +379,16 @@ async def _assemble_audio(
 
 
 async def _make_silence(path: str, duration: float, loop) -> bool:
-    """Generate a silent MP3 of the given duration using ffmpeg."""
+    """Generate a silent MP3 of the given duration using ffmpeg.
+
+    The silence is produced in the same format Edge-TTS emits (24kHz mono) so
+    that concatenating silence with speech segments does not force the encoder
+    to reconfigure between frame formats.
+    """
     cmd = [
         "ffmpeg",
         "-f", "lavfi",
-        "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+        "-i", "anullsrc=channel_layout=mono:sample_rate=24000",
         "-t", f"{duration:.3f}",
         "-c:a", "libmp3lame",
         "-q:a", "2",

@@ -32,11 +32,11 @@
 
 ## Update Summary
 **Changes Made**
-- Added comprehensive documentation for the new DubbingPanel component (337 lines) providing intuitive interface for dubbing operations, target language selection, and real-time progress monitoring with WebSocket integration
-- Updated Archive Components section to include DubbingPanel alongside existing video processing components
-- Enhanced dependency analysis to show DubbingPanel integration with backend dubbing APIs
-- Updated troubleshooting guide with dubbing-specific issues and solutions
-- Added performance considerations for dubbing operations and polling mechanisms
+- Updated VideoLibrary component documentation to reflect comprehensive multi-selection interface with 169 additional lines of enhanced functionality
+- Added detailed documentation for selection mode toggle, checkbox overlays, bulk delete operations, and confirmation modal
+- Enhanced defensive programming section with new VideoLibrary bulk operation error handling patterns
+- Updated dependency analysis to include new backend delete endpoint integration
+- Expanded troubleshooting guide with VideoLibrary-specific issues and solutions
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -57,7 +57,7 @@ This document describes the reusable UI component library used across the Dubai 
 ## Project Structure
 The component library is organized by feature folders under frontend/src/components:
 - Base primitives: Button, Card
-- Archive feature: VideoUpload, VideoTimeline, TranscriptPanel, MetadataPanel, SearchDemo, PipelineVisualizer, SceneDetection, PeoplePanel, VideoLibrary, **DubbingPanel**
+- Archive feature: VideoUpload, VideoTimeline, TranscriptPanel, MetadataPanel, SearchDemo, PipelineVisualizer, SceneDetection, PeoplePanel, VideoLibrary, DubbingPanel
 - RFP feature: RFPForm, RFPPreview, TimelineEditor
 - Evaluator feature: EvaluationSetup, VendorScorecard, ComparisonMatrix
 - Shared layout: Sidebar
@@ -128,7 +128,7 @@ SB --> ES
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
 - [SceneDetection.tsx:1-181](file://frontend/src/components/archive/SceneDetection.tsx#L1-L181)
 - [PeoplePanel.tsx:1-226](file://frontend/src/components/archive/PeoplePanel.tsx#L1-L226)
-- [VideoLibrary.tsx:1-128](file://frontend/src/components/archive/VideoLibrary.tsx#L1-L128)
+- [VideoLibrary.tsx:1-297](file://frontend/src/components/archive/VideoLibrary.tsx#L1-L297)
 - [RFPForm.tsx:1-411](file://frontend/src/components/rfp/RFPForm.tsx#L1-L411)
 - [RFPPreview.tsx:1-200](file://frontend/src/components/rfp/RFPPreview.tsx#L1-L200)
 - [TimelineEditor.tsx:1-111](file://frontend/src/components/rfp/TimelineEditor.tsx#L1-L111)
@@ -149,7 +149,7 @@ SB --> ES
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
 - [SceneDetection.tsx:1-181](file://frontend/src/components/archive/SceneDetection.tsx#L1-L181)
 - [PeoplePanel.tsx:1-226](file://frontend/src/components/archive/PeoplePanel.tsx#L1-L226)
-- [VideoLibrary.tsx:1-128](file://frontend/src/components/archive/VideoLibrary.tsx#L1-L128)
+- [VideoLibrary.tsx:1-297](file://frontend/src/components/archive/VideoLibrary.tsx#L1-L297)
 - [RFPForm.tsx:1-411](file://frontend/src/components/rfp/RFPForm.tsx#L1-L411)
 - [RFPPreview.tsx:1-200](file://frontend/src/components/rfp/RFPPreview.tsx#L1-L200)
 - [TimelineEditor.tsx:1-111](file://frontend/src/components/rfp/TimelineEditor.tsx#L1-L111)
@@ -198,14 +198,25 @@ participant U as "User"
 participant VL as "VideoLibrary"
 participant VU as "VideoUpload"
 participant UV as "useVideoProcessing"
-participant API as "api.video.list/upload"
+participant API as "api.video.list/upload/delete"
 participant WS as "WebSocket /ws/pipeline/{id}"
 participant DBP as "DubbingPanel"
 participant DAPI as "Dubbing API"
 U->>VL : Browse archive videos
-VL->>API : GET /api/video/list
+VL->>API : GET /api/videos
 API-->>VL : {videos : LibraryVideo[]}
-U->>VL : Select video
+U->>VL : Select video or enter select mode
+VL->>VL : Toggle selection mode
+U->>VL : Select multiple videos
+VL->>VL : Update selectedIds state
+U->>VL : Click delete button
+VL->>VL : Show confirmation modal
+U->>VL : Confirm deletion
+VL->>API : DELETE /api/videos {video_ids}
+API-->>VL : {deleted : [], failed : []}
+VL->>VL : Filter deleted videos from list
+VL-->>U : Refreshed video library
+U->>VL : Select single video
 VL->>UV : loadExistingVideo(videoId)
 UV->>API : POST /api/video/load
 API-->>UV : {video_id, status}
@@ -222,17 +233,69 @@ DBP-->>U : Progress bar and completion notification
 ```
 
 **Diagram sources**
-- [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-L50)
+- [VideoLibrary.tsx:31-116](file://frontend/src/components/archive/VideoLibrary.tsx#L31-L116)
 - [VideoUpload.tsx:63-67](file://frontend/src/components/archive/VideoUpload.tsx#L63-67)
-- [DubbingPanel.tsx:114-138](file://frontend/src/components/archive/DubbingPanel.tsx#L114-138)
-- [DubbingPanel.tsx:75-112](file://frontend/src/components/archive/DubbingPanel.tsx#L75-112)
+- [DubbingPanel.tsx:114-138](file://frontend/src/components/archive/DubbingPanel.tsx#L114-L138)
+- [DubbingPanel.tsx:75-112](file://frontend/src/components/archive/DubbingPanel.tsx#L75-L112)
 - [useVideoProcessing.ts:162-211](file://frontend/src/lib/useVideoProcessing.ts#L162-L211)
-- [api.ts:167-182](file://frontend/src/lib/api.ts#L167-L182)
+- [api.ts:243-249](file://frontend/src/lib/api.ts#L243-L249)
 - [api.ts:263-276](file://frontend/src/lib/api.ts#L263-L276)
 
 ## Detailed Component Analysis
 
 ### Archive Components
+
+#### VideoLibrary
+- Purpose: Provides browsable video interface for archive library with comprehensive multi-selection capabilities, bulk operations, and metadata display for completed videos.
+- Props:
+  - onSelect: (videoId: string) => void - Callback function triggered when user selects a video from the library
+  - onRefresh?: () => void - Optional callback for refreshing the video library after bulk operations
+- State Management:
+  - videos: LibraryVideo[] - Array of processed videos from the archive
+  - loading: boolean - Loading state during initial data fetch
+  - isSelectMode: boolean - Toggle between normal browsing and multi-selection mode
+  - selectedIds: Set<string> - Collection of currently selected video IDs
+  - isDeleting: boolean - Deletion operation progress indicator
+  - showConfirmModal: boolean - Confirmation modal visibility state
+- Selection Mode Features:
+  - **Toggle Switch**: Clean interface button to switch between browse and select modes
+  - **Checkbox Overlays**: Visual checkbox indicators on video thumbnails with smooth animations
+  - **Select All/Deselect All**: Bulk selection controls with intelligent state management
+  - **Selection Counter**: Real-time badge showing number of selected items
+  - **Visual Feedback**: Highlighted borders and ring effects for selected items
+- Bulk Operations:
+  - **Delete Button**: Prominent red delete button with trash icon and proper disabled states
+  - **Confirmation Modal**: Full-screen overlay with warning message and action buttons
+  - **Progress Indication**: Animated spinner during deletion operations
+  - **Error Handling**: Comprehensive try-catch blocks with console logging
+  - **State Synchronization**: Automatic filtering of deleted videos from the library
+- Interactions:
+  - Click any video card to select it (in select mode) or navigate to it (in browse mode)
+  - Hover effects with scale animation and shadow enhancement
+  - Responsive grid adapts from 2 columns on mobile to 4 columns on large screens
+  - Smooth transitions between selection states and modal presentations
+- Styling: Modern card-based layout with consistent spacing; aspect-ratio maintained thumbnails; gradient overlays for duration badges; typography hierarchy for metadata display; responsive design with adaptive grid layouts.
+- Accessibility: Semantic button elements for video selection; proper ARIA labels for interactive controls; keyboard navigation support; screen reader friendly metadata presentation; focus management for modal dialogs.
+- **Enhanced Multi-Selection Interface**: Comprehensive selection system with checkbox overlays, visual feedback, and intuitive bulk operation controls that significantly enhance user productivity for managing large video archives.
+- **Robust Error Handling**: Defensive programming patterns ensure graceful degradation when API calls fail, with proper cleanup and state reset mechanisms.
+- **Responsive Design Pattern**: Implements modern CSS Grid with responsive breakpoints for optimal viewing across device sizes, maintaining usability on both mobile and desktop platforms.
+
+**Updated** The VideoLibrary component has been significantly enhanced with 169 additional lines of code providing comprehensive multi-selection capabilities:
+
+- **Selection Mode Toggle**: Intuitive interface allowing users to switch between normal browsing and multi-selection modes with smooth visual transitions
+- **Checkbox Overlay System**: Professional checkbox indicators positioned at the top-left corner of video thumbnails with animated checkmarks and proper z-index layering
+- **Bulk Delete Operations**: Complete delete workflow including confirmation modal, progress indication, and automatic state synchronization after successful deletions
+- **Advanced State Management**: Sophisticated state handling using React hooks for selection mode, selected item tracking, deletion progress, and modal visibility
+- **Responsive UI Adaptations**: Enhanced grid layout system that maintains usability across different screen sizes while supporting complex interaction patterns
+- **Professional Visual Feedback**: Comprehensive visual indicators including highlighted borders, ring effects, selection counters, and smooth transition animations
+- **Backend Integration**: Seamless connection to the new `/api/videos` DELETE endpoint for batch video removal with proper error handling and response processing
+
+**Section sources**
+- [VideoLibrary.tsx:6-9](file://frontend/src/components/archive/VideoLibrary.tsx#L6-L9)
+- [VideoLibrary.tsx:31-55](file://frontend/src/components/archive/VideoLibrary.tsx#L31-L55)
+- [VideoLibrary.tsx:57-116](file://frontend/src/components/archive/VideoLibrary.tsx#L57-L116)
+- [VideoLibrary.tsx:134-297](file://frontend/src/components/archive/VideoLibrary.tsx#L134-L297)
+- [api.ts:243-249](file://frontend/src/lib/api.ts#L243-L249)
 
 #### DubbingPanel
 - Purpose: Provides an intuitive interface for video dubbing operations, including target language selection, real-time progress monitoring, and playback of dubbed versions.
@@ -277,8 +340,8 @@ DBP-->>U : Progress bar and completion notification
 - [DubbingPanel.tsx:6-8](file://frontend/src/components/archive/DubbingPanel.tsx#L6-L8)
 - [DubbingPanel.tsx:27-35](file://frontend/src/components/archive/DubbingPanel.tsx#L27-L35)
 - [DubbingPanel.tsx:50-73](file://frontend/src/components/archive/DubbingPanel.tsx#L50-L73)
-- [DubbingPanel.tsx:75-112](file://frontend/src/components/archive/DubbingPanel.tsx#L75-112)
-- [DubbingPanel.tsx:114-138](file://frontend/src/components/archive/DubbingPanel.tsx#L114-138)
+- [DubbingPanel.tsx:75-112](file://frontend/src/components/archive/DubbingPanel.tsx#L75-L112)
+- [DubbingPanel.tsx:114-138](file://frontend/src/components/archive/DubbingPanel.tsx#L114-L138)
 - [DubbingPanel.tsx:146-337](file://frontend/src/components/archive/DubbingPanel.tsx#L146-337)
 - [api.ts:263-276](file://frontend/src/lib/api.ts#L263-L276)
 
@@ -377,7 +440,7 @@ DBP-->>U : Progress bar and completion notification
 **Section sources**
 - [TranscriptPanel.tsx:7-12](file://frontend/src/components/archive/TranscriptPanel.tsx#L7-L12)
 - [TranscriptPanel.tsx:67-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L67-L121)
-- [TranscriptPanel.tsx:175-231](file://frontend/src/components/archive/TranscriptPanel.tsx#L175-231)
+- [TranscriptPanel.tsx:175-231](file://frontend/src/components/archive/TranscriptPanel.tsx#L175-L231)
 - [TranscriptPanel.tsx:286-297](file://frontend/src/components/archive/TranscriptPanel.tsx#L286-L297)
 - [api.ts:222-233](file://frontend/src/lib/api.ts#L222-233)
 
@@ -476,8 +539,8 @@ DBP-->>U : Progress bar and completion notification
 **Section sources**
 - [SceneDetection.tsx:6-40](file://frontend/src/components/archive/SceneDetection.tsx#L6-40)
 - [SceneDetection.tsx:14-27](file://frontend/src/components/archive/SceneDetection.tsx#L14-27)
-- [SceneDetection.tsx:74-101](file://frontend/src/components/archive/SceneDetection.tsx#L74-101)
-- [SceneDetection.tsx:119-176](file://frontend/src/components/archive/SceneDetection.tsx#L119-176)
+- [SceneDetection.tsx:74-101](file://frontend/src/components/archive/SceneDetection.tsx#L74-L101)
+- [SceneDetection.tsx:119-176](file://frontend/src/components/archive/SceneDetection.tsx#L119-L176)
 - [useVideoProcessing.ts:30-35](file://frontend/src/lib/useVideoProcessing.ts#L30-L35)
 
 #### PeoplePanel
@@ -515,46 +578,10 @@ DBP-->>U : Progress bar and completion notification
 
 **Section sources**
 - [PeoplePanel.tsx:6-14](file://frontend/src/components/archive/PeoplePanel.tsx#L6-14)
-- [PeoplePanel.tsx:22-28](file://frontend/src/components/archive/PeoplePanel.tsx#L22-28)
-- [PeoplePanel.tsx:30-108](file://frontend/src/components/archive/PeoplePanel.tsx#L30-108)
-- [PeoplePanel.tsx:110-226](file://frontend/src/components/archive/PeoplePanel.tsx#L110-226)
+- [PeoplePanel.tsx:22-28](file://frontend/src/components/archive/PeoplePanel.tsx#L22-L28)
+- [PeoplePanel.tsx:30-108](file://frontend/src/components/archive/PeoplePanel.tsx#L30-L108)
+- [PeoplePanel.tsx:110-226](file://frontend/src/components/archive/PeoplePanel.tsx#L110-L226)
 - [useVideoProcessing.ts:555-566](file://frontend/src/lib/useVideoProcessing.ts#L555-L566)
-
-#### VideoLibrary
-- Purpose: Provides browsable video interface for archive library with metadata display and quick access controls for completed videos.
-- Props:
-  - onSelect: (videoId: string) => void - Callback function triggered when user selects a video from the library
-- Features:
-  - Responsive grid layout displaying video thumbnails with metadata
-  - Automatic filtering of only completed videos from the archive
-  - Duration overlay display on video thumbnails
-  - Creation date formatting and scene count display
-  - Person names display for videos with identified people
-  - Loading skeleton animation during data fetch
-  - Empty state handling when no videos are available
-- Interactions:
-  - Click any video card to select and navigate to that video
-  - Hover effects with scale animation and shadow enhancement
-  - Responsive grid adapts from 2 columns on mobile to 4 columns on large screens
-- Styling: Clean card-based layout with consistent spacing; aspect-ratio maintained thumbnails; gradient overlays for duration badges; typography hierarchy for metadata display.
-- Accessibility: Semantic button elements for video selection; proper alt text handling; keyboard navigation support; screen reader friendly metadata presentation.
-- **Enhanced Thumbnail Resolution**: Utilizes API_BASE_URL configuration for proper thumbnail URL resolution across different deployment environments.
-- **Robust Data Filtering**: Filters videos by status prefix to ensure only fully processed videos are displayed in the library.
-- **Responsive Design Pattern**: Implements modern CSS Grid with responsive breakpoints for optimal viewing across device sizes.
-- **Loading State Management**: Provides skeleton loading animation for improved user experience during data fetching.
-
-**New** Comprehensive documentation for the VideoLibrary component, including:
-- Video browsing interface with metadata display
-- Responsive grid layout with thumbnail previews
-- Archive filtering and status-based video selection
-- Integration with API for video listing and metadata retrieval
-- User interaction patterns for video selection and navigation
-
-**Section sources**
-- [VideoLibrary.tsx:6-8](file://frontend/src/components/archive/VideoLibrary.tsx#L6-8)
-- [VideoLibrary.tsx:30-50](file://frontend/src/components/archive/VideoLibrary.tsx#L30-50)
-- [VideoLibrary.tsx:68-127](file://frontend/src/components/archive/VideoLibrary.tsx#L68-127)
-- [api.ts:134-146](file://frontend/src/lib/api.ts#L134-146)
 
 ### RFP Components
 
@@ -644,7 +671,7 @@ DBP-->>U : Progress bar and completion notification
 - Styling: Color-coded score badges; SVG radial progress; responsive grid for summary cards.
 
 **Section sources**
-- [VendorScorecard.tsx:70-239](file://frontend/src/components/evaluator/VendorScorecard.tsx#L70-239)
+- [VendorScorecard.tsx:70-239](file://frontend/src/components/evaluator/VendorScorecard.tsx#L70-L239)
 
 #### ComparisonMatrix
 - Purpose: Compares vendors across criteria with a matrix table, radar chart, and mandatory compliance checks; exports to XLSX/PDF.
@@ -661,7 +688,7 @@ DBP-->>U : Progress bar and completion notification
 - Styling: Responsive tables, legend for radar chart, color-coded score badges.
 
 **Section sources**
-- [ComparisonMatrix.tsx:42-317](file://frontend/src/components/evaluator/ComparisonMatrix.tsx#L42-317)
+- [ComparisonMatrix.tsx:42-317](file://frontend/src/components/evaluator/ComparisonMatrix.tsx#L42-L317)
 
 ### Sidebar
 - Purpose: Navigation sidebar linking to Archive Metadata, RFP Creator, and RFP Evaluator with active state indication and API connection status.
@@ -738,6 +765,20 @@ Components consistently implement null-safe data access patterns to prevent runt
 
 ### Specific Defensive Programming Improvements
 
+#### VideoLibrary Component
+The VideoLibrary component demonstrates key defensive programming practices for bulk operations:
+
+- **Selection Mode Safety**: Checks `if (!videos.length)` to prevent rendering empty library
+- **API Response Validation**: Validates response structure with `(res.videos || [])` fallback for array operations
+- **Set Operations Safety**: Uses Set methods safely with proper initialization and cleanup
+- **Deletion Operation Safety**: Comprehensive try-catch blocks with proper state cleanup in finally blocks
+- **Modal State Management**: Proper conditional rendering with backdrop blur and z-index management
+- **Grid Layout Safety**: Responsive grid with proper fallback for different screen sizes
+- **Image Loading Safety**: Conditional thumbnail rendering with fallback placeholders
+- **Date Formatting Safety**: Try-catch blocks around date parsing with empty string fallbacks
+- **Duration Calculation Safety**: Validates duration values before formatting to prevent NaN outputs
+- **State Cleanup**: Proper useEffect cleanup with cancelled flag to prevent memory leaks
+
 #### DubbingPanel Component
 The DubbingPanel component demonstrates key defensive programming practices:
 
@@ -777,15 +818,6 @@ The PeoplePanel component includes robust defensive programming for person manag
 - **Role and name validation**: Trims whitespace and validates required fields before saving
 - **Async error handling**: Wraps rename operations in try-catch blocks with user-friendly error messages
 
-#### VideoLibrary Component
-The VideoLibrary component implements comprehensive defensive programming for video browsing:
-
-- **API response validation**: Checks for videos array existence and filters by status prefix
-- **Duration formatting safety**: Validates duration values before formatting to prevent NaN outputs
-- **Date parsing error handling**: Wraps date formatting in try-catch blocks with fallback empty strings
-- **Thumbnail URL safety**: Uses API_BASE_URL concatenation with proper null checking
-- **Component cleanup**: Implements proper useEffect cleanup to prevent memory leaks
-
 #### SearchDemo Component
 The SearchDemo component includes enhanced defensive programming for thumbnail handling:
 
@@ -824,8 +856,13 @@ The MetadataPanel component includes enhanced multilingual support with defensiv
 - **Future-proofing**: Components can handle API changes gracefully
 
 **Section sources**
-- [DubbingPanel.tsx:140-142](file://frontend/src/components/archive/DubbingPanel.tsx#L140-142)
-- [DubbingPanel.tsx:114-138](file://frontend/src/components/archive/DubbingPanel.tsx#L114-138)
+- [VideoLibrary.tsx:31-55](file://frontend/src/components/archive/VideoLibrary.tsx#L31-L55)
+- [VideoLibrary.tsx:100-116](file://frontend/src/components/archive/VideoLibrary.tsx#L100-L116)
+- [VideoLibrary.tsx:118-132](file://frontend/src/components/archive/VideoLibrary.tsx#L118-L132)
+- [VideoLibrary.tsx:18-29](file://frontend/src/components/archive/VideoLibrary.tsx#L18-L29)
+- [VideoLibrary.tsx:11-16](file://frontend/src/components/archive/VideoLibrary.tsx#L11-L16)
+- [DubbingPanel.tsx:140-142](file://frontend/src/components/archive/DubbingPanel.tsx#L140-L142)
+- [DubbingPanel.tsx:114-138](file://frontend/src/components/archive/DubbingPanel.tsx#L114-L138)
 - [DubbingPanel.tsx:62-73](file://frontend/src/components/archive/DubbingPanel.tsx#L62-L73)
 - [VideoTimeline.tsx:84-86](file://frontend/src/components/archive/VideoTimeline.tsx#L84-86)
 - [VideoTimeline.tsx:200-201](file://frontend/src/components/archive/VideoTimeline.tsx#L200-L201)
@@ -837,10 +874,8 @@ The MetadataPanel component includes enhanced multilingual support with defensiv
 - [SceneDetection.tsx:25-27](file://frontend/src/components/archive/SceneDetection.tsx#L25-L27)
 - [PeoplePanel.tsx:114](file://frontend/src/components/archive/PeoplePanel.tsx#L114)
 - [PeoplePanel.tsx:45-59](file://frontend/src/components/archive/PeoplePanel.tsx#L45-L59)
-- [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-50)
-- [VideoLibrary.tsx:17-28](file://frontend/src/components/archive/VideoLibrary.tsx#L17-L28)
 - [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-21)
-- [TranscriptPanel.tsx:67-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L67-121)
+- [TranscriptPanel.tsx:67-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L67-L121)
 - [TranscriptPanel.tsx:286-297](file://frontend/src/components/archive/TranscriptPanel.tsx#L286-L297)
 - [MetadataPanel.tsx:193-198](file://frontend/src/components/archive/MetadataPanel.tsx#L193-L198)
 
@@ -852,6 +887,7 @@ The MetadataPanel component includes enhanced multilingual support with defensiv
   - TranscriptPanel depends on api for translation functionality.
   - **Enhanced**: VideoTimeline now depends on backend subtitle endpoints for WebVTT streaming and SRT downloads.
   - **New**: DubbingPanel depends on api for dubbing operations including request, status polling, and language listing.
+  - **New**: VideoLibrary now depends on api for bulk video deletion operations.
   - RFP components depend on api for creation, regeneration, and evaluation workflows.
   - Evaluator components depend on api for evaluation status/results and exports.
 - External dependencies:
@@ -889,11 +925,13 @@ DUB["Backend Dubbing API"] --> DBP
 DUB["/api/video/{id}/dub"] --> DBP
 DUB["/api/video/{id}/dub/status"] --> DBP
 DUB["/api/video/{id}/dub/languages"] --> DBP
+DELETE["Backend Delete API"] --> VL
+DELETE["/api/videos (DELETE)"] --> VL
 ```
 
 **Diagram sources**
 - [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
-- [api.ts:164-244](file://frontend/src/lib/api.ts#L164-244)
+- [api.ts:243-249](file://frontend/src/lib/api.ts#L243-L249)
 - [api.ts:263-276](file://frontend/src/lib/api.ts#L263-L276)
 - [VideoUpload.tsx:1-221](file://frontend/src/components/archive/VideoUpload.tsx#L1-L221)
 - [VideoTimeline.tsx:1-469](file://frontend/src/components/archive/VideoTimeline.tsx#L1-L469)
@@ -903,18 +941,18 @@ DUB["/api/video/{id}/dub/languages"] --> DBP
 - [PipelineVisualizer.tsx:1-181](file://frontend/src/components/archive/PipelineVisualizer.tsx#L1-L181)
 - [SceneDetection.tsx:1-181](file://frontend/src/components/archive/SceneDetection.tsx#L1-L181)
 - [PeoplePanel.tsx:1-226](file://frontend/src/components/archive/PeoplePanel.tsx#L1-L226)
-- [VideoLibrary.tsx:1-128](file://frontend/src/components/archive/VideoLibrary.tsx#L1-L128)
+- [VideoLibrary.tsx:1-297](file://frontend/src/components/archive/VideoLibrary.tsx#L1-L297)
 - [DubbingPanel.tsx:1-338](file://frontend/src/components/archive/DubbingPanel.tsx#L1-L338)
 - [RFPForm.tsx:1-411](file://frontend/src/components/rfp/RFPForm.tsx#L1-L411)
 - [RFPPreview.tsx:1-200](file://frontend/src/components/rfp/RFPPreview.tsx#L1-L200)
 - [EvaluationSetup.tsx:1-429](file://frontend/src/components/evaluator/EvaluationSetup.tsx#L1-L429)
 - [VendorScorecard.tsx:1-241](file://frontend/src/components/evaluator/VendorScorecard.tsx#L1-L241)
 - [ComparisonMatrix.tsx:1-318](file://frontend/src/components/evaluator/ComparisonMatrix.tsx#L1-L318)
-- [video.py:349-420](file://backend/routers/video.py#L349-L420)
+- [video.py:655-696](file://backend/routers/video.py#L655-L696)
 
 **Section sources**
 - [useVideoProcessing.ts:122-420](file://frontend/src/lib/useVideoProcessing.ts#L122-L420)
-- [api.ts:164-244](file://frontend/src/lib/api.ts#L164-244)
+- [api.ts:243-249](file://frontend/src/lib/api.ts#L243-L249)
 - [api.ts:263-276](file://frontend/src/lib/api.ts#L263-L276)
 
 ## Performance Considerations
@@ -924,13 +962,15 @@ DUB["/api/video/{id}/dub/languages"] --> DBP
   - SceneDetection renders scene lists with expandable descriptions; consider virtualization for videos with many scenes.
   - MetadataPanel JSON tree renders deeply nested structures; keep expansion defaults minimal.
   - PeoplePanel renders person lists with inline editing; consider limiting visible faces for very large datasets.
-  - VideoLibrary renders video grids with thumbnails; lazy loading could improve initial load performance.
+  - **Enhanced**: VideoLibrary renders video grids with thumbnails; lazy loading could improve initial load performance.
+  - **Enhanced**: VideoLibrary selection mode operations use efficient Set-based state management for O(1) lookups.
   - **TranscriptPanel translation**: Translation requests are batched and cached; consider debouncing rapid language changes.
   - **Enhanced**: VideoTimeline subtitle track management uses efficient TextTrack mode switching without re-rendering entire video elements.
   - **New**: DubbingPanel uses polling mechanism with 3-second intervals for status updates; consider implementing WebSocket for real-time updates if backend supports it.
 - Network:
   - useVideoProcessing simulates upload progress; real progress requires XHR with onprogress. Consider upgrading upload flow for accurate progress.
   - VideoLibrary fetches video list on mount; consider pagination for large archives.
+  - **Enhanced**: VideoLibrary bulk delete operations send single API call for multiple videos, reducing network overhead.
   - **Translation API**: Single API call translates all segments efficiently; consider caching translations for repeated requests.
   - **Enhanced**: Subtitle streaming uses native HTML5 track elements for optimal browser performance and memory management.
   - **New**: Dubbing operations involve multiple API calls (request, status polling, language listing); consider implementing request deduplication and caching strategies.
@@ -939,7 +979,8 @@ DUB["/api/video/{id}/dub/languages"] --> DBP
   - PipelineVisualizer and ComparisonMatrix render charts; unmount components to dispose resources.
   - SceneDetection maintains expanded state for individual scenes; consider limiting expanded scenes to improve performance.
   - PeoplePanel maintains editing state for individual faces; clean up state on component unmount.
-  - VideoLibrary stores video list in component state; consider memoization for large video collections.
+  - **Enhanced**: VideoLibrary stores video list in component state; consider memoization for large video collections.
+  - **Enhanced**: VideoLibrary selection state uses Set data structure for efficient memory usage and fast operations.
   - **Translation state**: Map-based translation storage is efficient but should be cleared when video changes to prevent memory leaks.
   - **Enhanced**: Subtitle track listeners are properly cleaned up using removeEventListener to prevent memory leaks.
   - **New**: DubbingPanel implements proper timer cleanup using refs to prevent memory leaks from setInterval operations.
@@ -948,6 +989,12 @@ DUB["/api/video/{id}/dub/languages"] --> DBP
   - **Progress Simulation**: Client-side progress animation reduces perceived latency
   - **State Management**: Efficient state updates prevent unnecessary re-renders
   - **Memory Cleanup**: Proper interval cleanup prevents memory leaks during long-running operations
+- **VideoLibrary Bulk Operations Performance**:
+  - **Efficient State Updates**: Set-based selection management provides O(1) operations for adding/removing selections
+  - **Minimal Re-renders**: Optimized state updates prevent unnecessary component re-renders during bulk operations
+  - **Batch API Calls**: Single DELETE request for multiple videos reduces network overhead
+  - **Responsive Grid Optimization**: CSS Grid with proper breakpoints ensures optimal rendering across screen sizes
+  - **Modal Performance**: Backdrop blur and z-index management provide smooth user experience without performance impact
 
 ## Troubleshooting Guide
 - Upload fails:
@@ -989,11 +1036,15 @@ DUB["/api/video/{id}/dub/languages"] --> DBP
   - Verify that duration value is provided for accurate time range calculations.
   - **Updated**: Person identification and editing should work correctly even with incomplete face data.
 - **VideoLibrary rendering issues**:
-  - **New**: Verify that API endpoint `/api/video/list` is accessible and returns proper response format.
+  - **New**: Verify that API endpoint `/api/videos` is accessible and returns proper response format.
   - Check that video status values start with "completed" prefix for proper filtering.
   - Ensure API_BASE_URL environment variable is properly configured.
   - Verify that thumbnail URLs are accessible and properly formatted.
   - **Updated**: Video library should gracefully handle empty archives and API failures.
+  - **New**: Selection mode toggle should work correctly with proper state management.
+  - **New**: Bulk delete operations should properly handle API responses and update the video list accordingly.
+  - **New**: Confirmation modal should display proper z-index and backdrop blur effects.
+  - **New**: Responsive grid layout should adapt properly across different screen sizes.
 - **MetadataPanel display issues**:
   - **Updated**: Arabic names should now display properly alongside English names with proper RTL directionality.
   - Check if face.name_ar property exists in the metadata structure.
@@ -1026,6 +1077,18 @@ DUB["/api/video/{id}/dub/languages"] --> DBP
   - **Updated**: Progress bar simulation should update every 800ms with realistic progress increments.
   - **Updated**: Error messages should display user-friendly feedback for failed dubbing operations.
   - **Updated**: Timer cleanup should prevent memory leaks when component unmounts during long-running operations.
+- **VideoLibrary Bulk Operation Issues**:
+  - **New**: Verify that the new `/api/videos` DELETE endpoint is properly implemented in the backend.
+  - Check that the backend accepts video_ids array in the request body.
+  - Ensure proper CORS configuration allows DELETE requests from the frontend.
+  - Verify that the API returns proper response format with deleted and failed arrays.
+  - Check browser console for network errors during bulk deletion operations.
+  - **New**: Selection mode should properly toggle between browse and select states.
+  - **New**: Checkbox overlays should appear correctly with proper z-index layering.
+  - **New**: Confirmation modal should display proper backdrop blur and center alignment.
+  - **New**: Delete button should be properly disabled when no videos are selected.
+  - **New**: Video list should automatically refresh after successful bulk deletion.
+  - **New**: Responsive grid should maintain proper layout across different screen sizes.
 
 **Section sources**
 - [VideoUpload.tsx:199-217](file://frontend/src/components/archive/VideoUpload.tsx#L199-L217)
@@ -1037,24 +1100,31 @@ DUB["/api/video/{id}/dub/languages"] --> DBP
 - [SceneDetection.tsx:43](file://frontend/src/components/archive/SceneDetection.tsx#L43)
 - [SceneDetection.tsx:52-55](file://frontend/src/components/archive/SceneDetection.tsx#L52-L55)
 - [PeoplePanel.tsx:114](file://frontend/src/components/archive/PeoplePanel.tsx#L114)
-- [VideoLibrary.tsx:34-50](file://frontend/src/components/archive/VideoLibrary.tsx#L34-L50)
+- [VideoLibrary.tsx:31-55](file://frontend/src/components/archive/VideoLibrary.tsx#L31-L55)
+- [VideoLibrary.tsx:100-116](file://frontend/src/components/archive/VideoLibrary.tsx#L100-L116)
+- [VideoLibrary.tsx:134-297](file://frontend/src/components/archive/VideoLibrary.tsx#L134-L297)
 - [MetadataPanel.tsx:193-198](file://frontend/src/components/archive/MetadataPanel.tsx#L193-L198)
 - [SearchDemo.tsx:13-21](file://frontend/src/components/archive/SearchDemo.tsx#L13-21)
-- [TranscriptPanel.tsx:67-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L67-121)
+- [TranscriptPanel.tsx:67-121](file://frontend/src/components/archive/TranscriptPanel.tsx#L67-L121)
 - [TranscriptPanel.tsx:286-297](file://frontend/src/components/archive/TranscriptPanel.tsx#L286-L297)
-- [video.py:349-420](file://backend/routers/video.py#L349-L420)
-- [DubbingPanel.tsx:114-138](file://frontend/src/components/archive/DubbingPanel.tsx#L114-138)
-- [DubbingPanel.tsx:75-112](file://frontend/src/components/archive/DubbingPanel.tsx#L75-112)
+- [video.py:655-696](file://backend/routers/video.py#L655-L696)
+- [DubbingPanel.tsx:114-138](file://frontend/src/components/archive/DubbingPanel.tsx#L114-L138)
+- [DubbingPanel.tsx:75-112](file://frontend/src/components/archive/DubbingPanel.tsx#L75-L112)
 - [DubbingPanel.tsx:50-73](file://frontend/src/components/archive/DubbingPanel.tsx#L50-L73)
 
 ## Conclusion
 The component library provides a cohesive, accessible, and extensible foundation for the Dubai Media application. Base components (Button, Card) standardize UI patterns; feature-specific components encapsulate complex workflows while integrating with shared state and APIs. The recent defensive programming improvements ensure reliable operation even with incomplete data, while the accessibility enhancements guarantee consistent text visibility across all form components. 
 
-The enhanced VideoTimeline component represents a significant advancement in multimedia accessibility, providing comprehensive closed captioning capabilities with native HTML5 track elements, multi-language subtitle support, and proper RTL handling for Arabic content. The new subtitle management system seamlessly integrates with backend APIs to deliver WebVTT streams and SRT downloads, while maintaining excellent performance through efficient TextTrack mode management. The enhanced TranscriptPanel component represents another major advancement in multilingual support, providing comprehensive translation capabilities with real-time status indicators, error handling, and proper RTL support for Arabic translations. The new PeoplePanel and VideoLibrary components significantly enhance the Archive feature by providing comprehensive person management and video browsing capabilities. The PeoplePanel offers sophisticated person identification with confidence scoring, source attribution, and inline editing, while the VideoLibrary provides an intuitive browsing interface for archived videos with rich metadata display. Both components integrate seamlessly with the existing video processing pipeline and follow established architectural patterns.
+The enhanced VideoLibrary component represents a significant advancement in video archive management, providing comprehensive multi-selection capabilities with professional-grade bulk operations. With 169 additional lines of enhanced functionality, users can now efficiently manage large video collections through intuitive selection modes, checkbox overlays, and streamlined delete workflows. The component implements robust error handling, proper state management, and responsive design patterns that align with established component library standards.
+
+The enhanced VideoTimeline component represents another major advancement in multimedia accessibility, providing comprehensive closed captioning capabilities with native HTML5 track elements, multi-language subtitle support, and proper RTL handling for Arabic content. The new subtitle management system seamlessly integrates with backend APIs to deliver WebVTT streams and SRT downloads, while maintaining excellent performance through efficient TextTrack mode management. The enhanced TranscriptPanel component represents another major advancement in multilingual support, providing comprehensive translation capabilities with real-time status indicators, error handling, and proper RTL support for Arabic translations. The new PeoplePanel and VideoLibrary components significantly enhance the Archive feature by providing comprehensive person management and video browsing capabilities. The PeoplePanel offers sophisticated person identification with confidence scoring, source attribution, and inline editing, while the VideoLibrary provides an intuitive browsing interface for archived videos with rich metadata display. Both components integrate seamlessly with the existing video processing pipeline and follow established architectural patterns.
 
 **New** The DubbingPanel component represents a significant advancement in video localization capabilities, providing an intuitive interface for multi-language dubbing operations. With support for 8 languages, real-time progress monitoring, and seamless backend integration, it enables users to create professional-quality dubbed versions of their videos. The component implements robust error handling, proper memory management, and responsive design patterns that align with the established component library standards.
 
 Key improvements include:
+- **Comprehensive Multi-Selection Interface**: VideoLibrary now supports professional-grade bulk operations with selection mode toggle, checkbox overlays, and streamlined delete workflows
+- **Enhanced Video Archive Management**: Advanced state management for selection mode, selected items tracking, and bulk operation coordination
+- **Professional Bulk Operations**: Complete delete workflow with confirmation modal, progress indication, and automatic state synchronization
 - **Comprehensive Closed Captioning Interface**: VideoTimeline now supports native HTML5 subtitle tracks with CC toggle, language selection menu, and SRT download functionality
 - **Multi-Language Subtitle Support**: Built-in support for English, Arabic, French, and Russian subtitles with proper RTL text direction
 - **Enhanced Multilingual Support**: Automatic language detection, error handling, and user-friendly status indicators for translation requests
@@ -1065,5 +1135,6 @@ Key improvements include:
 - **Accessibility Features**: Proper ARIA labels, keyboard navigation, and screen reader support for all multilingual content
 - **Performance Optimization**: Native HTML5 track elements for optimal browser performance and memory management
 - **Memory Management**: Proper timer cleanup and state management to prevent memory leaks in long-running operations
+- **Responsive Design Excellence**: Adaptive grid layouts and mobile-first approach ensuring optimal user experience across all devices
 
-The enhanced VideoTimeline component now provides granular face detection navigation with improved tooltip information, and the MetadataPanel component offers comprehensive multilingual support with proper RTL handling. The SearchDemo component now features robust thumbnail URL resolution that handles various path formats, and the TranscriptPanel provides reliable timestamp formatting across multiple input types. By adhering to the documented props, composition patterns, defensive programming practices, and accessibility guidelines, teams can build consistent experiences across Archive, RFP, and Evaluator features.
+The enhanced VideoLibrary component now provides comprehensive bulk video management with professional-grade selection interfaces, and the VideoTimeline component offers granular face detection navigation with improved tooltip information. The MetadataPanel component offers comprehensive multilingual support with proper RTL handling. The SearchDemo component now features robust thumbnail URL resolution that handles various path formats, and the TranscriptPanel provides reliable timestamp formatting across multiple input types. By adhering to the documented props, composition patterns, defensive programming practices, and accessibility guidelines, teams can build consistent experiences across Archive, RFP, and Evaluator features.
